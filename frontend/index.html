@@ -1,0 +1,1568 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Alpha Stock</title>
+  
+  <!-- PWA & iOS Safari Meta -->
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Alpha Stock">
+  <link rel="apple-touch-icon" href="https://img.icons8.com/fluency/192/bullish.png">
+  <meta name="theme-color" content="#000000">
+
+  <!-- Tailwind CSS & FontAwesome -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Identity Services SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    body {
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      background-color: #000000;
+      color: #f5f5f7;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Pretendard", sans-serif;
+    }
+    .tap-press:active {
+      opacity: 0.75;
+      transform: scale(0.985);
+      transition: all 0.1s ease;
+    }
+    /* 애플 주식 스타일 슬릭 스크롤 */
+    ::-webkit-scrollbar {
+      display: none;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between bg-black text-[#f5f5f7] pb-16">
+
+  <!-- 상단 애플 스타일 미니멀 헤더 -->
+  <header class="sticky top-0 z-30 bg-black/85 backdrop-blur-xl border-b border-[#1c1c1e] px-4 pt-3 pb-3 flex items-center justify-between">
+    <div class="flex items-center gap-2.5">
+      <!-- 구글 프로필 아바타 -->
+      <div id="userProfileWrap" onclick="openAuthModal()" class="cursor-pointer flex items-center gap-2 tap-press">
+        <div class="w-8 h-8 rounded-full bg-[#1c1c1e] border border-[#2c2c2e] overflow-hidden flex items-center justify-center text-xs">
+          <img id="userAvatar" src="" class="w-full h-full object-cover hidden">
+          <i id="userDefaultIcon" class="fa-solid fa-user text-[#86868b]"></i>
+        </div>
+        <div>
+          <div class="text-[10px] font-semibold text-[#86868b] tracking-wider uppercase flex items-center gap-1">
+            <span id="userName">로그인 필요</span>
+            <i class="fa-solid fa-chevron-down text-[8px]"></i>
+          </div>
+          <h1 class="text-base font-bold tracking-tight text-white leading-none">Alpha Stock</h1>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-1.5">
+      <!-- 알림 설정 토글 버튼 -->
+      <button onclick="toggleNotificationSetting()" id="notifBtn" class="w-8 h-8 rounded-full bg-[#1c1c1e] text-[#86868b] hover:text-white flex items-center justify-center tap-press transition relative" title="실시간 알림">
+        <i class="fa-regular fa-bell text-xs"></i>
+        <span id="notifBadge" class="w-1.5 h-1.5 rounded-full bg-[#30d158] absolute top-1.5 right-1.5 hidden"></span>
+      </button>
+      <button onclick="refreshData(true)" id="refreshBtn" class="w-8 h-8 rounded-full bg-[#1c1c1e] text-[#86868b] hover:text-white flex items-center justify-center tap-press transition">
+        <i class="fa-solid fa-arrow-rotate-right text-xs"></i>
+      </button>
+      <button onclick="resetAccount()" class="text-xs px-2.5 py-1.5 rounded-full bg-[#1c1c1e] text-[#86868b] hover:text-[#ff453a] font-medium tap-press transition">
+        초기화
+      </button>
+    </div>
+  </header>
+
+  <!-- 메인 스크롤 콘텐츠 -->
+  <main class="flex-1 px-4 py-3 max-w-md mx-auto w-full space-y-4">
+
+    <!-- 🔍 상단 미니멀 검색바 (애플 주식 스타일) -->
+    <div class="relative z-20">
+      <div class="flex items-center bg-[#1c1c1e] rounded-xl px-3 py-2 border border-[#2c2c2e] focus-within:border-[#30d158] transition">
+        <i class="fa-solid fa-magnifying-glass text-xs text-[#86868b] mr-2"></i>
+        <input type="text" id="searchInput" oninput="onSearchInput(event)" onfocus="onSearchFocus()"
+               placeholder="종목명 또는 코드 검색 (예: 카카오, 삼전우...)" 
+               class="bg-transparent text-xs text-white placeholder-[#636366] focus:outline-none w-full">
+        <button onclick="clearSearch()" id="searchClearBtn" class="text-[#86868b] hover:text-white text-xs hidden">
+          <i class="fa-solid fa-circle-xmark"></i>
+        </button>
+      </div>
+
+      <!-- 실시간 검색 결과 드롭다운 팝업 -->
+      <div id="searchDropdown" class="absolute top-full left-0 right-0 mt-1.5 bg-[#1c1c1e] border border-[#2c2c2e] rounded-2xl shadow-2xl overflow-hidden hidden divide-y divide-[#2c2c2e] max-h-80 overflow-y-auto">
+        <!-- 동적 삽입 -->
+      </div>
+    </div>
+
+    <!-- 10만원 시드 자산 요약 (애플 주식 상단 위젯 느낌) -->
+    <section class="py-2">
+      <div class="flex justify-between items-baseline">
+        <span class="text-xs font-medium text-[#86868b]">내 시드 자산</span>
+        <span id="accountReturnBadge" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#1c1c1e] text-[#86868b]">
+          +0.0%
+        </span>
+      </div>
+
+      <div class="flex items-baseline gap-1.5 mt-0.5">
+        <span id="totalAsset" class="text-3xl font-extrabold tracking-tight text-white">100,000</span>
+        <span class="text-sm font-semibold text-[#86868b]">원</span>
+      </div>
+
+      <!-- 세련된 슬림 게이지 바 -->
+      <div class="w-full bg-[#1c1c1e] h-1 rounded-full overflow-hidden mt-3 mb-2 flex">
+        <div id="cashBar" class="bg-[#30d158] h-full transition-all duration-500" style="width: 100%"></div>
+        <div id="stockBar" class="bg-[#0a84ff] h-full transition-all duration-500" style="width: 0%"></div>
+      </div>
+
+      <div class="flex justify-between text-[11px] text-[#86868b]">
+        <div>현금 <span id="cashBalance" class="text-white font-medium ml-1">100,000원</span></div>
+        <div>주식 평가 <span id="stockEval" class="text-white font-medium ml-1">0원</span></div>
+      </div>
+    </section>
+
+    <!-- 세그먼트 컨트롤 탭 (애플 iOS Segmented Control) -->
+    <div class="flex p-1 bg-[#1c1c1e] rounded-xl text-xs font-semibold">
+      <button onclick="switchTab('recs')" id="tabRecs" class="flex-1 py-1.5 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center">
+        스윙 추천
+      </button>
+      <button onclick="switchTab('holdings')" id="tabHoldings" class="flex-1 py-1.5 rounded-lg text-[#86868b] hover:text-white tap-press transition text-center">
+        보유 종목 (<span id="holdingsCount">0</span>)
+      </button>
+    </div>
+
+    <!-- TAB 1: 추천 종목 섹션 (애플 주식 리스트 + 카카오페이 인터랙티브 차트) -->
+    <div id="sectionRecs" class="space-y-1">
+      <div class="flex justify-between items-center text-[11px] text-[#86868b] px-1 pb-1">
+        <span>10만원 맞춤 엄선 종목</span>
+        <span id="lastUpdated">방금 갱신됨</span>
+      </div>
+
+      <div id="recommendationCards" class="divide-y divide-[#1c1c1e] border-y border-[#1c1c1e]">
+        <!-- 스켈레톤 -->
+        <div class="py-4 animate-pulse flex justify-between items-center">
+          <div class="space-y-2">
+            <div class="h-4 bg-[#1c1c1e] rounded w-28"></div>
+            <div class="h-3 bg-[#1c1c1e] rounded w-16"></div>
+          </div>
+          <div class="h-7 bg-[#1c1c1e] rounded-md w-20"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: 보유 종목 섹션 -->
+    <div id="sectionHoldings" class="space-y-1 hidden">
+      <div id="holdingsCards" class="divide-y divide-[#1c1c1e] border-y border-[#1c1c1e]">
+        <div class="text-center py-14 px-4">
+          <i class="fa-solid fa-wallet text-3xl text-[#2c2c2e] mb-2.5"></i>
+          <p class="text-sm font-medium text-[#86868b]">보유 중인 주식이 없습니다.</p>
+          <p class="text-xs text-[#636366] mt-1">[스윙 추천] 탭에서 원하는 종목을 모의 매수해보세요.</p>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 애플 스타일 플로팅 토스트 알림 (모바일 Safari 최적화) -->
+  <div id="toastNotification" class="fixed top-5 left-1/2 transform -translate-x-1/2 z-50 px-4 py-3 rounded-2xl bg-[#1c1c1e]/95 backdrop-blur-xl border border-[#2c2c2e] text-white shadow-2xl flex items-center gap-2.5 text-xs font-semibold pointer-events-none opacity-0 -translate-y-4 transition-all duration-300 max-w-[90vw]">
+    <i id="toastIcon" class="fa-solid fa-circle-check text-[#30d158] text-sm"></i>
+    <span id="toastMessage">알림</span>
+  </div>
+
+  <!-- 하단 팁 바 -->
+  <footer class="fixed bottom-0 left-0 right-0 z-20 bg-black/80 backdrop-blur-xl border-t border-[#1c1c1e] px-4 py-2.5 text-center">
+    <div class="max-w-md mx-auto flex items-center justify-between text-[11px] text-[#86868b]">
+      <span>💡 사파리 [공유] ➔ [홈 화면에 추가]</span>
+      <span class="text-[#86868b]">보유 기한 3~5영업일 룰</span>
+    </div>
+  </footer>
+
+  <!-- 구글 로그인 및 계정 관리 모달 -->
+  <div id="authModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
+    <div class="bg-[#1c1c1e] w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4 shadow-2xl border-t border-[#2c2c2e]">
+      <div class="flex justify-between items-center pb-2 border-b border-[#2c2c2e]">
+        <h3 class="font-bold text-base text-white flex items-center gap-2">
+          <i class="fa-brands fa-google text-white"></i> 계정 연동 및 로그인
+        </h3>
+        <button onclick="closeAuthModal()" class="text-[#86868b] hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs text-[#86868b]">
+        <p class="text-white text-sm font-medium">로그인하면 나만의 10만원 시드 계좌가 유지됩니다.</p>
+        <p class="leading-relaxed">
+          지인들과 각자 다른 구글 계정으로 접속하여 독립적인 포트폴리오와 수익률을 운용할 수 있습니다.
+        </p>
+
+        <!-- 현재 로그인 상태 표시 -->
+        <div id="currentUserCard" class="bg-[#0a0a0c] p-3 rounded-xl border border-[#2c2c2e] flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-full bg-[#1c1c1e] overflow-hidden flex items-center justify-center">
+              <img id="modalUserAvatar" src="" class="w-full h-full object-cover hidden">
+              <i id="modalUserDefaultIcon" class="fa-solid fa-user text-[#86868b]"></i>
+            </div>
+            <div>
+              <div id="modalUserName" class="font-bold text-white text-sm">게스트</div>
+              <div id="modalUserEmail" class="text-[11px] text-[#86868b]">guest@alphastock.local</div>
+            </div>
+          </div>
+          <button onclick="logout()" id="logoutBtn" class="text-xs px-2.5 py-1 rounded-lg bg-[#2c2c2e] text-[#86868b] hover:text-[#ff453a] hidden">
+            로그아웃
+          </button>
+        </div>
+
+        <!-- 1초 빠른 계정 전환 (이름 입력식 간편 로그인 지원) -->
+        <div class="pt-1 space-y-2">
+          <label class="text-[11px] text-[#86868b] block font-medium">지인 간편 계정 접속 (닉네임 / 이메일)</label>
+          <div class="flex gap-1.5">
+            <input type="text" id="quickLoginInput" placeholder="예: 친구이름 또는 이메일" 
+                   class="flex-1 bg-[#0a0a0c] border border-[#2c2c2e] rounded-xl px-3 py-2 text-xs text-white placeholder-[#636366] focus:outline-none focus:border-[#30d158]">
+            <button onclick="quickLogin()" class="px-3.5 py-2 rounded-xl bg-white text-black font-bold text-xs tap-press">
+              접속
+            </button>
+          </div>
+        </div>
+
+        <!-- 공식 구글 원클릭 로그인 버튼 컨테이너 -->
+        <div class="pt-2 text-center">
+          <div id="g_id_onload"
+               data-client_id="YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
+               data-callback="handleGoogleCredentialResponse"
+               data-auto_prompt="false">
+          </div>
+          <div class="g_id_signin flex justify-center" data-type="standard" data-shape="pill" data-theme="filled_black" data-text="signin_with" data-size="large"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 알림 설정 모달 -->
+  <div id="notifModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
+    <div class="bg-[#1c1c1e] w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4 shadow-2xl border-t border-[#2c2c2e]">
+      <div class="flex justify-between items-center pb-2 border-b border-[#2c2c2e]">
+        <h3 class="font-bold text-base text-white flex items-center gap-2">
+          <i class="fa-solid fa-bell text-[#30d158]"></i> 스마트폰 실시간 알림
+        </h3>
+        <button onclick="closeNotifModal()" class="text-[#86868b] hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs text-[#86868b] leading-relaxed">
+        <p class="text-white text-sm font-medium">일반 앱처럼 스마트폰 화면에 배너로 바로 뜹니다.</p>
+        
+        <div class="space-y-2 bg-[#0a0a0c] p-3 rounded-xl border border-[#2c2c2e]">
+          <div class="flex items-center gap-2 text-white">
+            <span class="w-2 h-2 rounded-full bg-[#ff453a]"></span>
+            <span><strong>익절 알림</strong>: 보유 종목이 목표가(+6.5%) 도달 시</span>
+          </div>
+          <div class="flex items-center gap-2 text-white">
+            <span class="w-2 h-2 rounded-full bg-[#0a84ff]"></span>
+            <span><strong>손절 알림</strong>: 보유 종목이 손절선(-3.0%) 터치 시</span>
+          </div>
+          <div class="flex items-center gap-2 text-white">
+            <span class="w-2 h-2 rounded-full bg-[#ffd60a]"></span>
+            <span><strong>기한 만료</strong>: 스윙 권장 보유 기한(5영업일) 경과 시</span>
+          </div>
+        </div>
+
+        <p class="text-[11px] text-[#86868b]">
+          * 아이폰에서는 사파리 [공유] ➔ [홈 화면에 추가] 후 실행해야 잠금화면 푸시 알림이 완벽 지원됩니다.
+        </p>
+      </div>
+
+      <div class="space-y-3 pt-1">
+        <!-- ON / OFF 토글 버튼 -->
+        <div class="flex items-center justify-between p-3.5 bg-[#0a0a0c] rounded-2xl border border-[#2c2c2e]">
+          <div>
+            <div class="text-sm font-bold text-white">알림 수신 상태</div>
+            <div id="notifStatusText" class="text-[11px] text-[#86868b]">알림이 꺼져 있습니다.</div>
+          </div>
+          <button onclick="toggleNotificationSwitch()" id="notifToggleSwitch" class="w-12 h-7 rounded-full bg-[#2c2c2e] p-1 transition-colors duration-200 ease-in-out relative tap-press">
+            <div id="notifToggleKnob" class="w-5 h-5 rounded-full bg-[#86868b] shadow-md transform transition-transform duration-200 ease-in-out translate-x-0"></div>
+          </button>
+        </div>
+
+        <button onclick="sendTestNotification()" class="w-full py-2.5 rounded-xl bg-[#1c1c1e] hover:bg-[#2c2c2e] text-[#86868b] hover:text-white font-medium text-xs tap-press transition border border-[#2c2c2e]">
+          🔔 테스트 알림 보내보기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 종목 상세 및 수량 조절 매수 모달 시트 (애플 액션 시트) -->
+  <div id="buyModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
+    <div class="bg-[#1c1c1e] w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4 shadow-2xl border-t border-[#2c2c2e] max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center pb-2 border-b border-[#2c2c2e]">
+        <div>
+          <h3 id="buyModalTitle" class="font-bold text-base text-white">종목 매수</h3>
+          <span id="buyModalSubtitle" class="text-[11px] text-[#86868b]">10만원 시드머니 매수 시뮬레이션</span>
+        </div>
+        <button onclick="closeBuyModal()" class="text-[#86868b] hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- 종목 기본 정보 및 시세 -->
+      <div class="bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#2c2c2e] flex justify-between items-center">
+        <div>
+          <div class="flex items-center gap-1.5">
+            <h4 id="buyStockName" class="font-bold text-base text-white">종목명</h4>
+            <span id="buyStockCode" class="text-[10px] text-[#86868b]">000000</span>
+          </div>
+          <span id="buyStockMarket" class="text-[9px] px-1.5 py-0.5 rounded bg-[#1c1c1e] text-[#86868b]">KOSPI</span>
+        </div>
+        <div class="text-right">
+          <div id="buyStockPrice" class="text-base font-black text-white">0원</div>
+          <div id="buyStockChange" class="text-xs font-semibold text-[#ff453a]">+0.0%</div>
+        </div>
+      </div>
+
+      <!-- 📈 미니 꺾은선 차트 (상세 시트 내부용) -->
+      <div id="buyModalChartWrap" class="w-full h-32 bg-[#0a0a0c] rounded-xl border border-[#2c2c2e] p-2 relative touch-none select-none">
+        <canvas id="buyModalChart" class="w-full h-full block"></canvas>
+      </div>
+
+      <!-- 🤖 AI 스윙 진단 카드 -->
+      <div id="gradeCard" class="bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#2c2c2e] flex items-start gap-3">
+        <!-- 등급 원 -->
+        <div id="gradeBadge" class="w-12 h-12 rounded-full flex items-center justify-center text-xl font-black shrink-0">?</div>
+        <!-- 텍스트 영역 -->
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-1.5 mb-1">
+            <span class="text-[10px] text-[#86868b] font-medium">AI 스윙 진단</span>
+            <span id="gradeScoreTag" class="text-[9px] px-1.5 py-0.5 rounded bg-[#2c2c2e] text-[#86868b]">-점</span>
+          </div>
+          <div id="gradeReasonsList" class="space-y-0.5"></div>
+        </div>
+      </div>
+
+      <!-- 💡 수량 조절기 (Quantity Stepper: [-] N주 [+]) -->
+      <div class="bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#2c2c2e] space-y-2">
+        <div class="flex justify-between items-center text-xs">
+          <span class="text-[#86868b] font-medium">매수 수량</span>
+          <span class="text-[11px] text-[#86868b]">
+            최대 <strong id="buyMaxQtyText" class="text-white">0</strong>주 가능 (잔여현금 기준)
+          </span>
+        </div>
+
+        <div class="flex items-center justify-between pt-1">
+          <!-- 마이너스 버튼 -->
+          <button onclick="changeBuyQty(-1)" class="w-10 h-10 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white flex items-center justify-center tap-press text-sm font-bold">
+            <i class="fa-solid fa-minus"></i>
+          </button>
+
+          <!-- 수량 디스플레이 -->
+          <div class="text-center">
+            <div class="flex items-baseline justify-center gap-1">
+              <span id="buyQtyDisplay" class="text-2xl font-black text-white">1</span>
+              <span class="text-xs text-[#86868b]">주</span>
+            </div>
+            <div id="buyBudgetRatio" class="text-[10px] text-[#30d158]">예산의 0%</div>
+          </div>
+
+          <!-- 플러스 버튼 -->
+          <button onclick="changeBuyQty(1)" class="w-10 h-10 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white flex items-center justify-center tap-press text-sm font-bold">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- 결제 예상 금액 및 잔고 변동 내역 -->
+      <div class="space-y-1.5 px-1 text-xs">
+        <div class="flex justify-between text-[#86868b]">
+          <span>총 결제 예상 금액</span>
+          <span id="buyTotalCost" class="text-white font-bold">0원</span>
+        </div>
+        <div class="flex justify-between text-[#86868b]">
+          <span>매수 후 남는 현금</span>
+          <span id="buyRemainingCash" class="text-[#30d158] font-semibold">100,000원</span>
+        </div>
+        <div class="flex justify-between text-[11px] text-[#86868b] pt-0.5">
+          <span>스윙 룰 적용</span>
+          <span>익절 +6.5% / 손절 -3.0% (5영업일)</span>
+        </div>
+      </div>
+
+      <!-- 최종 매수 체결 버튼 -->
+      <button onclick="executeSelectedBuy()" id="confirmBuyBtn" class="w-full py-3.5 rounded-xl bg-[#ff453a] hover:bg-[#ff3b30] text-white font-extrabold text-sm shadow-lg shadow-[#ff453a]/25 tap-press flex items-center justify-center gap-2 transition">
+        <i class="fa-solid fa-bolt text-xs"></i>
+        <span id="confirmBuyBtnText">매수 주문 실행</span>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // 현재 로그인된 사용자 정보 (기본값: 로컬 저장된 유저 또는 게스트)
+    let currentUser = JSON.parse(localStorage.getItem('alpha_current_user') || 'null') || {
+      user_id: 'user_' + Math.random().toString(36).substring(2, 9),
+      name: '나의 계좌',
+      email: '',
+      picture: ''
+    };
+
+    let currentRecs = [];
+    let currentPortfolio = null;
+    let selectedRecForBuy = null;
+    let currentBuyQty = 1;
+    let maxPossibleBuyQty = 1;
+    let searchDebounceTimer = null;
+    let expandedCardIndex = 0;
+
+    // ===== 🔍 종목 검색 및 자동완성 로직 =====
+    function onSearchFocus() {
+      const input = document.getElementById('searchInput');
+      if (input.value.trim().length > 0) {
+        document.getElementById('searchDropdown').classList.remove('hidden');
+      }
+    }
+
+    function clearSearch() {
+      const input = document.getElementById('searchInput');
+      input.value = '';
+      document.getElementById('searchClearBtn').classList.add('hidden');
+      document.getElementById('searchDropdown').classList.add('hidden');
+      document.getElementById('searchDropdown').innerHTML = '';
+    }
+
+    function onSearchInput(e) {
+      const query = e.target.value.trim();
+      const clearBtn = document.getElementById('searchClearBtn');
+      const dropdown = document.getElementById('searchDropdown');
+
+      if (!query) {
+        clearBtn.classList.add('hidden');
+        dropdown.classList.add('hidden');
+        dropdown.innerHTML = '';
+        return;
+      }
+
+      clearBtn.classList.remove('hidden');
+      dropdown.classList.remove('hidden');
+      dropdown.innerHTML = '<div class="p-3 text-center text-xs text-[#86868b]"><i class="fa-solid fa-spinner animate-spin mr-1"></i> 검색 중...</div>';
+
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+          const data = await res.json();
+          if (data.success) {
+            renderSearchResults(data.results);
+          }
+        } catch (err) {
+          dropdown.innerHTML = '<div class="p-3 text-center text-xs text-[#86868b]">검색 오류가 발생했습니다.</div>';
+        }
+      }, 200);
+    }
+
+    function renderSearchResults(results) {
+      const dropdown = document.getElementById('searchDropdown');
+      if (!results || results.length === 0) {
+        dropdown.innerHTML = '<div class="p-3 text-center text-xs text-[#86868b]">검색 결과가 없습니다.</div>';
+        return;
+      }
+
+      dropdown.innerHTML = results.map(item => {
+        const isGain = item.change_rate >= 0;
+        const changeSign = isGain ? '+' : '';
+        const changeClass = isGain ? 'text-[#ff453a]' : 'text-[#0a84ff]';
+
+        let budgetBadge = '';
+        if (item.budget_status === 'FIT_SPLIT') {
+          budgetBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-[#30d158]/15 text-[#30d158] font-bold">10만원 적합</span>';
+        } else if (item.budget_status === 'FIT_SINGLE') {
+          budgetBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-[#ffd60a]/15 text-[#ffd60a] font-bold">1주 가능</span>';
+        } else {
+          budgetBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-[#86868b]/20 text-[#86868b]">10만 초과</span>';
+        }
+
+        return `
+          <div onclick="selectSearchResult('${item.code}')" class="p-3 flex items-center justify-between hover:bg-[#2c2c2e] cursor-pointer tap-press transition">
+            <div class="flex items-center gap-2.5">
+              <div class="w-7 h-7 rounded-full bg-[#2c2c2e] overflow-hidden flex items-center justify-center p-1">
+                <img src="${item.logo_url}" onerror="this.parentElement.innerHTML='<span class=\\'text-[10px] text-white font-bold\\'>${item.name.charAt(0)}</span>'" class="w-full h-full object-contain">
+              </div>
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <h4 class="font-bold text-xs text-white">${item.name}</h4>
+                  <span class="text-[9px] text-[#86868b]">${item.market}</span>
+                  ${budgetBadge}
+                </div>
+                <div class="text-[10px] text-[#86868b]">${item.code}</div>
+              </div>
+            </div>
+
+            <div class="text-right">
+              <div class="text-xs font-bold text-white">${item.current_price.toLocaleString()}원</div>
+              <div class="text-[10px] font-semibold ${changeClass}">${changeSign}${item.change_rate}%</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 검색 결과 선택 시 상세 및 매수 시트 오픈
+    async function selectSearchResult(code) {
+      document.getElementById('searchDropdown').classList.add('hidden');
+      try {
+        const res = await fetch(`/api/stock/${code}`);
+        const data = await res.json();
+        if (data.success && data.stock) {
+          openCustomBuyModal(data.stock);
+        }
+      } catch (err) {
+        alert('종목 상세 정보를 불러오지 못했습니다.');
+      }
+    }
+
+    // ===== 💡 수량 조절 매수 모달 로직 =====
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toastNotification');
+      const toastMsg = document.getElementById('toastMessage');
+      const toastIcon = document.getElementById('toastIcon');
+      if (!toast) return;
+
+      toastMsg.textContent = message;
+      if (type === 'success') {
+        toastIcon.className = 'fa-solid fa-circle-check text-[#30d158] text-sm';
+      } else if (type === 'error') {
+        toastIcon.className = 'fa-solid fa-circle-exclamation text-[#ff453a] text-sm';
+      } else {
+        toastIcon.className = 'fa-solid fa-circle-info text-[#0a84ff] text-sm';
+      }
+
+      toast.classList.remove('opacity-0', '-translate-y-4', 'pointer-events-none');
+      toast.classList.add('opacity-100', 'translate-y-0');
+
+      setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', '-translate-y-4', 'pointer-events-none');
+      }, 2500);
+    }
+
+    function openCustomBuyModal(stockItem) {
+      selectedRecForBuy = {
+        code: stockItem.code,
+        name: stockItem.name,
+        current_price: stockItem.current_price,
+        change_rate: stockItem.change_rate,
+        market: stockItem.market || 'KOSPI',
+        chart_data: stockItem.chart_data || null,
+        target_price: Math.round(stockItem.current_price * 1.065),
+        stop_loss_price: Math.round(stockItem.current_price * 0.97),
+        max_hold_days: 5,
+        grade: stockItem.grade || 'N/A',
+        grade_score: stockItem.grade_score || 0,
+        grade_reasons: stockItem.grade_reasons || []
+      };
+
+      const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
+      // 수수료(0.015%) 고려한 정확한 최대 매수 가능 수량
+      const unitCostWithFee = stockItem.current_price * 1.00015;
+      maxPossibleBuyQty = Math.floor(cash / unitCostWithFee);
+      currentBuyQty = maxPossibleBuyQty > 0 ? 1 : 0;
+
+      document.getElementById('buyStockName').textContent = stockItem.name;
+      document.getElementById('buyStockCode').textContent = stockItem.code;
+      document.getElementById('buyStockMarket').textContent = stockItem.market || 'KOSPI';
+      document.getElementById('buyStockPrice').textContent = stockItem.current_price.toLocaleString() + '원';
+
+      const changeEl = document.getElementById('buyStockChange');
+      const isGain = stockItem.change_rate >= 0;
+      changeEl.textContent = (isGain ? '+' : '') + stockItem.change_rate + '%';
+      changeEl.className = isGain ? 'text-xs font-semibold text-[#ff453a]' : 'text-xs font-semibold text-[#0a84ff]';
+
+      document.getElementById('buyMaxQtyText').textContent = maxPossibleBuyQty;
+
+      // ── AI 등급 카드 렌더링 ──────────────────────────────
+      const grade = stockItem.grade || 'N/A';
+      const gradeScore = stockItem.grade_score || 0;
+      const gradeReasons = stockItem.grade_reasons || [];
+
+      const gradeBadge = document.getElementById('gradeBadge');
+      const gradeScoreTag = document.getElementById('gradeScoreTag');
+      const gradeReasonsList = document.getElementById('gradeReasonsList');
+
+      // 등급별 색상 맵
+      const gradeStyles = {
+        'S': { bg: 'bg-[#ffd60a]', text: 'text-black', border: 'border-[#ffd60a]/30', label: '강력 추천' },
+        'A': { bg: 'bg-[#30d158]', text: 'text-black', border: 'border-[#30d158]/30', label: '매수 추천' },
+        'B': { bg: 'bg-[#ff9f0a]', text: 'text-black', border: 'border-[#ff9f0a]/30', label: '중립 · 관망' },
+        'C': { bg: 'bg-[#48484a]', text: 'text-white',  border: 'border-[#48484a]/50', label: '비추천' },
+        'N/A': { bg: 'bg-[#2c2c2e]', text: 'text-[#86868b]', border: 'border-[#2c2c2e]', label: '분석 불가' }
+      };
+      const style = gradeStyles[grade] || gradeStyles['N/A'];
+
+      gradeBadge.className = `w-12 h-12 rounded-full flex items-center justify-center text-xl font-black shrink-0 ${style.bg} ${style.text}`;
+      gradeBadge.textContent = grade;
+
+      gradeScoreTag.textContent = grade === 'N/A' ? style.label : `${gradeScore}점 · ${style.label}`;
+
+      gradeReasonsList.innerHTML = gradeReasons.map(r =>
+        `<div class="text-[11px] text-[#ebebf5] leading-tight">· ${r}</div>`
+      ).join('') || '<div class="text-[11px] text-[#86868b]">근거 없음</div>';
+
+      // 등급 카드 테두리 색상
+      document.getElementById('gradeCard').className =
+        `bg-[#0a0a0c] p-3.5 rounded-2xl border ${style.border} flex items-start gap-3`;
+      // ─────────────────────────────────────────────────────
+
+      updateBuyModalCalcs();
+      document.getElementById('buyModal').classList.remove('hidden');
+
+      // 모달 내 꺾은선 차트 그리기
+      if (stockItem.chart_data && stockItem.chart_data.prices && stockItem.chart_data.prices.length > 0) {
+        setTimeout(() => {
+          drawInteractiveChart(
+            'buyModalChart',
+            stockItem.chart_data.prices,
+            stockItem.chart_data.dates,
+            stockItem.change_rate >= 0
+          );
+        }, 80);
+      }
+    }
+
+
+    function changeBuyQty(delta) {
+      if (maxPossibleBuyQty === 0) return;
+      const nextQty = currentBuyQty + delta;
+      if (nextQty >= 1 && nextQty <= maxPossibleBuyQty) {
+        currentBuyQty = nextQty;
+        updateBuyModalCalcs();
+      }
+    }
+
+    function updateBuyModalCalcs() {
+      const price = selectedRecForBuy ? selectedRecForBuy.current_price : 0;
+      const totalCost = price * currentBuyQty;
+      const fee = Math.floor(totalCost * 0.00015);
+      const totalRequired = totalCost + fee;
+      const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
+      const remaining = cash - totalRequired;
+      const ratio = currentPortfolio && currentPortfolio.total_asset > 0 ? ((totalCost / currentPortfolio.total_asset) * 100).toFixed(1) : 0;
+
+      document.getElementById('buyQtyDisplay').textContent = currentBuyQty;
+      document.getElementById('buyBudgetRatio').textContent = `내 자산의 ${ratio}%`;
+      document.getElementById('buyTotalCost').textContent = totalCost.toLocaleString() + '원';
+      document.getElementById('buyRemainingCash').textContent = remaining.toLocaleString() + '원';
+
+      const confirmBtn = document.getElementById('confirmBuyBtn');
+      const confirmBtnText = document.getElementById('confirmBuyBtnText');
+
+      if (currentBuyQty < 1 || totalRequired > cash) {
+        confirmBtn.disabled = true;
+        confirmBtn.className = 'w-full py-3.5 rounded-xl bg-[#2c2c2e] text-[#86868b] font-extrabold text-sm flex items-center justify-center gap-2 cursor-not-allowed';
+        confirmBtnText.textContent = '잔여 현금 부족';
+      } else {
+        confirmBtn.disabled = false;
+        const isGradeC = selectedRecForBuy && selectedRecForBuy.grade === 'C';
+        if (isGradeC) {
+          confirmBtn.className = 'w-full py-3.5 rounded-xl bg-[#48484a] hover:bg-[#636366] text-white font-extrabold text-sm tap-press flex items-center justify-center gap-2 transition';
+          confirmBtnText.textContent = `⚠️ 비추천 종목 ${currentBuyQty}주 매수`;
+        } else {
+          confirmBtn.className = 'w-full py-3.5 rounded-xl bg-[#ff453a] hover:bg-[#ff3b30] text-white font-extrabold text-sm shadow-lg shadow-[#ff453a]/25 tap-press flex items-center justify-center gap-2 transition';
+          confirmBtnText.textContent = `${currentBuyQty}주 매수 주문 실행 (${totalCost.toLocaleString()}원)`;
+        }
+      }
+    }
+
+    function closeBuyModal() {
+      document.getElementById('buyModal').classList.add('hidden');
+      selectedRecForBuy = null;
+    }
+
+    // 추천 카드에서 호출하는 openBuyModal도 커스텀 모달과 통일
+    function openBuyModal(idx) {
+      const item = currentRecs[idx];
+      if (item) {
+        openCustomBuyModal(item);
+      }
+    }
+
+    // 최종 매수 실행
+    async function executeSelectedBuy() {
+      if (!selectedRecForBuy || currentBuyQty < 1) return;
+
+      const confirmBtn = document.getElementById('confirmBuyBtn');
+      const confirmBtnText = document.getElementById('confirmBuyBtnText');
+      const originalText = confirmBtnText.textContent;
+
+      // 즉시 버튼 피드백 (로딩 스피너)
+      confirmBtn.disabled = true;
+      confirmBtnText.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> 주문 체결 중...';
+
+      try {
+        const res = await fetch('/api/buy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: currentUser.user_id,
+            code: selectedRecForBuy.code,
+            name: selectedRecForBuy.name,
+            price: selectedRecForBuy.current_price,
+            quantity: currentBuyQty,
+            target_price: selectedRecForBuy.target_price,
+            stop_loss_price: selectedRecForBuy.stop_loss_price,
+            max_hold_days: selectedRecForBuy.max_hold_days || 5,
+            logo_url: selectedRecForBuy.logo_url || ''
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          closeBuyModal();
+          showToast(data.message || '매수가 체결되었습니다!', 'success');
+          await refreshData(true);
+          switchTab('holdings');
+        } else {
+          showToast(data.detail || '매수 실패', 'error');
+          confirmBtn.disabled = false;
+          confirmBtnText.textContent = originalText;
+        }
+      } catch (err) {
+        showToast('서버 통신 오류가 발생했습니다.', 'error');
+        confirmBtn.disabled = false;
+        confirmBtnText.textContent = originalText;
+      }
+    }
+
+    // 사용자 프로필 UI 업데이트
+    function updateUserUI() {
+      const nameEl = document.getElementById('userName');
+      const avatarEl = document.getElementById('userAvatar');
+      const defaultIcon = document.getElementById('userDefaultIcon');
+      const modalName = document.getElementById('modalUserName');
+      const modalEmail = document.getElementById('modalUserEmail');
+      const modalAvatar = document.getElementById('modalUserAvatar');
+      const modalDefaultIcon = document.getElementById('modalUserDefaultIcon');
+      const logoutBtn = document.getElementById('logoutBtn');
+
+      if (nameEl) nameEl.textContent = currentUser.name;
+      if (modalName) modalName.textContent = currentUser.name;
+      if (modalEmail) modalEmail.textContent = currentUser.email || currentUser.user_id;
+
+      if (currentUser.picture) {
+        if (avatarEl) { avatarEl.src = currentUser.picture; avatarEl.classList.remove('hidden'); }
+        if (defaultIcon) defaultIcon.classList.add('hidden');
+        if (modalAvatar) { modalAvatar.src = currentUser.picture; modalAvatar.classList.remove('hidden'); }
+        if (modalDefaultIcon) modalDefaultIcon.classList.add('hidden');
+      } else {
+        if (avatarEl) avatarEl.classList.add('hidden');
+        if (defaultIcon) defaultIcon.classList.remove('hidden');
+        if (modalAvatar) modalAvatar.classList.add('hidden');
+        if (modalDefaultIcon) modalDefaultIcon.classList.remove('hidden');
+      }
+
+      if (logoutBtn) logoutBtn.classList.remove('hidden');
+    }
+
+    function openAuthModal() {
+      updateUserUI();
+      document.getElementById('authModal').classList.remove('hidden');
+    }
+
+    function closeAuthModal() {
+      document.getElementById('authModal').classList.add('hidden');
+    }
+
+    // 간편 로그인 (지인 접속용)
+    async function quickLogin() {
+      const input = document.getElementById('quickLoginInput');
+      const val = input.value.trim();
+      if (!val) {
+        alert('이름이나 닉네임을 입력해주세요.');
+        return;
+      }
+
+      currentUser = {
+        user_id: val.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+        name: val,
+        email: val.includes('@') ? val : `${val}@alphastock.local`,
+        picture: `https://api.dicebear.com/7.x/bottts/svg?seed=${val}`
+      };
+
+      localStorage.setItem('alpha_current_user', JSON.stringify(currentUser));
+      updateUserUI();
+      closeAuthModal();
+
+      // 서버에 동기화 및 포트폴리오 로드
+      await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentUser)
+      });
+
+      await refreshData(true);
+    }
+
+    // 공식 Google JWT 토큰 파싱 핸들러
+    function handleGoogleCredentialResponse(response) {
+      try {
+        // JWT 디코딩
+        const base64Url = response.credential.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+        const profile = JSON.parse(jsonPayload);
+
+        currentUser = {
+          user_id: profile.sub || profile.email,
+          name: profile.name,
+          email: profile.email,
+          picture: profile.picture
+        };
+
+        localStorage.setItem('alpha_current_user', JSON.stringify(currentUser));
+        updateUserUI();
+        closeAuthModal();
+
+        // 서버 동기화
+        fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(currentUser)
+        }).then(() => refreshData(true));
+
+      } catch (err) {
+        console.error('Google Sign-In parse error:', err);
+      }
+    }
+
+    function logout() {
+      if (!confirm('로그아웃하고 다른 계정으로 전환하시겠습니까?')) return;
+      localStorage.removeItem('alpha_current_user');
+      currentUser = {
+        user_id: 'user_' + Math.random().toString(36).substring(2, 9),
+        name: '게스트',
+        email: '',
+        picture: ''
+      };
+      updateUserUI();
+      closeAuthModal();
+      refreshData(true);
+    }
+
+    function switchTab(tab) {
+      const recsBtn = document.getElementById('tabRecs');
+      const holdingsBtn = document.getElementById('tabHoldings');
+      const secRecs = document.getElementById('sectionRecs');
+      const secHoldings = document.getElementById('sectionHoldings');
+
+      if (tab === 'recs') {
+        recsBtn.className = 'flex-1 py-1.5 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
+        holdingsBtn.className = 'flex-1 py-1.5 rounded-lg text-[#86868b] hover:text-white tap-press transition text-center';
+        secRecs.classList.remove('hidden');
+        secHoldings.classList.add('hidden');
+      } else {
+        recsBtn.className = 'flex-1 py-1.5 rounded-lg text-[#86868b] hover:text-white tap-press transition text-center';
+        holdingsBtn.className = 'flex-1 py-1.5 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
+        secRecs.classList.add('hidden');
+        secHoldings.classList.remove('hidden');
+      }
+    }
+
+    function toggleAccordion(index) {
+      expandedCardIndex = (expandedCardIndex === index) ? -1 : index;
+      renderRecommendations(currentRecs);
+    }
+
+    async function refreshData(force = false) {
+      const refreshBtn = document.getElementById('refreshBtn');
+      if (refreshBtn) refreshBtn.classList.add('animate-spin');
+
+      try {
+        // 1. 유저별 포트폴리오 로드
+        const pRes = await fetch(`/api/portfolio?user_id=${encodeURIComponent(currentUser.user_id)}`);
+        const pData = await pRes.json();
+        if (pData.success) {
+          currentPortfolio = pData.portfolio;
+          renderPortfolio(currentPortfolio);
+          checkPortfolioAlerts(currentPortfolio);
+        }
+
+        // 2. 추천 종목 로드
+        const budget = currentPortfolio ? currentPortfolio.cash_balance : 100000;
+        const rRes = await fetch(`/api/recommendations?budget=${budget}${force ? '&refresh=true' : ''}`);
+        const rData = await rRes.json();
+        if (rData.success) {
+          currentRecs = rData.recommendations;
+          if (rData.updated_at) {
+            document.getElementById('lastUpdated').textContent = rData.updated_at.split(' ')[1] + ' 갱신';
+          }
+          renderRecommendations(currentRecs);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (refreshBtn) setTimeout(() => refreshBtn.classList.remove('animate-spin'), 350);
+      }
+    }
+
+    function renderPortfolio(data) {
+      document.getElementById('totalAsset').textContent = data.total_asset.toLocaleString();
+      document.getElementById('cashBalance').textContent = data.cash_balance.toLocaleString() + '원';
+      document.getElementById('stockEval').textContent = data.total_evaluation.toLocaleString() + '원';
+
+      const returnBadge = document.getElementById('accountReturnBadge');
+      const ret = data.total_return_pct;
+      if (ret > 0) {
+        returnBadge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-[#ff453a]/20 text-[#ff453a]';
+        returnBadge.textContent = `+${ret}%`;
+      } else if (ret < 0) {
+        returnBadge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-[#0a84ff]/20 text-[#0a84ff]';
+        returnBadge.textContent = `${ret}%`;
+      } else {
+        returnBadge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-[#1c1c1e] text-[#86868b]';
+        returnBadge.textContent = `0.0%`;
+      }
+
+      const cashPct = data.total_asset > 0 ? (data.cash_balance / data.total_asset) * 100 : 100;
+      const stockPct = 100 - cashPct;
+      document.getElementById('cashBar').style.width = cashPct + '%';
+      document.getElementById('stockBar').style.width = stockPct + '%';
+
+      const holdings = data.holdings || [];
+      document.getElementById('holdingsCount').textContent = holdings.length;
+      const container = document.getElementById('holdingsCards');
+
+      if (holdings.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-14 px-4">
+            <i class="fa-solid fa-wallet text-3xl text-[#2c2c2e] mb-2.5"></i>
+            <p class="text-sm font-medium text-[#86868b]">보유 중인 주식이 없습니다.</p>
+            <p class="text-xs text-[#636366] mt-1">[스윙 추천] 탭에서 원하는 종목을 모의 매수해보세요.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = holdings.map((h, idx) => {
+        const isGain = h.pnl_pct >= 0;
+        const pillBg = isGain ? 'bg-[#ff453a]' : 'bg-[#0a84ff]';
+        const pnlSign = isGain ? '+' : '';
+
+        let statusBadge = '';
+        if (h.signal_status === 'TARGET_REACHED') {
+          statusBadge = '<span class="bg-[#ff453a] text-white text-[10px] font-bold px-2 py-0.5 rounded-md">🎉 목표가 도달 (익절)</span>';
+        } else if (h.signal_status === 'STOP_LOSS_REACHED') {
+          statusBadge = '<span class="bg-[#0a84ff] text-white text-[10px] font-bold px-2 py-0.5 rounded-md">⚠️ 손절선 터치</span>';
+        } else if (h.signal_status === 'TIME_EXPIRED') {
+          statusBadge = '<span class="bg-[#ffd60a] text-black text-[10px] font-bold px-2 py-0.5 rounded-md">⏳ 5일 만료</span>';
+        }
+
+        return `
+          <div class="py-3 space-y-2">
+            <div class="flex justify-between items-center">
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <h4 class="font-bold text-sm text-white">${h.name}</h4>
+                  <span class="text-[10px] text-[#86868b]">${h.code}</span>
+                </div>
+                <div class="text-[11px] text-[#86868b] mt-0.5">
+                  ${h.quantity}주 · 평단 ${h.avg_price.toLocaleString()}원
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="text-right">
+                  <div class="text-sm font-extrabold text-white">${h.current_price.toLocaleString()}원</div>
+                  <div class="text-[11px] text-[#86868b]">${pnlSign}${h.unrealized_pnl.toLocaleString()}원</div>
+                </div>
+                <div class="${pillBg} text-white font-bold text-xs px-2.5 py-1 rounded-md min-w-[58px] text-center">
+                  ${pnlSign}${h.pnl_pct}%
+                </div>
+              </div>
+            </div>
+
+            ${statusBadge ? `<div class="pt-0.5">${statusBadge}</div>` : ''}
+
+            <!-- 보유 종목 인터랙티브 캔버스 차트 -->
+            <div class="w-full h-24 bg-[#0a0a0c] rounded-xl border border-[#1c1c1e] p-2 relative">
+              <canvas id="holdingChart_${idx}" class="w-full h-full"></canvas>
+            </div>
+
+            <div class="flex items-center justify-between text-[11px] text-[#86868b] pt-1">
+              <span>보유 ${h.hold_days}일차 / 목표 ${h.target_price.toLocaleString()}원 / 손절 ${h.stop_loss_price.toLocaleString()}원</span>
+              <button onclick="executeSell('${h.code}', ${h.current_price})" class="px-3 py-1 rounded-lg bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white text-xs font-semibold tap-press transition">
+                전량 매도
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // 보유 종목 차트 렌더링
+      holdings.forEach((h, idx) => {
+        if (h.chart_data && h.chart_data.prices && h.chart_data.prices.length > 0) {
+          setTimeout(() => drawInteractiveChart(`holdingChart_${idx}`, h.chart_data.prices, h.chart_data.dates, h.pnl_pct >= 0), 50);
+        }
+      });
+    }
+
+    // 추천 종목 렌더링 (애플 주식 리스트 + 카카오페이식 인터랙티브 차트)
+    function renderRecommendations(list) {
+      const container = document.getElementById('recommendationCards');
+      if (!list || list.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-12 text-[#86868b] text-xs">
+            현재 조건에 부합하는 추천 종목을 탐색 중입니다...
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = list.map((item, idx) => {
+        const s = item.sizing;
+        const isGain = item.change_rate >= 0;
+        const changeSign = isGain ? '+' : '';
+        // 애플 주식 특유의 캡슐 뱃지 스타일
+        const pillBg = isGain ? 'bg-[#ff453a]' : 'bg-[#0a84ff]';
+        const isExpanded = (expandedCardIndex === idx);
+
+        return `
+          <div class="py-3 transition-all duration-150">
+            <!-- 1. 애플 주식 행(Row) 헤더 -->
+            <div onclick="toggleAccordion(${idx})" class="flex items-center justify-between cursor-pointer tap-press">
+              <div class="flex items-center gap-3">
+                <div class="w-6 h-6 rounded-full bg-[#1c1c1e] text-[#86868b] text-xs font-bold flex items-center justify-center">
+                  ${idx + 1}
+                </div>
+                <div>
+                  <div class="flex items-center gap-1.5">
+                    <h3 class="font-bold text-sm text-white tracking-tight">${item.name}</h3>
+                    <span class="text-[10px] text-[#86868b]">${item.market}</span>
+                  </div>
+                  <div class="text-[11px] text-[#86868b] mt-0.5">
+                    <span class="text-white font-medium">${s.recommended_quantity}주 매수 추천</span> · 약 ${s.total_cost.toLocaleString()}원
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <div class="text-right">
+                  <div class="text-sm font-extrabold text-white">${item.current_price.toLocaleString()}원</div>
+                </div>
+                <div class="${pillBg} text-white font-bold text-xs px-2.5 py-1 rounded-md min-w-[62px] text-center shadow-sm">
+                  ${changeSign}${item.change_rate}%
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. 펼쳐지는 카카오페이 스타일 인터랙티브 차트 & 분석 영역 -->
+            ${isExpanded ? `
+              <div class="mt-3 pt-3 space-y-3 bg-[#0a0a0c] rounded-2xl border border-[#1c1c1e] p-3.5 animate-in fade-in duration-150">
+                
+                <!-- 차트 상단 헤더 & 실시간 인터랙션 정보 표시 영역 -->
+                <div class="flex justify-between items-baseline">
+                  <div>
+                    <span class="text-[10px] font-semibold text-[#86868b] tracking-wider uppercase">최근 30일 시세 흐름</span>
+                    <div id="chartTooltipPrice_${idx}" class="text-lg font-black text-white mt-0.5">
+                      ${item.current_price.toLocaleString()}원
+                    </div>
+                  </div>
+                  <div id="chartTooltipDate_${idx}" class="text-xs text-[#86868b] font-medium">
+                    터치하여 탐색
+                  </div>
+                </div>
+
+                <!-- 📈 전문 트레이딩 꺾은선형 인터랙티브 차트 (높이 200px로 시원하게 확대) -->
+                <div class="w-full h-52 relative touch-none select-none bg-[#0c0c0e] rounded-xl p-2 border border-[#1c1c1e]">
+                  <canvas id="stockChart_${idx}" class="w-full h-full block"></canvas>
+                  <!-- 실시간 끝점 펄스 인디케이터 (JS에서 위치 동적 계산) -->
+                  <div id="livePulse_${idx}" class="absolute pointer-events-none hidden" style="transform: translate(-50%, -50%);">
+                    <span class="relative flex h-3.5 w-3.5">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full ${isGain ? 'bg-[#ff453a]' : 'bg-[#0a84ff]'} opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-3.5 w-3.5 ${isGain ? 'bg-[#ff453a]' : 'bg-[#0a84ff]'} border-2 border-white"></span>
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 매수 / 목표가 / 손절가 핵심 가이드 (애플 미니멀 그리드) -->
+                <div class="grid grid-cols-2 gap-2 pt-1">
+                  <div class="bg-[#1c1c1e] p-2.5 rounded-xl">
+                    <div class="text-[11px] text-[#86868b] flex justify-between">
+                      <span>목표 익절가</span>
+                      <span class="text-[#ff453a] font-bold">+${s.target_return_pct}%</span>
+                    </div>
+                    <div class="text-base font-extrabold text-white mt-0.5">
+                      ${s.target_price.toLocaleString()}원
+                    </div>
+                    <div class="text-[10px] text-[#86868b]">예상 수익 +${s.expected_gain_krw.toLocaleString()}원</div>
+                  </div>
+
+                  <div class="bg-[#1c1c1e] p-2.5 rounded-xl">
+                    <div class="text-[11px] text-[#86868b] flex justify-between">
+                      <span>손절 기준가</span>
+                      <span class="text-[#0a84ff] font-bold">${s.stop_loss_pct}%</span>
+                    </div>
+                    <div class="text-base font-extrabold text-white mt-0.5">
+                      ${s.stop_loss_price.toLocaleString()}원
+                    </div>
+                    <div class="text-[10px] text-[#86868b]">예상 손실 -${s.expected_loss_krw.toLocaleString()}원</div>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between text-[11px] text-[#86868b] px-1">
+                  <span>⏱️ 권장 보유: <strong class="text-white">최대 ${s.max_hold_days}영업일 (스윙)</strong></span>
+                  <span>손익비: <strong class="text-[#30d158]">${s.risk_reward_ratio}:1</strong></span>
+                  <span>예산 비중: <strong class="text-white">${s.budget_ratio_pct}%</strong></span>
+                </div>
+
+                <!-- 매수 버튼 -->
+                <button onclick="openBuyModal(${idx})" class="w-full py-3 rounded-xl bg-white hover:bg-neutral-200 text-black font-extrabold text-xs shadow-md tap-press flex items-center justify-center gap-1.5 transition">
+                  <i class="fa-solid fa-bolt text-xs"></i> 이 종목 ${s.recommended_quantity}주 모의 매수하기
+                </button>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+
+      // 펼쳐진 카드에 카카오페이식 인터랙티브 차트 그리기
+      if (expandedCardIndex >= 0 && list[expandedCardIndex]) {
+        const cur = list[expandedCardIndex];
+        if (cur.chart_data && cur.chart_data.prices && cur.chart_data.prices.length > 0) {
+          setTimeout(() => {
+            drawInteractiveChart(
+              `stockChart_${expandedCardIndex}`,
+              cur.chart_data.prices,
+              cur.chart_data.dates,
+              cur.change_rate >= 0,
+              `chartTooltipPrice_${expandedCardIndex}`,
+              `chartTooltipDate_${expandedCardIndex}`,
+              `livePulse_${expandedCardIndex}`
+            );
+          }, 50);
+        }
+      }
+    }
+
+    /**
+     * 카카오페이 / 토스 주식 스타일의 네이티브 벡터 Canvas 인터랙티브 차트
+     * - 부드러운 스플라인 곡선 (Smooth Bezier Curve)
+     * - 세련된 반투명 그라데이션 영역 채우기
+     * - 실시간 터치/드래그 시 십자선(Crosshair) 및 가격/날짜 실시간 피드백
+     */
+    function drawInteractiveChart(canvasId, prices, dates, isGain, priceTooltipId = null, dateTooltipId = null, pulseId = null) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const width = canvas.parentElement.clientWidth || 320;
+      const height = canvas.parentElement.clientHeight || 208;
+
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      ctx.scale(dpr, dpr);
+
+      const paddingBottom = 22;
+      const paddingTop = 22;
+      const paddingLeft = 8;
+      const paddingRight = 14;
+
+      const chartW = width - paddingLeft - paddingRight;
+      const chartH = height - paddingTop - paddingBottom;
+
+      const min = Math.min(...prices);
+      const max = Math.max(...prices);
+      const range = (max - min) || 1;
+
+      const strokeColor = isGain ? '#ff453a' : '#0a84ff';
+      const gradStart = isGain ? 'rgba(255, 69, 58, 0.28)' : 'rgba(10, 132, 255, 0.28)';
+      const gradEnd = 'rgba(0, 0, 0, 0.0)';
+
+      // 각 데이터 포인트의 좌표 계산
+      const points = prices.map((p, i) => {
+        const x = paddingLeft + (i / (prices.length - 1)) * chartW;
+        const y = height - paddingBottom - ((p - min) / range) * chartH;
+        return { x, y, price: p, date: dates[i] || '' };
+      });
+
+      // 최고가/최저가 인덱스 탐색
+      let maxIdx = 0, minIdx = 0;
+      prices.forEach((p, i) => {
+        if (p > prices[maxIdx]) maxIdx = i;
+        if (p < prices[minIdx]) minIdx = i;
+      });
+
+      // 가장 마지막 점에 실시간 펄스 닷 배치
+      if (pulseId && points.length > 0) {
+        const lastPt = points[points.length - 1];
+        const pulseEl = document.getElementById(pulseId);
+        if (pulseEl) {
+          pulseEl.style.left = `${lastPt.x}px`;
+          pulseEl.style.top = `${lastPt.y}px`;
+          pulseEl.classList.remove('hidden');
+        }
+      }
+
+      let activeIndex = -1;
+
+      function render() {
+        ctx.clearRect(0, 0, width, height);
+
+        if (points.length < 2) return;
+
+        // 1. 최고가(MAX) & 최저가(MIN) 점선 가이드라인 및 텍스트
+        ctx.save();
+        ctx.setLineDash([2, 4]);
+        ctx.strokeStyle = '#2c2c2e';
+        ctx.lineWidth = 1;
+
+        // 최고가 라인
+        ctx.beginPath();
+        ctx.moveTo(paddingLeft, points[maxIdx].y);
+        ctx.lineTo(width - paddingRight, points[maxIdx].y);
+        ctx.stroke();
+
+        // 최저가 라인
+        ctx.beginPath();
+        ctx.moveTo(paddingLeft, points[minIdx].y);
+        ctx.lineTo(width - paddingRight, points[minIdx].y);
+        ctx.stroke();
+        ctx.restore();
+
+        // 최고/최저 라벨 텍스트
+        ctx.font = '10px -apple-system, sans-serif';
+        ctx.fillStyle = '#636366';
+        ctx.fillText(`최고 ${max.toLocaleString()}원`, paddingLeft + 2, points[maxIdx].y - 4);
+        ctx.fillText(`최저 ${min.toLocaleString()}원`, paddingLeft + 2, points[minIdx].y + 12);
+
+        // 2. 하단 그라데이션 영역 채우기 (각진 폴리곤 채우기)
+        const gradient = ctx.createLinearGradient(0, paddingTop, 0, height);
+        gradient.addColorStop(0, gradStart);
+        gradient.addColorStop(1, gradEnd);
+
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.lineTo(points[points.length - 1].x, height);
+        ctx.lineTo(points[0].x, height);
+        ctx.closePath();
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        // 3. 각이 살아있는 전문 트레이딩 꺾은선 (Polyline)
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 2.4;
+        ctx.lineJoin = 'miter'; // 꺾이는 지점을 선명하게 각지게 표현
+        ctx.stroke();
+
+        // 4. 실시간 터치/드래그 시 크로스헤어 & 툴팁 점
+        if (activeIndex >= 0 && activeIndex < points.length) {
+          const pt = points[activeIndex];
+
+          // 세로 점선 크로스헤어
+          ctx.save();
+          ctx.beginPath();
+          ctx.setLineDash([3, 3]);
+          ctx.moveTo(pt.x, paddingTop);
+          ctx.lineTo(pt.x, height - paddingBottom);
+          ctx.strokeStyle = '#a1a1a6';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.restore();
+
+          // 활성 포인트 링
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+        }
+      }
+
+      function handleInteraction(clientX) {
+        const rect = canvas.getBoundingClientRect();
+        const x = clientX - rect.left;
+        let closestIdx = 0;
+        let minDist = Infinity;
+
+        points.forEach((pt, i) => {
+          const dist = Math.abs(pt.x - x);
+          if (dist < minDist) {
+            minDist = dist;
+            closestIdx = i;
+          }
+        });
+
+        activeIndex = closestIdx;
+        render();
+
+        if (priceTooltipId && dateTooltipId) {
+          const priceEl = document.getElementById(priceTooltipId);
+          const dateEl = document.getElementById(dateTooltipId);
+          if (priceEl) priceEl.textContent = points[closestIdx].price.toLocaleString() + '원';
+          if (dateEl) dateEl.textContent = points[closestIdx].date + ' 기준';
+        }
+      }
+
+      function resetInteraction() {
+        activeIndex = -1;
+        render();
+        if (priceTooltipId && dateTooltipId) {
+          const priceEl = document.getElementById(priceTooltipId);
+          const dateEl = document.getElementById(dateTooltipId);
+          if (priceEl && points.length > 0) {
+            priceEl.textContent = points[points.length - 1].price.toLocaleString() + '원';
+          }
+          if (dateEl) dateEl.textContent = '터치하여 탐색';
+        }
+      }
+
+      // 터치 및 마우스 이벤트
+      canvas.ontouchstart = (e) => handleInteraction(e.touches[0].clientX);
+      canvas.ontouchmove = (e) => handleInteraction(e.touches[0].clientX);
+      canvas.ontouchend = resetInteraction;
+
+      canvas.onmousemove = (e) => handleInteraction(e.clientX);
+      canvas.onmouseleave = resetInteraction;
+
+      render();
+    }
+
+    // executeSell (보유 종목 전량 매도)
+    async function executeSell(code, currentPrice) {
+      if (!confirm('이 종목을 전량 매도하시겠습니까?')) return;
+
+      try {
+        const res = await fetch('/api/sell', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: currentUser.user_id,
+            code: code,
+            price: currentPrice
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          alert(data.message);
+          await refreshData();
+        } else {
+          alert(data.detail || '매도 실패');
+        }
+      } catch (err) {
+        alert('서버 통신 오류');
+      }
+    }
+
+    async function resetAccount() {
+      if (!confirm('내 가상 계좌를 100,000원으로 초기화하시겠습니까?')) return;
+      try {
+        await fetch('/api/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: currentUser.user_id })
+        });
+        await refreshData();
+      } catch (err) {
+        alert('초기화 실패');
+      }
+    }
+
+    // ===== 실시간 스마트폰 네이티브 알림 시스템 (ON / OFF 지원) =====
+    let notifiedCache = new Set();
+    // 로컬 스토리지에서 알림 ON/OFF 상태 불러오기 (기본값: 꺼짐)
+    let isNotifActive = (localStorage.getItem('alpha_notif_enabled') === 'true');
+
+    function updateNotifBtnUI() {
+      const btn = document.getElementById('notifBtn');
+      const badge = document.getElementById('notifBadge');
+      const toggleSwitch = document.getElementById('notifToggleSwitch');
+      const toggleKnob = document.getElementById('notifToggleKnob');
+      const statusText = document.getElementById('notifStatusText');
+
+      const isPermitted = ('Notification' in window) && (Notification.permission === 'granted');
+      const isEnabled = isPermitted && isNotifActive;
+
+      // 1. 헤더 종 아이콘 UI
+      if (btn) {
+        if (isEnabled) {
+          btn.innerHTML = '<i class="fa-solid fa-bell text-xs text-[#30d158]"></i><span id="notifBadge" class="w-1.5 h-1.5 rounded-full bg-[#30d158] absolute top-1.5 right-1.5"></span>';
+        } else {
+          btn.innerHTML = '<i class="fa-regular fa-bell-slash text-xs text-[#86868b]"></i>';
+        }
+      }
+
+      // 2. 모달 내 iOS 스타일 토글 스위치 UI
+      if (toggleSwitch && toggleKnob && statusText) {
+        if (isEnabled) {
+          toggleSwitch.className = 'w-12 h-7 rounded-full bg-[#30d158] p-1 transition-colors duration-200 ease-in-out relative tap-press';
+          toggleKnob.className = 'w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ease-in-out translate-x-5';
+          statusText.textContent = '익절/손절/기한만료 신호 수신 중';
+          statusText.className = 'text-[11px] text-[#30d158] font-medium';
+        } else {
+          toggleSwitch.className = 'w-12 h-7 rounded-full bg-[#2c2c2e] p-1 transition-colors duration-200 ease-in-out relative tap-press';
+          toggleKnob.className = 'w-5 h-5 rounded-full bg-[#86868b] shadow-md transform transition-transform duration-200 ease-in-out translate-x-0';
+          statusText.textContent = '알림이 꺼져 있습니다 (무음)';
+          statusText.className = 'text-[11px] text-[#86868b]';
+        }
+      }
+    }
+
+    // iOS Safari 전용 직통 권한 요청 함수 (비동기 딜레이 일체 제거)
+    function directRequestPermission() {
+      if (!('Notification' in window)) {
+        alert('이 기기는 브라우저 푸시 알림을 지원하지 않습니다.');
+        return;
+      }
+
+      // iOS WebKit 필수 요건: 클릭 직후 즉시 동기적 호출
+      try {
+        const p = Notification.requestPermission(function(permission) {
+          handlePermissionResult(permission);
+        });
+        if (p && typeof p.then === 'function') {
+          p.then(function(permission) {
+            handlePermissionResult(permission);
+          });
+        }
+      } catch (err) {
+        alert('알림 요청 중 오류가 발생했습니다: ' + err);
+      }
+    }
+
+    function handlePermissionResult(permission) {
+      if (permission === 'granted') {
+        isNotifActive = true;
+        localStorage.setItem('alpha_notif_enabled', 'true');
+        updateNotifBtnUI();
+        alert('🎉 알림 권한이 정상 허용되었습니다!');
+        sendNativeNotification('Alpha Stock 알림 켜짐', '🎉 알림이 정상 활성화되었습니다!');
+      } else if (permission === 'denied') {
+        alert('아이폰 [설정] 앱 > Safari 또는 홈 화면 앱에서 알림을 [허용]으로 변경해주세요.');
+      } else {
+        alert('알림 상태: ' + permission);
+      }
+    }
+
+    function toggleNotificationSwitch() {
+      if (isNotifActive) {
+        isNotifActive = false;
+        localStorage.setItem('alpha_notif_enabled', 'false');
+        updateNotifBtnUI();
+      } else {
+        directRequestPermission();
+      }
+    }
+
+    function toggleNotificationSetting() {
+      document.getElementById('notifModal').classList.remove('hidden');
+      updateNotifBtnUI();
+    }
+
+    function closeNotifModal() {
+      document.getElementById('notifModal').classList.add('hidden');
+    }
+
+    function sendNativeNotification(title, body) {
+      // 알림이 꺼져있으면 발송하지 않음
+      if (!isNotifActive || !('Notification' in window) || Notification.permission !== 'granted') {
+        return;
+      }
+
+      try {
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.ready.then(reg => {
+            reg.showNotification(title, {
+              body: body,
+              icon: 'https://img.icons8.com/fluency/192/bullish.png',
+              badge: 'https://img.icons8.com/fluency/96/bullish.png',
+              vibrate: [200, 100, 200],
+              data: { url: '/' }
+            });
+          });
+        } else {
+          new Notification(title, {
+            body: body,
+            icon: 'https://img.icons8.com/fluency/192/bullish.png'
+          });
+        }
+      } catch (err) {
+        console.error('Notification error:', err);
+      }
+    }
+
+    async function sendTestNotification() {
+      if (!isNotifActive) {
+        await toggleNotificationSwitch();
+      }
+      sendNativeNotification('🎯 [익절 도달 테스트]', '🎉 보유 종목이 목표가에 도달했습니다! (+6.5% 익절 권고)');
+    }
+
+    function checkPortfolioAlerts(portfolio) {
+      if (!isNotifActive || !portfolio || !portfolio.holdings) return;
+
+      portfolio.holdings.forEach(h => {
+        const keyBase = `${h.code}_${h.buy_date}`;
+
+        // 1. 익절 알림
+        if (h.signal_status === 'TARGET_REACHED') {
+          const alertKey = `${keyBase}_TARGET`;
+          if (!notifiedCache.has(alertKey)) {
+            notifiedCache.add(alertKey);
+            sendNativeNotification(
+              `🎉 [익절 도달] ${h.name}`,
+              `목표가 ${h.target_price.toLocaleString()}원에 도달했습니다! (현재 수익률 +${h.pnl_pct}%) 전량 익절을 권고합니다.`
+            );
+          }
+        }
+
+        // 2. 손절 알림
+        else if (h.signal_status === 'STOP_LOSS_REACHED') {
+          const alertKey = `${keyBase}_STOP_LOSS`;
+          if (!notifiedCache.has(alertKey)) {
+            notifiedCache.add(alertKey);
+            sendNativeNotification(
+              `⚠️ [손절 경보] ${h.name}`,
+              `손절선 ${h.stop_loss_price.toLocaleString()}원을 터치했습니다. (${h.pnl_pct}%) 리스크 관리를 위해 매도를 권고합니다.`
+            );
+          }
+        }
+
+        // 3. 기한 만료 알림
+        else if (h.signal_status === 'TIME_EXPIRED') {
+          const alertKey = `${keyBase}_TIME_EXPIRED`;
+          if (!notifiedCache.has(alertKey)) {
+            notifiedCache.add(alertKey);
+            sendNativeNotification(
+              `⏳ [스윙 기한 만료] ${h.name}`,
+              `권장 스윙 보유 기한(${h.max_hold_days}영업일)이 경과했습니다. 포트폴리오 정리를 권고합니다.`
+            );
+          }
+        }
+      });
+    }
+
+    // 초기 실행
+    updateUserUI();
+    updateNotifBtnUI();
+    setInterval(() => refreshData(false), 60000);
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+      });
+    }
+
+    refreshData();
+  </script>
+</body>
+</html>
