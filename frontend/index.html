@@ -100,22 +100,28 @@
       </div>
     </div>
 
-    <!-- 10만원 시드 자산 요약 (애플 주식 상단 위젯 느낌) -->
-    <section class="py-2">
-      <div class="flex justify-between items-baseline">
-        <span class="text-xs font-medium text-[#86868b]">내 시드 자산</span>
+    <!-- 시드 자산 요약 (애플 주식 상단 위젯 느낌 + 시드머니 변경 버튼) -->
+    <section class="py-2 bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#1c1c1e]">
+      <div class="flex justify-between items-center">
+        <span class="text-xs font-medium text-[#86868b] flex items-center gap-1.5">
+          <span>내 시드 자산</span>
+          <button onclick="openBudgetModal()" class="text-[10px] px-2 py-0.5 rounded-md bg-[#1c1c1e] hover:bg-[#2c2c2e] text-[#86868b] hover:text-white tap-press transition flex items-center gap-1" title="시드머니 예산 변경">
+            <i class="fa-solid fa-sliders text-[9px]"></i> 예산 설정
+          </button>
+        </span>
         <span id="accountReturnBadge" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#1c1c1e] text-[#86868b]">
           +0.0%
         </span>
       </div>
 
-      <div class="flex items-baseline gap-1.5 mt-0.5">
+      <div class="flex items-baseline gap-1.5 mt-1 cursor-pointer tap-press" onclick="openBudgetModal()">
         <span id="totalAsset" class="text-3xl font-extrabold tracking-tight text-white">100,000</span>
         <span class="text-sm font-semibold text-[#86868b]">원</span>
+        <span id="seedTargetLabel" class="text-[10px] text-[#636366] ml-1">(시드 100,000원)</span>
       </div>
 
       <!-- 세련된 슬림 게이지 바 -->
-      <div class="w-full bg-[#1c1c1e] h-1 rounded-full overflow-hidden mt-3 mb-2 flex">
+      <div class="w-full bg-[#1c1c1e] h-1.5 rounded-full overflow-hidden mt-3 mb-2 flex">
         <div id="cashBar" class="bg-[#30d158] h-full transition-all duration-500" style="width: 100%"></div>
         <div id="stockBar" class="bg-[#0a84ff] h-full transition-all duration-500" style="width: 0%"></div>
       </div>
@@ -296,13 +302,56 @@
     </div>
   </div>
 
-  <!-- 종목 상세 및 수량 조절 매수 모달 시트 (애플 액션 시트) -->
+  <!-- 💰 시드머니 예산 설정 모달 -->
+  <div id="budgetModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
+    <div class="bg-[#1c1c1e] w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4 shadow-2xl border-t border-[#2c2c2e]">
+      <div class="flex justify-between items-center pb-2 border-b border-[#2c2c2e]">
+        <h3 class="font-bold text-base text-white flex items-center gap-2">
+          <i class="fa-solid fa-sliders text-[#30d158]"></i> 시드머니 예산 설정
+        </h3>
+        <button onclick="closeBudgetModal()" class="text-[#86868b] hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs text-[#86868b]">
+        <p class="text-white text-sm font-medium">나의 투자 연습 예산(시드)을 변경합니다.</p>
+        <p class="leading-relaxed">
+          예산 규모에 맞춰 스윙 추천 종목 및 1회 진입 추천 수량이 자동으로 최적화됩니다.
+        </p>
+
+        <!-- 빠른 선택 칩 버튼들 -->
+        <div class="grid grid-cols-4 gap-1.5 pt-1">
+          <button onclick="selectQuickBudget(100000)" class="py-2 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white font-bold text-xs tap-press">10만</button>
+          <button onclick="selectQuickBudget(300000)" class="py-2 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white font-bold text-xs tap-press">30만</button>
+          <button onclick="selectQuickBudget(500000)" class="py-2 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white font-bold text-xs tap-press">50만</button>
+          <button onclick="selectQuickBudget(1000000)" class="py-2 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white font-bold text-xs tap-press">100만</button>
+        </div>
+
+        <!-- 직접 입력 필드 -->
+        <div class="space-y-1.5 pt-2">
+          <label class="text-[11px] text-[#86868b] block font-medium">직접 금액 입력 (원)</label>
+          <div class="relative flex items-center">
+            <input type="number" id="budgetAmountInput" placeholder="예: 200000" 
+                   class="w-full bg-[#0a0a0c] border border-[#2c2c2e] rounded-xl px-3.5 py-3 text-sm text-white placeholder-[#636366] focus:outline-none focus:border-[#30d158] font-bold">
+            <span class="absolute right-3.5 text-xs text-[#86868b]">원</span>
+          </div>
+        </div>
+
+        <button onclick="applyNewBudget()" class="w-full py-3.5 rounded-xl bg-[#30d158] hover:bg-[#28b84c] text-black font-extrabold text-sm tap-press transition mt-2">
+          예산 적용하기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 종목 상세 및 수량/금액 조절 매수 모달 시트 (애플 액션 시트) -->
   <div id="buyModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
     <div class="bg-[#1c1c1e] w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4 shadow-2xl border-t border-[#2c2c2e] max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center pb-2 border-b border-[#2c2c2e]">
         <div>
           <h3 id="buyModalTitle" class="font-bold text-base text-white">종목 매수</h3>
-          <span id="buyModalSubtitle" class="text-[11px] text-[#86868b]">10만원 시드머니 매수 시뮬레이션</span>
+          <span id="buyModalSubtitle" class="text-[11px] text-[#86868b]">시드머니 맞춤 매수 시뮬레이션</span>
         </div>
         <button onclick="closeBuyModal()" class="text-[#86868b] hover:text-white text-lg">
           <i class="fa-solid fa-xmark"></i>
@@ -316,7 +365,10 @@
             <h4 id="buyStockName" class="font-bold text-base text-white">종목명</h4>
             <span id="buyStockCode" class="text-[10px] text-[#86868b]">000000</span>
           </div>
-          <span id="buyStockMarket" class="text-[9px] px-1.5 py-0.5 rounded bg-[#1c1c1e] text-[#86868b]">KOSPI</span>
+          <div class="flex items-center gap-1 mt-0.5">
+            <span id="buyStockMarket" class="text-[9px] px-1.5 py-0.5 rounded bg-[#1c1c1e] text-[#86868b]">KOSPI</span>
+            <span id="buyFractionalTag" class="text-[9px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold">소수점 가능 ⚡</span>
+          </div>
         </div>
         <div class="text-right">
           <div id="buyStockPrice" class="text-base font-black text-white">0원</div>
@@ -343,12 +395,55 @@
         </div>
       </div>
 
-      <!-- 💡 수량 조절기 (Quantity Stepper: [-] N주 [+]) -->
-      <div class="bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#2c2c2e] space-y-2">
+      <!-- 🎛️ 매수 방식 탭: [금액으로 매수] vs [수량으로 매수] -->
+      <div class="flex p-1 bg-[#0a0a0c] rounded-xl text-xs font-semibold border border-[#2c2c2e]">
+        <button onclick="setBuyMode('amount')" id="buyModeAmountBtn" class="flex-1 py-1.5 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center">
+          금액으로 매수
+        </button>
+        <button onclick="setBuyMode('qty')" id="buyModeQtyBtn" class="flex-1 py-1.5 rounded-lg text-[#86868b] hover:text-white tap-press transition text-center">
+          수량으로 매수
+        </button>
+      </div>
+
+      <!-- 💡 1. 금액 기준 매수 영역 -->
+      <div id="buyAmountSection" class="bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#2c2c2e] space-y-2.5">
+        <div class="flex justify-between items-center text-xs">
+          <span class="text-[#86868b] font-medium">매수 희망 금액</span>
+          <span class="text-[11px] text-[#86868b]">
+            잔여 현금 <strong id="buyCashAvailableText" class="text-white">100,000</strong>원
+          </span>
+        </div>
+
+        <div class="relative flex items-center">
+          <input type="number" id="buyAmountInput" oninput="onBuyAmountChange(this.value)" placeholder="매수할 금액 입력"
+                 class="w-full bg-[#1c1c1e] border border-[#2c2c2e] rounded-xl px-3.5 py-2.5 text-base text-white placeholder-[#636366] focus:outline-none focus:border-[#30d158] font-bold">
+          <span class="absolute right-3.5 text-xs text-[#86868b]">원</span>
+        </div>
+
+        <!-- 빠른 금액 칩 버튼들 -->
+        <div class="grid grid-cols-4 gap-1.5">
+          <button onclick="setQuickBuyAmount(10000)" class="py-1.5 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-white font-medium text-[11px] tap-press">+1만</button>
+          <button onclick="setQuickBuyAmount(30000)" class="py-1.5 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-white font-medium text-[11px] tap-press">+3만</button>
+          <button onclick="setQuickBuyAmount(50000)" class="py-1.5 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-white font-medium text-[11px] tap-press">+5만</button>
+          <button onclick="setQuickBuyAmount('max')" class="py-1.5 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-[#30d158] font-bold text-[11px] tap-press">전액(최대)</button>
+        </div>
+
+        <!-- 계산된 수량 안내 -->
+        <div class="p-2.5 rounded-xl bg-[#1c1c1e] flex justify-between items-center text-xs">
+          <span class="text-[#86868b]">자동 환산 주식 수</span>
+          <div class="text-right">
+            <span id="buyCalcQtyResult" class="text-sm font-extrabold text-[#30d158]">0주</span>
+            <span id="buyCalcModeNotice" class="text-[10px] text-[#86868b] block">(소수점 매매 적용)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 💡 2. 수량 기준 매수 영역 -->
+      <div id="buyQtySection" class="bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#2c2c2e] space-y-2 hidden">
         <div class="flex justify-between items-center text-xs">
           <span class="text-[#86868b] font-medium">매수 수량</span>
           <span class="text-[11px] text-[#86868b]">
-            최대 <strong id="buyMaxQtyText" class="text-white">0</strong>주 가능 (잔여현금 기준)
+            최대 <strong id="buyMaxQtyText" class="text-white">0</strong>주 가능
           </span>
         </div>
 
@@ -377,7 +472,7 @@
       <!-- 결제 예상 금액 및 잔고 변동 내역 -->
       <div class="space-y-1.5 px-1 text-xs">
         <div class="flex justify-between text-[#86868b]">
-          <span>총 결제 예상 금액</span>
+          <span>총 결제 예상 금액 (수수료 0.015% 포함)</span>
           <span id="buyTotalCost" class="text-white font-bold">0원</span>
         </div>
         <div class="flex justify-between text-[#86868b]">
@@ -546,7 +641,116 @@
       }, 2500);
     }
 
+    let buyMode = 'amount'; // 'amount' (금액 기준) or 'qty' (수량 기준)
+    let currentBuyAmount = 0;
+
+    function openBudgetModal() {
+      const input = document.getElementById('budgetAmountInput');
+      if (input && currentPortfolio) {
+        input.value = currentPortfolio.initial_balance || 100000;
+      }
+      document.getElementById('budgetModal').classList.remove('hidden');
+    }
+
+    function closeBudgetModal() {
+      document.getElementById('budgetModal').classList.add('hidden');
+    }
+
+    function selectQuickBudget(amount) {
+      const input = document.getElementById('budgetAmountInput');
+      if (input) input.value = amount;
+    }
+
+    async function applyNewBudget() {
+      const input = document.getElementById('budgetAmountInput');
+      const newBudget = parseInt(input.value);
+      if (isNaN(newBudget) || newBudget <= 0) {
+        alert('올바른 예산 금액을 입력해주세요.');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/portfolio/budget', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: currentUser.user_id,
+            budget: newBudget
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          closeBudgetModal();
+          showToast(data.message, 'success');
+          await refreshData(true);
+        } else {
+          showToast(data.detail || '예산 설정 실패', 'error');
+        }
+      } catch (err) {
+        showToast('서버 통신 오류', 'error');
+      }
+    }
+
+    function setBuyMode(mode) {
+      buyMode = mode;
+      const amountBtn = document.getElementById('buyModeAmountBtn');
+      const qtyBtn = document.getElementById('buyModeQtyBtn');
+      const amountSec = document.getElementById('buyAmountSection');
+      const qtySec = document.getElementById('buyQtySection');
+
+      if (mode === 'amount') {
+        amountBtn.className = 'flex-1 py-1.5 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
+        qtyBtn.className = 'flex-1 py-1.5 rounded-lg text-[#86868b] hover:text-white tap-press transition text-center';
+        amountSec.classList.remove('hidden');
+        qtySec.classList.add('hidden');
+      } else {
+        amountBtn.className = 'flex-1 py-1.5 rounded-lg text-[#86868b] hover:text-white tap-press transition text-center';
+        qtyBtn.className = 'flex-1 py-1.5 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
+        amountSec.classList.add('hidden');
+        qtySec.classList.remove('hidden');
+      }
+      updateBuyModalCalcs();
+    }
+
+    function onBuyAmountChange(val) {
+      const num = parseInt(val) || 0;
+      currentBuyAmount = num;
+      calculateQtyFromAmount();
+      updateBuyModalCalcs();
+    }
+
+    function setQuickBuyAmount(amount) {
+      const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
+      let target = 0;
+      if (amount === 'max') {
+        target = cash;
+      } else {
+        target = (currentBuyAmount || 0) + amount;
+        if (target > cash) target = cash;
+      }
+      currentBuyAmount = target;
+      document.getElementById('buyAmountInput').value = target;
+      calculateQtyFromAmount();
+      updateBuyModalCalcs();
+    }
+
+    function calculateQtyFromAmount() {
+      if (!selectedRecForBuy || selectedRecForBuy.current_price <= 0) return;
+      const price = selectedRecForBuy.current_price;
+      const unitCost = price * 1.00015; // 수수료 포함
+
+      if (selectedRecForBuy.is_fractional) {
+        // 소수점 거래 가능 종목: 소수점 4자리까지 정확히 분할 매수
+        const rawQty = currentBuyAmount / unitCost;
+        currentBuyQty = Math.max(0, Math.floor(rawQty * 10000) / 10000);
+      } else {
+        // 소수점 미지원 종목: 정수 단위로만 매수
+        currentBuyQty = Math.floor(currentBuyAmount / unitCost);
+      }
+    }
+
     function openCustomBuyModal(stockItem) {
+      const isFractional = stockItem.is_fractional !== false; // 기본 판별값
       selectedRecForBuy = {
         code: stockItem.code,
         name: stockItem.name,
@@ -559,26 +763,53 @@
         max_hold_days: 5,
         grade: stockItem.grade || 'N/A',
         grade_score: stockItem.grade_score || 0,
-        grade_reasons: stockItem.grade_reasons || []
+        grade_reasons: stockItem.grade_reasons || [],
+        is_fractional: isFractional,
+        fractional_desc: stockItem.fractional_desc || ''
       };
 
       const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
-      // 수수료(0.015%) 고려한 정확한 최대 매수 가능 수량
       const unitCostWithFee = stockItem.current_price * 1.00015;
-      maxPossibleBuyQty = Math.floor(cash / unitCostWithFee);
-      currentBuyQty = maxPossibleBuyQty > 0 ? 1 : 0;
+
+      if (isFractional) {
+        maxPossibleBuyQty = Math.floor((cash / unitCostWithFee) * 10000) / 10000;
+      } else {
+        maxPossibleBuyQty = Math.floor(cash / unitCostWithFee);
+      }
+
+      // 기본 매수 희망 금액 설정 (예: 3만원 또는 1주 가격)
+      currentBuyAmount = Math.min(cash, Math.max(stockItem.current_price, 30000));
+      document.getElementById('buyAmountInput').value = currentBuyAmount;
+      calculateQtyFromAmount();
 
       document.getElementById('buyStockName').textContent = stockItem.name;
       document.getElementById('buyStockCode').textContent = stockItem.code;
       document.getElementById('buyStockMarket').textContent = stockItem.market || 'KOSPI';
       document.getElementById('buyStockPrice').textContent = stockItem.current_price.toLocaleString() + '원';
 
+      // 소수점 가능 여부 뱃지 업데이트
+      const fracTag = document.getElementById('buyFractionalTag');
+      if (fracTag) {
+        if (isFractional) {
+          fracTag.className = 'text-[9px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold';
+          fracTag.textContent = '소수점 가능 ⚡';
+          document.getElementById('buyCalcModeNotice').textContent = '(소수점 매매 지원)';
+          document.getElementById('buyCalcModeNotice').className = 'text-[10px] text-[#30d158] block';
+        } else {
+          fracTag.className = 'text-[9px] px-1.5 py-0.5 rounded bg-[#ff9f0a]/20 text-[#ff9f0a] font-semibold';
+          fracTag.textContent = '1주 단위 일반종목 🔒';
+          document.getElementById('buyCalcModeNotice').textContent = '(소수점 미지원 · 1주 단위)';
+          document.getElementById('buyCalcModeNotice').className = 'text-[10px] text-[#ff9f0a] block';
+        }
+      }
+
+      document.getElementById('buyCashAvailableText').textContent = cash.toLocaleString();
+      document.getElementById('buyMaxQtyText').textContent = isFractional ? `${maxPossibleBuyQty:g}` : maxPossibleBuyQty;
+
       const changeEl = document.getElementById('buyStockChange');
       const isGain = stockItem.change_rate >= 0;
       changeEl.textContent = (isGain ? '+' : '') + stockItem.change_rate + '%';
       changeEl.className = isGain ? 'text-xs font-semibold text-[#ff453a]' : 'text-xs font-semibold text-[#0a84ff]';
-
-      document.getElementById('buyMaxQtyText').textContent = maxPossibleBuyQty;
 
       // ── AI 등급 카드 렌더링 ──────────────────────────────
       const grade = stockItem.grade || 'N/A';
@@ -589,7 +820,6 @@
       const gradeScoreTag = document.getElementById('gradeScoreTag');
       const gradeReasonsList = document.getElementById('gradeReasonsList');
 
-      // 등급별 색상 맵
       const gradeStyles = {
         'S': { bg: 'bg-[#ffd60a]', text: 'text-black', border: 'border-[#ffd60a]/30', label: '강력 추천' },
         'A': { bg: 'bg-[#30d158]', text: 'text-black', border: 'border-[#30d158]/30', label: '매수 추천' },
@@ -601,22 +831,19 @@
 
       gradeBadge.className = `w-12 h-12 rounded-full flex items-center justify-center text-xl font-black shrink-0 ${style.bg} ${style.text}`;
       gradeBadge.textContent = grade;
-
       gradeScoreTag.textContent = grade === 'N/A' ? style.label : `${gradeScore}점 · ${style.label}`;
 
       gradeReasonsList.innerHTML = gradeReasons.map(r =>
         `<div class="text-[11px] text-[#ebebf5] leading-tight">· ${r}</div>`
       ).join('') || '<div class="text-[11px] text-[#86868b]">근거 없음</div>';
 
-      // 등급 카드 테두리 색상
       document.getElementById('gradeCard').className =
         `bg-[#0a0a0c] p-3.5 rounded-2xl border ${style.border} flex items-start gap-3`;
-      // ─────────────────────────────────────────────────────
 
-      updateBuyModalCalcs();
+      // 기본 탭은 금액 기준으로 설정
+      setBuyMode('amount');
       document.getElementById('buyModal').classList.remove('hidden');
 
-      // 모달 내 꺾은선 차트 그리기
       if (stockItem.chart_data && stockItem.chart_data.prices && stockItem.chart_data.prices.length > 0) {
         setTimeout(() => {
           drawInteractiveChart(
@@ -629,11 +856,11 @@
       }
     }
 
-
     function changeBuyQty(delta) {
-      if (maxPossibleBuyQty === 0) return;
-      const nextQty = currentBuyQty + delta;
-      if (nextQty >= 1 && nextQty <= maxPossibleBuyQty) {
+      if (maxPossibleBuyQty <= 0) return;
+      const step = (selectedRecForBuy && selectedRecForBuy.is_fractional && currentBuyQty < 1) ? 0.1 : 1;
+      const nextQty = Math.round((currentBuyQty + delta * step) * 10000) / 10000;
+      if (nextQty > 0 && nextQty <= maxPossibleBuyQty) {
         currentBuyQty = nextQty;
         updateBuyModalCalcs();
       }
@@ -641,14 +868,17 @@
 
     function updateBuyModalCalcs() {
       const price = selectedRecForBuy ? selectedRecForBuy.current_price : 0;
-      const totalCost = price * currentBuyQty;
+      const totalCost = Math.floor(price * currentBuyQty);
       const fee = Math.floor(totalCost * 0.00015);
       const totalRequired = totalCost + fee;
       const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
-      const remaining = cash - totalRequired;
+      const remaining = Math.max(0, cash - totalRequired);
       const ratio = currentPortfolio && currentPortfolio.total_asset > 0 ? ((totalCost / currentPortfolio.total_asset) * 100).toFixed(1) : 0;
 
-      document.getElementById('buyQtyDisplay').textContent = currentBuyQty;
+      const qtyDisplayStr = (currentBuyQty > 0) ? `${currentBuyQty:g}` : '0';
+      document.getElementById('buyQtyDisplay').textContent = qtyDisplayStr;
+      document.getElementById('buyCalcQtyResult').textContent = `${qtyDisplayStr}주`;
+
       document.getElementById('buyBudgetRatio').textContent = `내 자산의 ${ratio}%`;
       document.getElementById('buyTotalCost').textContent = totalCost.toLocaleString() + '원';
       document.getElementById('buyRemainingCash').textContent = remaining.toLocaleString() + '원';
@@ -656,19 +886,19 @@
       const confirmBtn = document.getElementById('confirmBuyBtn');
       const confirmBtnText = document.getElementById('confirmBuyBtnText');
 
-      if (currentBuyQty < 1 || totalRequired > cash) {
+      if (currentBuyQty <= 0 || totalRequired > cash) {
         confirmBtn.disabled = true;
         confirmBtn.className = 'w-full py-3.5 rounded-xl bg-[#2c2c2e] text-[#86868b] font-extrabold text-sm flex items-center justify-center gap-2 cursor-not-allowed';
-        confirmBtnText.textContent = '잔여 현금 부족';
+        confirmBtnText.textContent = totalRequired > cash ? '잔여 현금 부족' : '매수 수량 0';
       } else {
         confirmBtn.disabled = false;
         const isGradeC = selectedRecForBuy && selectedRecForBuy.grade === 'C';
         if (isGradeC) {
           confirmBtn.className = 'w-full py-3.5 rounded-xl bg-[#48484a] hover:bg-[#636366] text-white font-extrabold text-sm tap-press flex items-center justify-center gap-2 transition';
-          confirmBtnText.textContent = `⚠️ 비추천 종목 ${currentBuyQty}주 매수`;
+          confirmBtnText.textContent = `⚠️ 비추천 종목 ${qtyDisplayStr}주 매수`;
         } else {
           confirmBtn.className = 'w-full py-3.5 rounded-xl bg-[#ff453a] hover:bg-[#ff3b30] text-white font-extrabold text-sm shadow-lg shadow-[#ff453a]/25 tap-press flex items-center justify-center gap-2 transition';
-          confirmBtnText.textContent = `${currentBuyQty}주 매수 주문 실행 (${totalCost.toLocaleString()}원)`;
+          confirmBtnText.textContent = `${qtyDisplayStr}주 매수 주문 실행 (${totalCost.toLocaleString()}원)`;
         }
       }
     }
@@ -678,7 +908,6 @@
       selectedRecForBuy = null;
     }
 
-    // 추천 카드에서 호출하는 openBuyModal도 커스텀 모달과 통일
     function openBuyModal(idx) {
       const item = currentRecs[idx];
       if (item) {
@@ -686,15 +915,13 @@
       }
     }
 
-    // 최종 매수 실행
     async function executeSelectedBuy() {
-      if (!selectedRecForBuy || currentBuyQty < 1) return;
+      if (!selectedRecForBuy || currentBuyQty <= 0) return;
 
       const confirmBtn = document.getElementById('confirmBuyBtn');
       const confirmBtnText = document.getElementById('confirmBuyBtnText');
       const originalText = confirmBtnText.textContent;
 
-      // 즉시 버튼 피드백 (로딩 스피너)
       confirmBtn.disabled = true;
       confirmBtnText.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> 주문 체결 중...';
 
@@ -909,6 +1136,11 @@
       document.getElementById('cashBalance').textContent = data.cash_balance.toLocaleString() + '원';
       document.getElementById('stockEval').textContent = data.total_evaluation.toLocaleString() + '원';
 
+      const seedLabel = document.getElementById('seedTargetLabel');
+      if (seedLabel) {
+        seedLabel.textContent = `(시드 ${(data.initial_balance || 100000).toLocaleString()}원)`;
+      }
+
       const returnBadge = document.getElementById('accountReturnBadge');
       const ret = data.total_return_pct;
       if (ret > 0) {
@@ -946,6 +1178,7 @@
         const isGain = h.pnl_pct >= 0;
         const pillBg = isGain ? 'bg-[#ff453a]' : 'bg-[#0a84ff]';
         const pnlSign = isGain ? '+' : '';
+        const qtyFormatted = (typeof h.quantity === 'number') ? `${h.quantity}` : h.quantity;
 
         let statusBadge = '';
         if (h.signal_status === 'TARGET_REACHED') {
@@ -965,7 +1198,7 @@
                   <span class="text-[10px] text-[#86868b]">${h.code}</span>
                 </div>
                 <div class="text-[11px] text-[#86868b] mt-0.5">
-                  ${h.quantity}주 · 평단 ${h.avg_price.toLocaleString()}원
+                  ${qtyFormatted}주 · 평단 ${h.avg_price.toLocaleString()}원
                 </div>
               </div>
               <div class="flex items-center gap-2">
@@ -1353,27 +1586,34 @@
 
         const data = await res.json();
         if (res.ok) {
-          alert(data.message);
+          showToast(data.message, 'success');
           await refreshData();
         } else {
-          alert(data.detail || '매도 실패');
+          showToast(data.detail || '매도 실패', 'error');
         }
       } catch (err) {
-        alert('서버 통신 오류');
+        showToast('서버 통신 오류가 발생했습니다.', 'error');
       }
     }
 
     async function resetAccount() {
-      if (!confirm('내 가상 계좌를 100,000원으로 초기화하시겠습니까?')) return;
+      const initAmount = currentPortfolio ? (currentPortfolio.initial_balance || 100000) : 100000;
+      if (!confirm(`내 가상 계좌를 설정된 시드머니(${initAmount.toLocaleString()}원)로 초기화하시겠습니까?`)) return;
       try {
-        await fetch('/api/reset', {
+        const res = await fetch('/api/reset', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_id: currentUser.user_id })
         });
-        await refreshData();
+        const data = await res.json();
+        if (res.ok) {
+          showToast(data.message || '계좌가 초기화되었습니다.', 'success');
+          await refreshData();
+        } else {
+          showToast('초기화 실패', 'error');
+        }
       } catch (err) {
-        alert('초기화 실패');
+        showToast('초기화 실패', 'error');
       }
     }
 

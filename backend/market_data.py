@@ -201,16 +201,60 @@ def search_stocks(query: str):
         print(f"Search error: {e}")
         return []
 
-def get_stock_detail_with_chart(code: str):
+def is_stock_fractional_tradable(code: str) -> tuple[bool, str]:
+    """
+    한국예탁결제원 신탁 방식 기준, 증권사 소수점 거래 가능 종목 여부를 판별합니다.
+    - 대상: KOSPI/KOSDAQ 상장 주식 중 시가총액 약 3,000억 원 이상 우량주
+    - 제외: ETF/ETN, 관리종목, 정리매매, 동전주(1,000원 미만)
+    """
+    try:
+        url = f"https://m.stock.naver.com/api/stock/{code}/integration"
+        res = requests.get(url, headers=HEADERS, timeout=3)
+        if res.status_code != 200:
+            return False, "정보 조회 실패"
+        data = res.json()
+        end_type = data.get("stockEndType", "stock")
+        if end_type != "stock":
+            return False, "ETF/ETN 파생상품은 소수점 거래 미지원"
+
+        market_cap_str = ""
+        for item in data.get("totalInfos", []):
+            if item.get("key") == "시총":
+                market_cap_str = item.get("value", "")
+                break
+
+        # '조' 단위는 무조건 가능
+        if "조" in market_cap_str:
+            return True, f"소수점 매수 가능 (시총 {market_cap_str})"
+
+        # '억' 단위는 3,000억 이상 판별
+        if "억" in market_cap_str:
+            import re
+            m = re.search(r"([\d,]+)억", market_cap_str)
+            if m:
+                val = int(m.group(1).replace(",", ""))
+                if val >= 3000:
+                    return True, f"소수점 매수 가능 (시총 {market_cap_str})"
+                else:
+                    return False, f"소수점 미지원 (시총 3,000억 미만: {market_cap_str})"
+
+        return False, "소수점 거래 미지원 종목"
+    except Exception as e:
+        return False, f"판별 오류: {e}"
+
+def get_stock_detail_with_chart(code: str, budget: int = 100000):
     """
     종목의 실시간 상세 정보와 30일 시계열 차트 데이터를 함께 반환합니다.
-    스윙 등급(S/A/B/C)도 함께 계산하여 반환합니다.
+    스윙 등급(S/A/B/C) 및 소수점 매수 가능 여부도 함께 계산하여 반환합니다.
     """
     from strategy import get_stock_grade
 
     info = get_realtime_stock_info(code)
     if not info:
         return None
+
+    # 소수점 매수 가능 여부 판별
+    is_fractional, fractional_desc = is_stock_fractional_tradable(code)
 
     candles = get_stock_daily_candles(code, count=60)
     chart_data = {"dates": [], "prices": []}
@@ -226,7 +270,7 @@ def get_stock_detail_with_chart(code: str):
     # 등급 산출 (데이터 충분할 때만)
     grade_result = {"grade": "N/A", "score": 0, "grade_reasons": ["데이터 부족"]}
     if candles is not None and len(candles) >= 25:
-        grade_result = get_stock_grade(info, candles)
+        grade_result = get_stock_grade(info, candles, budget=budget, is_fractional=is_fractional)
 
     return {
         "code": code,
@@ -237,6 +281,8 @@ def get_stock_detail_with_chart(code: str):
         "low_price": info.get("low_price", 0),
         "volume": info.get("volume", 0),
         "chart_data": chart_data,
+        "is_fractional": is_fractional,
+        "fractional_desc": fractional_desc,
         "grade": grade_result["grade"],
         "grade_score": grade_result["score"],
         "grade_reasons": grade_result["grade_reasons"]

@@ -123,7 +123,7 @@ def analyze_stock_for_swing(stock_info, candles_df):
         }
     return None
 
-def get_stock_grade(stock_info, candles_df):
+def get_stock_grade(stock_info, candles_df, budget=100000, is_fractional=False):
     """
     종목의 스윙 적합도를 S/A/B/C 4단계 등급으로 판정합니다.
     점수와 무관하게 항상 등급을 반환합니다 (검색 시 표시용).
@@ -131,16 +131,16 @@ def get_stock_grade(stock_info, candles_df):
     - A (≥60): 매수 추천
     - B (≥35): 중립 / 관망
     - C (<35): 비추천
-    단가 10만원 초과 시 C로 강제 지정.
+    소수점 매수가 불가능하고 단가가 설정 예산을 초과하면 C로 지정.
     """
     current_price = stock_info.get("current_price", 0)
 
-    # 단가 10만원 초과 → 즉시 C
-    if current_price > 100000:
+    # 소수점 매수가 불가능한데 주가가 예산(시드머니)을 초과하는 경우
+    if not is_fractional and current_price > budget:
         return {
             "grade": "C",
             "score": 0,
-            "grade_reasons": ["단가 10만원 초과 — 10만원 시드로 매수 불가"]
+            "grade_reasons": [f"단가({current_price:,}원) 예산 초과 — 소수점 미지원으로 매수 불가"]
         }
 
     df = calculate_technical_indicators(candles_df)

@@ -59,6 +59,16 @@ class MultiUserPortfolioManager:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
+    def set_user_budget(self, user_id: str, new_budget: int):
+        """사용자의 시드머니 예산을 변경하고 잔고를 맞춥니다."""
+        data = self.get_or_create_user(user_id)
+        old_initial = data.get("initial_balance", self.initial_balance)
+        diff = new_budget - old_initial
+        data["initial_balance"] = new_budget
+        data["cash_balance"] = max(0, data.get("cash_balance", old_initial) + diff)
+        self._save_user(user_id, data)
+        return True, data
+
     def get_summary(self, user_id: str, current_prices=None):
         data = self.get_or_create_user(user_id)
         current_prices = current_prices or {}
@@ -70,13 +80,13 @@ class MultiUserPortfolioManager:
         today_date = date.today()
 
         for code, item in data["holdings"].items():
-            qty = item["quantity"]
+            qty = round(float(item["quantity"]), 4)
             avg_price = item["avg_price"]
-            invested = avg_price * qty
+            invested = int(avg_price * qty)
             total_invested += invested
 
             cur_price = current_prices.get(code, avg_price)
-            eval_val = cur_price * qty
+            eval_val = int(cur_price * qty)
             total_eval += eval_val
 
             est_sell_cost = int(eval_val * (SELL_FEE_RATE + TAX_RATE))
@@ -115,8 +125,8 @@ class MultiUserPortfolioManager:
 
         cash = data["cash_balance"]
         total_asset = cash + total_eval
-        init_bal = data["initial_balance"]
-        total_return_pct = round(((total_asset - init_bal) / init_bal) * 100, 2)
+        init_bal = data.get("initial_balance", self.initial_balance)
+        total_return_pct = round(((total_asset - init_bal) / init_bal) * 100, 2) if init_bal > 0 else 0.0
 
         return {
             "user_id": data["user_id"],
@@ -133,9 +143,13 @@ class MultiUserPortfolioManager:
             "history": data.get("history", [])
         }
 
-    def buy(self, user_id: str, code: str, name: str, price: int, quantity: int, target_price=None, stop_loss_price=None, max_hold_days=5, logo_url=""):
+    def buy(self, user_id: str, code: str, name: str, price: int, quantity: float, target_price=None, stop_loss_price=None, max_hold_days=5, logo_url=""):
         data = self.get_or_create_user(user_id)
-        total_cost = price * quantity
+        quantity = round(float(quantity), 4)
+        if quantity <= 0:
+            return False, "매수 수량은 0보다 커야 합니다."
+
+        total_cost = int(price * quantity)
         fee = int(total_cost * BUY_FEE_RATE)
         required_cash = total_cost + fee
 
@@ -147,7 +161,7 @@ class MultiUserPortfolioManager:
 
         if code in data["holdings"]:
             curr = data["holdings"][code]
-            total_qty = curr["quantity"] + quantity
+            total_qty = round(curr["quantity"] + quantity, 4)
             new_avg = int((curr["avg_price"] * curr["quantity"] + total_cost) / total_qty)
             curr["quantity"] = total_qty
             curr["avg_price"] = new_avg
@@ -177,7 +191,8 @@ class MultiUserPortfolioManager:
         })
 
         self._save_user(user_id, data)
-        return True, f"{name} {quantity}주 매수 완료! (체결가: {price:,}원)"
+        qty_str = f"{quantity:g}"
+        return True, f"{name} {qty_str}주 매수 완료! (체결가: {price:,}원)"
 
     def sell(self, user_id: str, code: str, price: int, quantity=None):
         data = self.get_or_create_user(user_id)
@@ -185,24 +200,27 @@ class MultiUserPortfolioManager:
             return False, "보유하고 있지 않은 종목입니다."
 
         holding = data["holdings"][code]
-        cur_qty = holding["quantity"]
-        sell_qty = cur_qty if quantity is None else min(quantity, cur_qty)
+        cur_qty = round(float(holding["quantity"]), 4)
+        sell_qty = cur_qty if quantity is None else min(round(float(quantity), 4), cur_qty)
+        if sell_qty <= 0:
+            return False, "매도 수량은 0보다 커야 합니다."
 
-        sell_amount = price * sell_qty
+        sell_amount = int(price * sell_qty)
         fee = int(sell_amount * SELL_FEE_RATE)
         tax = int(sell_amount * TAX_RATE)
         net_received = sell_amount - fee - tax
 
-        invested_cost = holding["avg_price"] * sell_qty
+        invested_cost = int(holding["avg_price"] * sell_qty)
         pnl = net_received - invested_cost
 
         data["cash_balance"] += net_received
         data["realized_pnl"] += pnl
 
-        if sell_qty >= cur_qty:
+        remaining_qty = round(cur_qty - sell_qty, 4)
+        if remaining_qty <= 0.00001:
             del data["holdings"][code]
         else:
-            holding["quantity"] -= sell_qty
+            holding["quantity"] = remaining_qty
 
         data["history"].append({
             "type": "SELL",
@@ -218,17 +236,15 @@ class MultiUserPortfolioManager:
 
         self._save_user(user_id, data)
         pnl_sign = "+" if pnl >= 0 else ""
-        return True, f"{holding['name']} {sell_qty}주 매도 완료! (실현손익: {pnl_sign}{pnl:,}원)"
+        qty_str = f"{sell_qty:g}"
+        return True, f"{holding['name']} {qty_str}주 매도 완료! (실현손익: {pnl_sign}{pnl:,}원)"
 
     def reset(self, user_id: str):
         data = self.get_or_create_user(user_id)
-        data["cash_balance"] = self.initial_balance
+        init_bal = data.get("initial_balance", self.initial_balance)
+        data["cash_balance"] = init_bal
         data["realized_pnl"] = 0
         data["holdings"] = {}
         data["history"] = []
         self._save_user(user_id, data)
         return True
-
-if __name__ == "__main__":
-    pm = PortfolioManager(initial_balance=100000)
-    print("Portfolio Initial State:", pm.get_summary())

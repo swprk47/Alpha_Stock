@@ -61,9 +61,9 @@ def search_stock_api(q: str = Query(..., min_length=1)):
     return {"success": True, "results": results}
 
 @app.get("/api/stock/{code}")
-def stock_detail_api(code: str):
-    """특정 종목 상세 및 30일 인터랙티브 차트 데이터 조회"""
-    detail = get_stock_detail_with_chart(code)
+def stock_detail_api(code: str, budget: int = Query(100000)):
+    """특정 종목 상세 및 30일 인터랙티브 차트 데이터 조회 (예산 및 소수점 판별 포함)"""
+    detail = get_stock_detail_with_chart(code, budget=budget)
     if not detail:
         raise HTTPException(status_code=404, detail="종목 정보를 찾을 수 없습니다.")
     return {"success": True, "stock": detail}
@@ -97,7 +97,7 @@ def google_auth(req: GoogleAuthRequest):
 
 @app.get("/api/portfolio")
 def get_portfolio(user_id: str = Query("default_user")):
-    """사용자별 가상 10만원 계좌 요약 및 보유 현황 조회"""
+    """사용자별 가상 계좌 요약 및 보유 현황 조회"""
     user_data = portfolio_mgr.get_or_create_user(user_id)
     current_prices = {}
     chart_data_map = {}
@@ -122,12 +122,24 @@ def get_portfolio(user_id: str = Query("default_user")):
         "portfolio": summary
     }
 
+class SetBudgetRequest(BaseModel):
+    user_id: Optional[str] = "default_user"
+    budget: int
+
+@app.post("/api/portfolio/budget")
+def set_portfolio_budget(req: SetBudgetRequest):
+    """사용자별 초기 시드머니 예산 설정 및 잔고 동기화"""
+    if req.budget <= 0:
+        raise HTTPException(status_code=400, detail="예산은 0원보다 커야 합니다.")
+    success, data = portfolio_mgr.set_user_budget(req.user_id, req.budget)
+    return {"success": True, "message": f"시드머니가 {req.budget:,}원으로 설정되었습니다.", "user": data}
+
 class BuyRequest(BaseModel):
     user_id: Optional[str] = "default_user"
     code: str
     name: str
     price: int
-    quantity: int
+    quantity: float
     target_price: Optional[int] = None
     stop_loss_price: Optional[int] = None
     max_hold_days: Optional[int] = 5
@@ -135,7 +147,7 @@ class BuyRequest(BaseModel):
 
 @app.post("/api/buy")
 def buy_stock(req: BuyRequest):
-    """사용자별 모의 매수 실행"""
+    """사용자별 모의 매수 실행 (소수점 지원)"""
     success, msg = portfolio_mgr.buy(
         user_id=req.user_id,
         code=req.code,
@@ -155,11 +167,11 @@ class SellRequest(BaseModel):
     user_id: Optional[str] = "default_user"
     code: str
     price: int
-    quantity: Optional[int] = None
+    quantity: Optional[float] = None
 
 @app.post("/api/sell")
 def sell_stock(req: SellRequest):
-    """사용자별 모의 매도 실행"""
+    """사용자별 모의 매도 실행 (소수점 지원)"""
     success, msg = portfolio_mgr.sell(
         user_id=req.user_id,
         code=req.code,
@@ -175,9 +187,9 @@ class ResetRequest(BaseModel):
 
 @app.post("/api/reset")
 def reset_portfolio(req: ResetRequest):
-    """사용자별 계좌 10만원 초기화"""
+    """사용자별 계좌 초기화"""
     portfolio_mgr.reset(req.user_id)
-    return {"success": True, "message": "가상 계좌가 100,000원으로 초기화되었습니다."}
+    return {"success": True, "message": "가상 계좌가 초기화되었습니다."}
 
 # 프론트엔드 정적 파일 서빙
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
