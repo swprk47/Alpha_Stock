@@ -16,8 +16,6 @@
   <!-- Tailwind CSS & FontAwesome -->
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <!-- Google Identity Services SDK -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
   
   <style>
     :root {
@@ -195,7 +193,7 @@
         <h3 class="font-bold text-base text-white flex items-center gap-2">
           <i class="fa-brands fa-google text-white"></i> 계정 연동 및 로그인
         </h3>
-        <button onclick="closeAuthModal()" class="text-[#86868b] hover:text-white text-lg">
+        <button onclick="closeAuthModal()" id="authCloseBtn" class="text-[#86868b] hover:text-white text-lg">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
@@ -214,8 +212,8 @@
               <i id="modalUserDefaultIcon" class="fa-solid fa-user text-[#86868b]"></i>
             </div>
             <div>
-              <div id="modalUserName" class="font-bold text-white text-sm">게스트</div>
-              <div id="modalUserEmail" class="text-[11px] text-[#86868b]">guest@alphastock.local</div>
+              <div id="modalUserName" class="font-bold text-white text-sm">로그인 필요</div>
+              <div id="modalUserEmail" class="text-[11px] text-[#86868b]"></div>
             </div>
           </div>
           <button onclick="logout()" id="logoutBtn" class="text-xs px-2.5 py-1 rounded-lg bg-[#2c2c2e] text-[#86868b] hover:text-[#ff453a] hidden">
@@ -225,9 +223,9 @@
 
         <!-- 1초 빠른 계정 전환 (이름 입력식 간편 로그인 지원) -->
         <div class="pt-1 space-y-2">
-          <label class="text-[11px] text-[#86868b] block font-medium">지인 간편 계정 접속 (닉네임 / 이메일)</label>
+          <label class="text-[11px] text-[#86868b] block font-medium">개발용 닉네임 로그인 (운영에서는 비활성)</label>
           <div class="flex gap-1.5">
-            <input type="text" id="quickLoginInput" placeholder="예: 친구이름 또는 이메일" 
+            <input type="text" id="quickLoginInput" placeholder="닉네임 (개발용)" 
                    class="flex-1 bg-[#0a0a0c] border border-[#2c2c2e] rounded-xl px-3 py-2 text-xs text-white placeholder-[#636366] focus:outline-none focus:border-[#30d158]">
             <button onclick="quickLogin()" class="px-3.5 py-2 rounded-xl bg-white text-black font-bold text-xs tap-press">
               접속
@@ -235,14 +233,9 @@
           </div>
         </div>
 
-        <!-- 공식 구글 원클릭 로그인 버튼 컨테이너 -->
-        <div class="pt-2 text-center">
-          <div id="g_id_onload"
-               data-client_id="YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
-               data-callback="handleGoogleCredentialResponse"
-               data-auto_prompt="false">
-          </div>
-          <div class="g_id_signin flex justify-center" data-type="standard" data-shape="pill" data-theme="filled_black" data-text="signin_with" data-size="large"></div>
+        <!-- Google 로그인: PR-A 마지막 단계에서 /api/config 의 client id 로 연동 예정 -->
+        <div id="googleLoginSlot" class="pt-2 text-center">
+          <div class="text-[11px] text-[#636366]"><i class="fa-brands fa-google mr-1"></i> Google 로그인 준비 중</div>
         </div>
       </div>
     </div>
@@ -494,13 +487,53 @@
   </div>
 
   <script>
-    // 현재 로그인된 사용자 정보 (기본값: 로컬 저장된 유저 또는 게스트)
-    let currentUser = JSON.parse(localStorage.getItem('alpha_current_user') || 'null') || {
-      user_id: 'user_' + Math.random().toString(36).substring(2, 9),
-      name: '나의 계좌',
-      email: '',
-      picture: ''
-    };
+    // 현재 로그인된 사용자 (서버 세션 기준: /api/me 로만 채워진다. null = 로그아웃 상태)
+    let currentUser = null;
+
+    // 공통 API 호출: 쿠키 세션 포함, 401 → 로그인 화면, 에러 메시지 정규화
+    class ApiError extends Error {
+      constructor(status, message) { super(message); this.status = status; }
+    }
+
+    function formatApiError(status, data) {
+      const d = data && data.detail;
+      if (status === 422) {
+        if (Array.isArray(d) && d.length) return '입력값이 올바르지 않습니다: ' + (d[0].msg || '검증 오류');
+        return '입력값이 올바르지 않습니다.';
+      }
+      if (typeof d === 'string') {
+        if (status === 503) return d || '시세를 불러오지 못해 주문할 수 없습니다. 잠시 후 다시 시도해주세요.';
+        return d;
+      }
+      if (status === 503) return '시세를 불러오지 못해 주문할 수 없습니다. 잠시 후 다시 시도해주세요.';
+      if (status === 429) return '요청이 너무 잦습니다. 잠시 후 다시 시도해주세요.';
+      return '요청 처리 중 오류가 발생했습니다. (' + status + ')';
+    }
+
+    async function api(path, { method = 'GET', body } = {}) {
+      const opts = { method, credentials: 'same-origin', headers: {} };
+      if (body !== undefined) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(body);
+      }
+      const res = await fetch(path, opts);
+      let data = null;
+      try { data = await res.json(); } catch (_) {}
+      if (res.status === 401) {
+        handleUnauthorized();
+        throw new ApiError(401, '로그인이 필요합니다.');
+      }
+      if (!res.ok) throw new ApiError(res.status, formatApiError(res.status, data));
+      return data;
+    }
+
+    function handleUnauthorized() {
+      if (currentUser === null && !document.getElementById('authModal').classList.contains('hidden')) return;
+      currentUser = null;
+      currentPortfolio = null;
+      updateUserUI();
+      openAuthModal();
+    }
 
     let currentRecs = [];
     let currentPortfolio = null;
@@ -670,24 +703,12 @@
       }
 
       try {
-        const res = await fetch('/api/portfolio/budget', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: currentUser.user_id,
-            budget: newBudget
-          })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          closeBudgetModal();
-          showToast(data.message, 'success');
-          await refreshData(true);
-        } else {
-          showToast(data.detail || '예산 설정 실패', 'error');
-        }
+        const data = await api('/api/portfolio/budget', { method: 'POST', body: { budget: newBudget } });
+        closeBudgetModal();
+        showToast(data.message || '예산이 변경되었습니다.', 'success');
+        await refreshData(true);
       } catch (err) {
-        showToast('서버 통신 오류', 'error');
+        if (err.status !== 401) showToast(err.status ? err.message : '서버 통신 오류', 'error');
       }
     }
 
@@ -804,7 +825,7 @@
       }
 
       document.getElementById('buyCashAvailableText').textContent = cash.toLocaleString();
-      document.getElementById('buyMaxQtyText').textContent = isFractional ? `${maxPossibleBuyQty:g}` : maxPossibleBuyQty;
+      document.getElementById('buyMaxQtyText').textContent = isFractional ? `${maxPossibleBuyQty}` : maxPossibleBuyQty;
 
       const changeEl = document.getElementById('buyStockChange');
       const isGain = stockItem.change_rate >= 0;
@@ -875,7 +896,7 @@
       const remaining = Math.max(0, cash - totalRequired);
       const ratio = currentPortfolio && currentPortfolio.total_asset > 0 ? ((totalCost / currentPortfolio.total_asset) * 100).toFixed(1) : 0;
 
-      const qtyDisplayStr = (currentBuyQty > 0) ? `${currentBuyQty:g}` : '0';
+      const qtyDisplayStr = (currentBuyQty > 0) ? `${currentBuyQty}` : '0';
       document.getElementById('buyQtyDisplay').textContent = qtyDisplayStr;
       document.getElementById('buyCalcQtyResult').textContent = `${qtyDisplayStr}주`;
 
@@ -926,35 +947,22 @@
       confirmBtnText.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> 주문 체결 중...';
 
       try {
-        const res = await fetch('/api/buy', {
+        const data = await api('/api/buy', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: currentUser.user_id,
+          body: {
             code: selectedRecForBuy.code,
-            name: selectedRecForBuy.name,
-            price: selectedRecForBuy.current_price,
             quantity: currentBuyQty,
             target_price: selectedRecForBuy.target_price,
             stop_loss_price: selectedRecForBuy.stop_loss_price,
-            max_hold_days: selectedRecForBuy.max_hold_days || 5,
-            logo_url: selectedRecForBuy.logo_url || ''
-          })
+            max_hold_days: selectedRecForBuy.max_hold_days || 5
+          }
         });
-
-        const data = await res.json();
-        if (res.ok) {
-          closeBuyModal();
-          showToast(data.message || '매수가 체결되었습니다!', 'success');
-          await refreshData(true);
-          switchTab('holdings');
-        } else {
-          showToast(data.detail || '매수 실패', 'error');
-          confirmBtn.disabled = false;
-          confirmBtnText.textContent = originalText;
-        }
+        closeBuyModal();
+        showToast(data.message || '매수가 체결되었습니다!', 'success');
+        await refreshData();
+        switchTab('holdings');
       } catch (err) {
-        showToast('서버 통신 오류가 발생했습니다.', 'error');
+        if (err.status !== 401) showToast(err.status ? err.message : '서버 통신 오류가 발생했습니다.', 'error');
         confirmBtn.disabled = false;
         confirmBtnText.textContent = originalText;
       }
@@ -971,11 +979,13 @@
       const modalDefaultIcon = document.getElementById('modalUserDefaultIcon');
       const logoutBtn = document.getElementById('logoutBtn');
 
-      if (nameEl) nameEl.textContent = currentUser.name;
-      if (modalName) modalName.textContent = currentUser.name;
-      if (modalEmail) modalEmail.textContent = currentUser.email || currentUser.user_id;
+      const loggedIn = !!currentUser;
+      const displayName = loggedIn ? currentUser.name : '로그인 필요';
+      if (nameEl) nameEl.textContent = displayName;
+      if (modalName) modalName.textContent = displayName;
+      if (modalEmail) modalEmail.textContent = loggedIn ? (currentUser.dev ? '개발용 계정' : (currentUser.email || '')) : '';
 
-      if (currentUser.picture) {
+      if (currentUser && currentUser.picture) {
         if (avatarEl) { avatarEl.src = currentUser.picture; avatarEl.classList.remove('hidden'); }
         if (defaultIcon) defaultIcon.classList.add('hidden');
         if (modalAvatar) { modalAvatar.src = currentUser.picture; modalAvatar.classList.remove('hidden'); }
@@ -987,7 +997,9 @@
         if (modalDefaultIcon) modalDefaultIcon.classList.remove('hidden');
       }
 
-      if (logoutBtn) logoutBtn.classList.remove('hidden');
+      if (logoutBtn) logoutBtn.classList.toggle('hidden', !loggedIn);
+      const closeBtn = document.getElementById('authCloseBtn');
+      if (closeBtn) closeBtn.classList.toggle('hidden', !loggedIn);
     }
 
     function openAuthModal() {
@@ -996,83 +1008,52 @@
     }
 
     function closeAuthModal() {
+      if (!currentUser) return; // 로그인 전에는 닫을 수 없다
       document.getElementById('authModal').classList.add('hidden');
     }
 
-    // 간편 로그인 (지인 접속용)
+    // 개발용 닉네임 로그인 (서버에서 ALLOW_DEV_LOGIN=true 일 때만 동작)
     async function quickLogin() {
       const input = document.getElementById('quickLoginInput');
       const val = input.value.trim();
       if (!val) {
-        alert('이름이나 닉네임을 입력해주세요.');
+        alert('닉네임을 입력해주세요.');
         return;
       }
-
-      currentUser = {
-        user_id: val.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
-        name: val,
-        email: val.includes('@') ? val : `${val}@alphastock.local`,
-        picture: `https://api.dicebear.com/7.x/bottts/svg?seed=${val}`
-      };
-
-      localStorage.setItem('alpha_current_user', JSON.stringify(currentUser));
-      updateUserUI();
-      closeAuthModal();
-
-      // 서버에 동기화 및 포트폴리오 로드
-      await fetch('/api/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(currentUser)
-      });
-
-      await refreshData(true);
-    }
-
-    // 공식 Google JWT 토큰 파싱 핸들러
-    function handleGoogleCredentialResponse(response) {
       try {
-        // JWT 디코딩
-        const base64Url = response.credential.split('.')[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-        const profile = JSON.parse(jsonPayload);
-
-        currentUser = {
-          user_id: profile.sub || profile.email,
-          name: profile.name,
-          email: profile.email,
-          picture: profile.picture
-        };
-
-        localStorage.setItem('alpha_current_user', JSON.stringify(currentUser));
-        updateUserUI();
+        await api('/api/auth/dev-login', { method: 'POST', body: { nickname: val } });
+        input.value = '';
+        await loadSession();
         closeAuthModal();
-
-        // 서버 동기화
-        fetch('/api/auth/google', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(currentUser)
-        }).then(() => refreshData(true));
-
+        await refreshData(true);
       } catch (err) {
-        console.error('Google Sign-In parse error:', err);
+        if (err.status === 404) showToast('개발용 로그인이 비활성화되어 있습니다.', 'error');
+        else if (err.status !== 401) showToast(err.status ? err.message : '서버 통신 오류', 'error');
       }
     }
 
-    function logout() {
-      if (!confirm('로그아웃하고 다른 계정으로 전환하시겠습니까?')) return;
-      localStorage.removeItem('alpha_current_user');
-      currentUser = {
-        user_id: 'user_' + Math.random().toString(36).substring(2, 9),
-        name: '게스트',
-        email: '',
-        picture: ''
-      };
+    // 세션 확인: 서버 쿠키가 유효하면 사용자 정보를 채운다
+    async function loadSession() {
+      try {
+        const data = await api('/api/me');
+        currentUser = { name: data.user.name, dev: !!data.user.dev, email: '', picture: '' };
+        updateUserUI();
+        return true;
+      } catch (err) {
+        currentUser = null;
+        updateUserUI();
+        return false;
+      }
+    }
+
+    async function logout() {
+      if (!confirm('로그아웃하시겠습니까?')) return;
+      try { await api('/api/auth/logout', { method: 'POST' }); } catch (_) {}
+      currentUser = null;
+      currentPortfolio = null;
+      currentRecs = [];
       updateUserUI();
-      closeAuthModal();
-      refreshData(true);
+      openAuthModal();
     }
 
     function switchTab(tab) {
@@ -1100,32 +1081,45 @@
     }
 
     async function refreshData(force = false) {
+      if (!currentUser) return;
       const refreshBtn = document.getElementById('refreshBtn');
       if (refreshBtn) refreshBtn.classList.add('animate-spin');
 
       try {
-        // 1. 유저별 포트폴리오 로드
-        const pRes = await fetch(`/api/portfolio?user_id=${encodeURIComponent(currentUser.user_id)}`);
-        const pData = await pRes.json();
+        // 1. 내 포트폴리오 로드 (사용자는 세션 쿠키로 식별)
+        const pData = await api('/api/portfolio');
         if (pData.success) {
           currentPortfolio = pData.portfolio;
           renderPortfolio(currentPortfolio);
           checkPortfolioAlerts(currentPortfolio);
         }
 
-        // 2. 추천 종목 로드
-        const budget = currentPortfolio ? currentPortfolio.cash_balance : 100000;
-        const rRes = await fetch(`/api/recommendations?budget=${budget}${force ? '&refresh=true' : ''}`);
-        const rData = await rRes.json();
-        if (rData.success) {
-          currentRecs = rData.recommendations;
-          if (rData.updated_at) {
-            document.getElementById('lastUpdated').textContent = rData.updated_at.split(' ')[1] + ' 갱신';
+        // 2. 추천 종목 로드 (강제 갱신은 서버가 60초 간격 제한 → 429 는 조용히 무시)
+        const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
+        const budget = Math.min(100000000, Math.max(10000, Math.floor(cash)));
+        try {
+          const rData = await api(`/api/recommendations?budget=${budget}${force ? '&refresh=true' : ''}`);
+          if (rData.success) {
+            currentRecs = rData.recommendations;
+            if (rData.updated_at) {
+              document.getElementById('lastUpdated').textContent = rData.updated_at.split(' ')[1] + ' 갱신';
+            }
+            renderRecommendations(currentRecs);
           }
-          renderRecommendations(currentRecs);
+        } catch (err) {
+          if (err.status === 429) {
+            if (force) showToast(err.message, 'error');
+            if (force) { try {
+              const rData = await api(`/api/recommendations?budget=${budget}`);
+              if (rData.success) { currentRecs = rData.recommendations; renderRecommendations(currentRecs); }
+            } catch (_) {} }
+          } else if (err.status !== 401) throw err;
         }
       } catch (err) {
-        console.error(err);
+        if (err.status !== 401) {
+          console.error(err);
+          if (err.status) showToast(err.message, 'error');
+        }
       } finally {
         if (refreshBtn) setTimeout(() => refreshBtn.classList.remove('animate-spin'), 350);
       }
@@ -1221,7 +1215,7 @@
 
             <div class="flex items-center justify-between text-[11px] text-[#86868b] pt-1">
               <span>보유 ${h.hold_days}일차 / 목표 ${h.target_price.toLocaleString()}원 / 손절 ${h.stop_loss_price.toLocaleString()}원</span>
-              <button onclick="executeSell('${h.code}', ${h.current_price})" class="px-3 py-1 rounded-lg bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white text-xs font-semibold tap-press transition">
+              <button onclick="executeSell('${h.code}')" class="px-3 py-1 rounded-lg bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white text-xs font-semibold tap-press transition">
                 전량 매도
               </button>
             </div>
@@ -1570,50 +1564,27 @@
     }
 
     // executeSell (보유 종목 전량 매도)
-    async function executeSell(code, currentPrice) {
-      if (!confirm('이 종목을 전량 매도하시겠습니까?')) return;
-
+    async function executeSell(code) {
+      if (!confirm('이 종목을 전량 매도하시겠습니까? (체결가는 서버 실시간 시세)')) return;
       try {
-        const res = await fetch('/api/sell', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: currentUser.user_id,
-            code: code,
-            price: currentPrice
-          })
-        });
-
-        const data = await res.json();
-        if (res.ok) {
-          showToast(data.message, 'success');
-          await refreshData();
-        } else {
-          showToast(data.detail || '매도 실패', 'error');
-        }
+        const data = await api('/api/sell', { method: 'POST', body: { code: code } });
+        showToast(data.message || '매도가 체결되었습니다.', 'success');
+        await refreshData();
       } catch (err) {
-        showToast('서버 통신 오류가 발생했습니다.', 'error');
+        if (err.status !== 401) showToast(err.status ? err.message : '서버 통신 오류가 발생했습니다.', 'error');
       }
     }
 
     async function resetAccount() {
+      if (!currentUser) { openAuthModal(); return; }
       const initAmount = currentPortfolio ? (currentPortfolio.initial_balance || 100000) : 100000;
       if (!confirm(`내 가상 계좌를 설정된 시드머니(${initAmount.toLocaleString()}원)로 초기화하시겠습니까?`)) return;
       try {
-        const res = await fetch('/api/reset', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: currentUser.user_id })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          showToast(data.message || '계좌가 초기화되었습니다.', 'success');
-          await refreshData();
-        } else {
-          showToast('초기화 실패', 'error');
-        }
+        const data = await api('/api/reset', { method: 'POST' });
+        showToast(data.message || '계좌가 초기화되었습니다.', 'success');
+        await refreshData();
       } catch (err) {
-        showToast('초기화 실패', 'error');
+        if (err.status !== 401) showToast(err.status ? err.message : '초기화 실패', 'error');
       }
     }
 
@@ -1791,7 +1762,7 @@
       });
     }
 
-    // 초기 실행
+    // 초기 실행: 세션 확인 후 로그인 여부에 따라 화면 결정
     updateUserUI();
     updateNotifBtnUI();
     setInterval(() => refreshData(false), 60000);
@@ -1802,7 +1773,10 @@
       });
     }
 
-    refreshData();
+    (async () => {
+      if (await loadSession()) await refreshData();
+      else openAuthModal();
+    })();
   </script>
 </body>
 </html>
