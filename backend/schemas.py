@@ -8,7 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 import config
 
-CODE_PATTERN = r"^\d{6}$"
+# 종목코드: 영숫자 대문자 6자리 (예: 005930, 신규 ETF 0183J0)
+CODE_PATTERN = r"^[0-9A-Z]{6}$"
 
 
 class _Strict(BaseModel):

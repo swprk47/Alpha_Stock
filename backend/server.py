@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
+import re
 import time
 from datetime import datetime
 
@@ -19,7 +20,7 @@ import config
 import orders
 from auth import (clear_session_cookie, create_session_token, dev_user_id,
                   get_current_user, set_session_cookie)
-from schemas import BuyRequest, DevLoginRequest, SellRequest, SetBudgetRequest
+from schemas import CODE_PATTERN, BuyRequest, DevLoginRequest, SellRequest, SetBudgetRequest
 
 config.validate_runtime()
 
@@ -72,8 +73,8 @@ def search_stock_api(q: str = Query(..., min_length=1)):
 @app.get("/api/stock/{code}")
 def stock_detail_api(code: str, budget: int = Query(100000, ge=config.MIN_BUDGET, le=config.MAX_BUDGET)):
     """특정 종목 상세 및 30일 인터랙티브 차트 데이터 조회 (예산 및 소수점 판별 포함)"""
-    if not (len(code) == 6 and code.isdigit()):
-        raise HTTPException(status_code=400, detail="종목코드는 6자리 숫자입니다.")
+    if not re.fullmatch(CODE_PATTERN, code):
+        raise HTTPException(status_code=400, detail="종목코드는 영문 대문자·숫자 6자리입니다.")
     detail = get_stock_detail_with_chart(code, budget=budget)
     if not detail:
         raise HTTPException(status_code=404, detail="종목 정보를 찾을 수 없습니다.")
