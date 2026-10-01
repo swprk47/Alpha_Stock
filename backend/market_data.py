@@ -201,46 +201,10 @@ def search_stocks(query: str):
         print(f"Search error: {e}")
         return []
 
-def is_stock_fractional_tradable(code: str) -> tuple[bool, str]:
-    """
-    한국예탁결제원 신탁 방식 기준, 증권사 소수점 거래 가능 종목 여부를 판별합니다.
-    - 대상: KOSPI/KOSDAQ 상장 주식 중 시가총액 약 3,000억 원 이상 우량주
-    - 제외: ETF/ETN, 관리종목, 정리매매, 동전주(1,000원 미만)
-    """
-    try:
-        url = f"https://m.stock.naver.com/api/stock/{code}/integration"
-        res = requests.get(url, headers=HEADERS, timeout=3)
-        if res.status_code != 200:
-            return False, "정보 조회 실패"
-        data = res.json()
-        end_type = data.get("stockEndType", "stock")
-        if end_type != "stock":
-            return False, "ETF/ETN 파생상품은 소수점 거래 미지원"
-
-        market_cap_str = ""
-        for item in data.get("totalInfos", []):
-            if item.get("key") == "시총":
-                market_cap_str = item.get("value", "")
-                break
-
-        # '조' 단위는 무조건 가능
-        if "조" in market_cap_str:
-            return True, f"소수점 매수 가능 (시총 {market_cap_str})"
-
-        # '억' 단위는 3,000억 이상 판별
-        if "억" in market_cap_str:
-            import re
-            m = re.search(r"([\d,]+)억", market_cap_str)
-            if m:
-                val = int(m.group(1).replace(",", ""))
-                if val >= 3000:
-                    return True, f"소수점 매수 가능 (시총 {market_cap_str})"
-                else:
-                    return False, f"소수점 미지원 (시총 3,000억 미만: {market_cap_str})"
-
-        return False, "소수점 거래 미지원 종목"
-    except Exception as e:
-        return False, f"판별 오류: {e}"
+def is_stock_fractional_tradable(code: str, broker: str = None) -> tuple[bool, str]:
+    """증권사 소수점 거래 가능 종목 목록 기준 판별 (목록에 없으면 정수만). 네트워크 호출 없음."""
+    import fractional
+    return fractional.is_fractional_tradable(code, broker or fractional.DEFAULT_BROKER)
 
 def get_stock_detail_with_chart(code: str, budget: int = 100000):
     """

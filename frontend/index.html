@@ -58,6 +58,7 @@
             <i class="fa-solid fa-chevron-down text-[8px]"></i>
           </div>
           <h1 class="text-base font-bold tracking-tight text-white leading-none">Alpha Stock</h1>
+          <div class="text-[9px] text-[#636366] leading-none mt-1">미래에셋</div>
         </div>
       </div>
     </div>
@@ -771,7 +772,7 @@
     }
 
     function openCustomBuyModal(stockItem) {
-      const isFractional = stockItem.is_fractional !== false; // 기본 판별값
+      const isFractional = stockItem.is_fractional === true; // 서버 판별값만 신뢰 (없으면 정수만)
       selectedRecForBuy = {
         code: stockItem.code,
         name: stockItem.name,
@@ -814,12 +815,12 @@
         if (isFractional) {
           fracTag.className = 'text-[9px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold';
           fracTag.textContent = '소수점 가능 ⚡';
-          document.getElementById('buyCalcModeNotice').textContent = '(소수점 매매 지원)';
+          document.getElementById('buyCalcModeNotice').textContent = '(소수점 거래 가능 종목)';
           document.getElementById('buyCalcModeNotice').className = 'text-[10px] text-[#30d158] block';
         } else {
           fracTag.className = 'text-[9px] px-1.5 py-0.5 rounded bg-[#ff9f0a]/20 text-[#ff9f0a] font-semibold';
           fracTag.textContent = '1주 단위 일반종목 🔒';
-          document.getElementById('buyCalcModeNotice').textContent = '(소수점 미지원 · 1주 단위)';
+          document.getElementById('buyCalcModeNotice').textContent = '(1주 단위 매수)';
           document.getElementById('buyCalcModeNotice').className = 'text-[10px] text-[#ff9f0a] block';
         }
       }
