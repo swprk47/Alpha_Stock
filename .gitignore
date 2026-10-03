@@ -1,4 +1,4 @@
-﻿# 바이너리
+# 바이너리
 cloudflared.exe
 
 # Python 캐시
@@ -13,6 +13,7 @@ data/portfolio.json
 # 환경변수
 .env
 .env.*
+!.env.example
 
 # IDE
 .vscode/
