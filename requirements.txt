@@ -6,3 +6,4 @@ beautifulsoup4>=4.12
 pandas>=2.0
 numpy>=1.26
 PyJWT>=2.8
+lxml>=5.0
