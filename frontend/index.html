@@ -152,7 +152,7 @@
     <!-- TAB 1: 추천 종목 섹션 (애플 주식 리스트 + 카카오페이 인터랙티브 차트) -->
     <div id="sectionRecs" class="space-y-1">
       <div class="flex justify-between items-center text-[11px] text-[#86868b] px-1 pb-1">
-        <span>10만원 맞춤 엄선 종목</span>
+        <span id="recsBudgetLabel">예산 맞춤 종목</span>
         <span id="lastUpdated">방금 갱신됨</span>
       </div>
 
@@ -812,7 +812,7 @@
         const data = await api('/api/portfolio/budget', { method: 'POST', body: { budget: newBudget } });
         closeBudgetModal();
         showToast(data.message || '예산이 변경되었습니다.', 'success');
-        await refreshData(true);
+        await refreshData(); // 강제 갱신이 아니라 새 예산 구간의 추천을 조회 (60초 제한에 걸리지 않음)
       } catch (err) {
         if (err.status !== 401) showToast(err.status ? err.message : '서버 통신 오류', 'error');
       }
@@ -1202,7 +1202,7 @@
         input.value = '';
         await loadSession();
         closeAuthModal();
-        await refreshData(true);
+        await refreshData();
       } catch (err) {
         if (err.status === 404) showToast('개발용 로그인이 비활성화되어 있습니다.', 'error');
         else if (err.status !== 401) showToast(err.status ? err.message : '서버 통신 오류', 'error');
@@ -1257,6 +1257,18 @@
       renderRecommendations(currentRecs);
     }
 
+    let recsLoaded = false;   // 추천을 한 번이라도 받았는지 (빈 목록 문구 구분용)
+    let recsUpdatedAt = '';   // 서버가 계산에 성공한 시각. 비어 있으면 시세를 못 받은 것
+
+    function applyRecsResponse(rData) {
+      currentRecs = rData.recommendations;
+      recsLoaded = true;
+      recsUpdatedAt = rData.updated_at || '';
+      document.getElementById('lastUpdated').textContent =
+        recsUpdatedAt ? recsUpdatedAt.split(' ')[1] + ' 갱신' : '시세를 불러오지 못했어요';
+      renderRecommendations(currentRecs);
+    }
+
     async function refreshData(force = false) {
       if (!currentUser) return;
       const refreshBtn = document.getElementById('refreshBtn');
@@ -1271,26 +1283,28 @@
           checkPortfolioAlerts(currentPortfolio);
         }
 
-        // 2. 추천 종목 로드 (강제 갱신은 서버가 60초 간격 제한 → 429 는 조용히 무시)
+        // 2. 추천 종목 로드. 서버는 예산 구간별 캐시를 쓰고 수량은 이 예산으로 다시 계산한다.
+        //    강제 갱신(새로고침 버튼)만 서버가 사용자별 60초 간격으로 제한하며, 429 는 남은 초 안내와 함께 현재 목록을 다시 조회한다.
         const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
         const budget = Math.min(100000000, Math.max(10000, Math.floor(cash)));
+        document.getElementById('recsBudgetLabel').textContent = `${budget.toLocaleString()}원 맞춤 종목`;
+        document.getElementById('lastUpdated').textContent = '갱신 중…';
         try {
           const rData = await api(`/api/recommendations?budget=${budget}${force ? '&refresh=true' : ''}`);
-          if (rData.success) {
-            currentRecs = rData.recommendations;
-            if (rData.updated_at) {
-              document.getElementById('lastUpdated').textContent = rData.updated_at.split(' ')[1] + ' 갱신';
-            }
-            renderRecommendations(currentRecs);
-          }
+          if (rData.success) applyRecsResponse(rData);
         } catch (err) {
           if (err.status === 429) {
             if (force) showToast(err.message, 'error');
-            if (force) { try {
+            try {
               const rData = await api(`/api/recommendations?budget=${budget}`);
-              if (rData.success) { currentRecs = rData.recommendations; renderRecommendations(currentRecs); }
-            } catch (_) {} }
-          } else if (err.status !== 401) throw err;
+              if (rData.success) applyRecsResponse(rData);
+            } catch (_) {
+              document.getElementById('lastUpdated').textContent = '갱신 실패';
+            }
+          } else {
+            document.getElementById('lastUpdated').textContent = '갱신 실패';
+            if (err.status !== 401) throw err;
+          }
         }
       } catch (err) {
         if (err.status !== 401) {
@@ -1412,9 +1426,14 @@
     function renderRecommendations(list) {
       const container = document.getElementById('recommendationCards');
       if (!list || list.length === 0) {
+        const emptyMsg = !recsLoaded
+          ? '추천 종목을 불러오는 중입니다...'
+          : (recsUpdatedAt
+              ? '이 예산에 맞는 추천 종목이 없어요. 예산을 바꾸거나 잠시 후 새로고침해 보세요.'
+              : '시세를 불러오지 못해 추천을 만들지 못했어요. 잠시 후 새로고침해 주세요.');
         container.innerHTML = `
           <div class="text-center py-12 text-[#86868b] text-xs">
-            현재 조건에 부합하는 추천 종목을 탐색 중입니다...
+            ${emptyMsg}
           </div>
         `;
         return;

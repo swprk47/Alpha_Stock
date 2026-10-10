@@ -5,6 +5,7 @@ import pytest
 
 import market_data
 import strategy
+from recommendation_cache import RecommendationCache
 
 
 def make_candles(days=60, start=10_000, step=20):
@@ -77,12 +78,11 @@ def test_recommendations_api_includes_diagnosis(client, monkeypatch):
     """/api/recommendations 응답의 각 항목에 grade·is_fractional 등이 들어 있다."""
     import server
     candles = make_candles()
-    monkeypatch.setitem(server.cache, "recommendations", [])
-    monkeypatch.setitem(server.cache, "last_updated", 0)
     monkeypatch.setattr(server, "get_market_candidate_stocks", lambda **kw: [make_rec()])
     monkeypatch.setattr(server, "get_recommendations",
                         lambda cands, provider, budget=100_000, top_n=3: [make_rec("005930"), make_rec("0183J0")])
     monkeypatch.setattr(server, "get_stock_daily_candles", lambda code, count=60: candles)
+    monkeypatch.setattr(server, "rec_cache", RecommendationCache(server._compute_bucket))
 
     r = client.get("/api/recommendations")
     assert r.status_code == 200

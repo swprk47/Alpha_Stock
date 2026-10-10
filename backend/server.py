@@ -2,6 +2,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+import math
 import os
 import re
 import time
@@ -16,6 +17,7 @@ from market_data import (
     attach_diagnosis
 )
 from strategy import get_recommendations
+from recommendation_cache import CACHE_TOP_N, RecommendationCache, recs_for_budget
 from portfolio import MultiUserPortfolioManager, OrderError
 import config
 import orders
@@ -40,31 +42,19 @@ if config.ALLOWED_ORIGINS:
 
 portfolio_mgr = MultiUserPortfolioManager(initial_balance=config.DEFAULT_INITIAL_BALANCE)
 
-cache = {
-    "last_updated": 0,
-    "recommendations": [],
-    "last_forced": {},
-}
+def _compute_bucket(bucket_budget):
+    """예산 구간의 하한 예산으로 후보를 고르고 분석·진단한 상위 CACHE_TOP_N 개 (구간 캐시에 보관)."""
+    candidates = get_market_candidate_stocks(max_price=bucket_budget, min_trading_value_m=2000)
+    recs = get_recommendations(candidates[:30], get_stock_daily_candles,
+                               budget=bucket_budget, top_n=CACHE_TOP_N)
+    return attach_diagnosis(recs, get_stock_daily_candles, budget=bucket_budget)
 
-def update_recommendations_cache(force=False, budget=100000):
-    now = time.time()
-    if not force and cache["recommendations"] and (now - cache["last_updated"] < 300):
-        return cache["recommendations"]
-
-    try:
-        candidates = get_market_candidate_stocks(max_price=50000, min_trading_value_m=2000)
-        recs = get_recommendations(candidates[:30], get_stock_daily_candles, budget=budget, top_n=3)
-        recs = attach_diagnosis(recs, get_stock_daily_candles, budget=budget)
-        cache["recommendations"] = recs
-        cache["last_updated"] = now
-        return recs
-    except Exception as e:
-        print(f"Error updating recommendations: {e}")
-        return cache["recommendations"]
+rec_cache = RecommendationCache(_compute_bucket)
+forced_at = {}   # user_id -> 마지막 강제 갱신 시각
 
 @app.on_event("startup")
 def startup_event():
-    update_recommendations_cache()
+    rec_cache.get(config.DEFAULT_INITIAL_BALANCE)
 
 @app.get("/api/search")
 def search_stock_api(q: str = Query(..., min_length=1)):
@@ -85,19 +75,23 @@ def stock_detail_api(code: str, budget: int = Query(100000, ge=config.MIN_BUDGET
 @app.get("/api/recommendations")
 def get_recs(request: Request, refresh: bool = False,
              budget: int = Query(100000, ge=config.MIN_BUDGET, le=config.MAX_BUDGET)):
-    """실시간 맞춤 스윙 추천 종목 조회. 강제 갱신은 로그인 사용자만, 간격 제한."""
+    """실시간 맞춤 스윙 추천 종목 조회. 예산 구간별 캐시를 쓰고 수량은 요청 예산으로 다시 계산한다.
+    강제 갱신은 로그인 사용자만, 사용자별 간격 제한(남은 초를 안내)."""
     if refresh:
         user = get_current_user(request)
         now = time.time()
-        last = cache["last_forced"].get(user["user_id"], 0)
-        if now - last < config.REFRESH_MIN_INTERVAL:
-            raise HTTPException(status_code=429, detail="강제 갱신은 잠시 후 다시 시도하세요.")
-        cache["last_forced"][user["user_id"]] = now
-    recs = update_recommendations_cache(force=refresh, budget=budget)
+        remaining = math.ceil(config.REFRESH_MIN_INTERVAL - (now - forced_at.get(user["user_id"], 0)))
+        if remaining > 0:
+            raise HTTPException(status_code=429,
+                                detail=f"{remaining}초 뒤에 다시 갱신할 수 있어요.",
+                                headers={"Retry-After": str(remaining)})
+        forced_at[user["user_id"]] = now
+    result = rec_cache.get(budget, force=refresh)
     return {
         "success": True,
-        "updated_at": datetime.fromtimestamp(cache["last_updated"]).strftime("%Y-%m-%d %H:%M:%S") if cache["last_updated"] else "",
-        "recommendations": recs
+        "updated_at": datetime.fromtimestamp(result.updated_at).strftime("%Y-%m-%d %H:%M:%S") if result.updated_at else "",
+        "budget_bucket": result.bucket,
+        "recommendations": recs_for_budget(result.recs, budget)
     }
 
 @app.get("/api/health")
