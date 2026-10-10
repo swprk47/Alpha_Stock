@@ -12,7 +12,8 @@ from market_data import (
     get_stock_daily_candles,
     get_realtime_stock_info,
     search_stocks,
-    get_stock_detail_with_chart
+    get_stock_detail_with_chart,
+    attach_diagnosis
 )
 from strategy import get_recommendations
 from portfolio import MultiUserPortfolioManager, OrderError
@@ -53,6 +54,7 @@ def update_recommendations_cache(force=False, budget=100000):
     try:
         candidates = get_market_candidate_stocks(max_price=50000, min_trading_value_m=2000)
         recs = get_recommendations(candidates[:30], get_stock_daily_candles, budget=budget, top_n=3)
+        recs = attach_diagnosis(recs, get_stock_daily_candles, budget=budget)
         cache["recommendations"] = recs
         cache["last_updated"] = now
         return recs

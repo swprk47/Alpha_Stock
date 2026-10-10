@@ -252,6 +252,37 @@ def get_stock_detail_with_chart(code: str, budget: int = 100000):
         "grade_reasons": grade_result["grade_reasons"]
     }
 
+def attach_diagnosis(recs, candles_provider, budget: int = 100000):
+    """
+    추천 목록의 각 항목에 AI 진단 등급(grade, grade_score, grade_reasons)과
+    소수점 판별(is_fractional, fractional_desc)을 덧붙인 새 목록을 반환합니다.
+    상세 조회(get_stock_detail_with_chart)와 같은 get_stock_grade 기준을 사용하며 strategy.py는 바꾸지 않습니다.
+    일봉 조회가 실패하거나 25일 미만이면 등급은 N/A, 소수점 판별(네트워크 없음)은 그대로 유지합니다.
+    """
+    from strategy import get_stock_grade
+
+    result = []
+    for rec in recs:
+        is_fractional, fractional_desc = is_stock_fractional_tradable(rec["code"])
+        grade_result = {"grade": "N/A", "score": 0, "grade_reasons": ["데이터 부족"]}
+        try:
+            candles = candles_provider(rec["code"], count=60)
+            if candles is not None and len(candles) >= 25:
+                grade_result = get_stock_grade(
+                    {"current_price": rec["current_price"]}, candles,
+                    budget=budget, is_fractional=is_fractional)
+        except Exception as e:
+            print(f"Diagnosis error for {rec.get('code')}: {e}")
+        result.append({
+            **rec,
+            "grade": grade_result["grade"],
+            "grade_score": grade_result["score"],
+            "grade_reasons": grade_result["grade_reasons"],
+            "is_fractional": is_fractional,
+            "fractional_desc": fractional_desc,
+        })
+    return result
+
 
 if __name__ == "__main__":
     print("Testing market_data.py...")

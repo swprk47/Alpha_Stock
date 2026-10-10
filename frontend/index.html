@@ -771,6 +771,15 @@
       }
     }
 
+    // AI 등급별 색상·문구 (구매 모달과 추천 카드가 공유)
+    const GRADE_STYLES = {
+      'S': { bg: 'bg-[#ffd60a]', text: 'text-black', border: 'border-[#ffd60a]/30', label: '강력 추천' },
+      'A': { bg: 'bg-[#30d158]', text: 'text-black', border: 'border-[#30d158]/30', label: '매수 추천' },
+      'B': { bg: 'bg-[#ff9f0a]', text: 'text-black', border: 'border-[#ff9f0a]/30', label: '중립 · 관망' },
+      'C': { bg: 'bg-[#48484a]', text: 'text-white',  border: 'border-[#48484a]/50', label: '비추천' },
+      'N/A': { bg: 'bg-[#2c2c2e]', text: 'text-[#86868b]', border: 'border-[#2c2c2e]', label: '분석 불가' }
+    };
+
     function openCustomBuyModal(stockItem) {
       const isFractional = stockItem.is_fractional === true; // 서버 판별값만 신뢰 (없으면 정수만)
       selectedRecForBuy = {
@@ -842,14 +851,7 @@
       const gradeScoreTag = document.getElementById('gradeScoreTag');
       const gradeReasonsList = document.getElementById('gradeReasonsList');
 
-      const gradeStyles = {
-        'S': { bg: 'bg-[#ffd60a]', text: 'text-black', border: 'border-[#ffd60a]/30', label: '강력 추천' },
-        'A': { bg: 'bg-[#30d158]', text: 'text-black', border: 'border-[#30d158]/30', label: '매수 추천' },
-        'B': { bg: 'bg-[#ff9f0a]', text: 'text-black', border: 'border-[#ff9f0a]/30', label: '중립 · 관망' },
-        'C': { bg: 'bg-[#48484a]', text: 'text-white',  border: 'border-[#48484a]/50', label: '비추천' },
-        'N/A': { bg: 'bg-[#2c2c2e]', text: 'text-[#86868b]', border: 'border-[#2c2c2e]', label: '분석 불가' }
-      };
-      const style = gradeStyles[grade] || gradeStyles['N/A'];
+      const style = GRADE_STYLES[grade] || GRADE_STYLES['N/A'];
 
       gradeBadge.className = `w-12 h-12 rounded-full flex items-center justify-center text-xl font-black shrink-0 ${style.bg} ${style.text}`;
       gradeBadge.textContent = grade;
@@ -1251,6 +1253,8 @@
         // 애플 주식 특유의 캡슐 뱃지 스타일
         const pillBg = isGain ? 'bg-[#ff453a]' : 'bg-[#0a84ff]';
         const isExpanded = (expandedCardIndex === idx);
+        const gradeStyle = GRADE_STYLES[item.grade] || GRADE_STYLES['N/A'];
+        const gradeLabel = GRADE_STYLES[item.grade] ? item.grade : '-';
 
         return `
           <div class="py-3 transition-all duration-150">
@@ -1264,6 +1268,8 @@
                   <div class="flex items-center gap-1.5">
                     <h3 class="font-bold text-sm text-white tracking-tight">${item.name}</h3>
                     <span class="text-[10px] text-[#86868b]">${item.market}</span>
+                    <span class="text-[10px] font-black px-1.5 py-0.5 rounded ${gradeStyle.bg} ${gradeStyle.text}" title="${gradeStyle.label}">${gradeLabel}</span>
+                    ${item.is_fractional === true ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold">소수점 가능</span>' : ''}
                   </div>
                   <div class="text-[11px] text-[#86868b] mt-0.5">
                     <span class="text-white font-medium">${s.recommended_quantity}주 매수 추천</span> · 약 ${s.total_cost.toLocaleString()}원
