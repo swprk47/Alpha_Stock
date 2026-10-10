@@ -35,6 +35,10 @@
       transform: scale(0.985);
       transition: all 0.1s ease;
     }
+    /* 수량 입력칸: 브라우저 기본 증감 화살표 숨김 (−/+ 버튼 사용) */
+    #buyQtyInput::-webkit-outer-spin-button,
+    #buyQtyInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    #buyQtyInput { -moz-appearance: textfield; appearance: textfield; }
     /* 애플 주식 스타일 슬릭 스크롤 */
     ::-webkit-scrollbar {
       display: none;
@@ -58,7 +62,11 @@
             <i class="fa-solid fa-chevron-down text-[8px]"></i>
           </div>
           <h1 class="text-base font-bold tracking-tight text-white leading-none">Alpha Stock</h1>
-          <div class="text-[9px] text-[#636366] leading-none mt-1">미래에셋</div>
+          <!-- 증권사 알약 (표시 전용). 색은 BROKER_THEMES 에서 적용 -->
+          <div id="brokerPill" class="inline-flex items-center gap-1.5 h-[22px] pl-2 pr-2.5 mt-2 rounded-full text-[10.5px] font-semibold text-[#f5f5f7] select-none" title="연결된 증권사 (표시 전용)">
+            <span id="brokerPillDot" class="w-1.5 h-1.5 rounded-full"></span>
+            <span id="brokerPillLabel"></span>
+          </div>
         </div>
       </div>
     </div>
@@ -433,7 +441,7 @@
       </div>
 
       <!-- 💡 2. 수량 기준 매수 영역 -->
-      <div id="buyQtySection" class="bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#2c2c2e] space-y-2 hidden">
+      <div id="buyQtySection" class="bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#2c2c2e] space-y-2.5 hidden">
         <div class="flex justify-between items-center text-xs">
           <span class="text-[#86868b] font-medium">매수 수량</span>
           <span class="text-[11px] text-[#86868b]">
@@ -441,26 +449,31 @@
           </span>
         </div>
 
-        <div class="flex items-center justify-between pt-1">
-          <!-- 마이너스 버튼 -->
-          <button onclick="changeBuyQty(-1)" class="w-10 h-10 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white flex items-center justify-center tap-press text-sm font-bold">
+        <div class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+          <!-- 마이너스: 1주씩 -->
+          <button id="buyQtyMinusBtn" onclick="changeBuyQty(-1)" aria-label="수량 줄이기" class="w-11 h-11 rounded-[13px] bg-[#26262a] hover:bg-[#303034] border border-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] text-white flex items-center justify-center tap-press text-sm transition">
             <i class="fa-solid fa-minus"></i>
           </button>
 
-          <!-- 수량 디스플레이 -->
-          <div class="text-center">
-            <div class="flex items-baseline justify-center gap-1">
-              <span id="buyQtyDisplay" class="text-2xl font-black text-white">1</span>
-              <span class="text-xs text-[#86868b]">주</span>
-            </div>
-            <div id="buyBudgetRatio" class="text-[10px] text-[#30d158]">예산의 0%</div>
-          </div>
+          <!-- 수량 직접 입력 (정수 중심, 소수점 가능 종목만 소수 허용) -->
+          <label id="buyQtyField" class="flex items-baseline justify-center gap-1 rounded-[14px] border border-transparent py-1 transition focus-within:border-[#30d158]/60">
+            <input type="number" id="buyQtyInput" inputmode="decimal" step="any" min="0" oninput="onBuyQtyInput(this.value)" onblur="onBuyQtyBlur()" aria-label="매수 수량"
+                   class="min-w-0 max-w-full bg-transparent text-center text-4xl font-black tracking-tight text-white focus:outline-none" style="width:1.2ch">
+            <span class="text-[13px] text-[#86868b] shrink-0">주</span>
+          </label>
 
-          <!-- 플러스 버튼 -->
-          <button onclick="changeBuyQty(1)" class="w-10 h-10 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white flex items-center justify-center tap-press text-sm font-bold">
+          <!-- 플러스: 1주씩 -->
+          <button id="buyQtyPlusBtn" onclick="changeBuyQty(1)" aria-label="수량 늘리기" class="w-11 h-11 rounded-[13px] bg-[#26262a] hover:bg-[#303034] border border-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] text-white flex items-center justify-center tap-press text-sm transition">
             <i class="fa-solid fa-plus"></i>
           </button>
         </div>
+
+        <div class="flex justify-between items-center">
+          <span id="buyBudgetRatio" class="text-[11px] text-[#30d158]">내 자산의 0%</span>
+          <button onclick="fillMaxBuyQty()" class="text-[11px] font-bold text-[#30d158] px-1 py-1.5 tap-press">최대로 채우기</button>
+        </div>
+
+        <div id="buyQtyHelp" class="text-[11px] leading-relaxed text-[#636366] border-t border-[#1c1c1e] pt-2"></div>
       </div>
 
       <!-- 결제 예상 금액 및 잔고 변동 내역 -->
@@ -540,8 +553,100 @@
     let currentPortfolio = null;
     let selectedRecForBuy = null;
     let currentBuyQty = 1;
-    let maxPossibleBuyQty = 1;
+    let maxPossibleBuyQty = 1;     // 정수 단위 최대 (표시, 최대로 채우기, −/+ 상한)
+    let maxPossibleBuyQtyFrac = 1; // 소수점 종목의 직접 입력 상한 (소수 4자리까지 살 수 있는 최대)
+    let buyQtyMsg = { kind: '', message: '' }; // 수량 입력 안내: kind = '' | 'notice' | 'error'
     let searchDebounceTimer = null;
+
+    // ===== 수량 입력 로직 (DOM 을 쓰지 않는 순수 함수. tests/test_frontend_qty.py 가 이 구간을 그대로 실행해 검증) =====
+    // <qty-logic>
+    const BUY_FEE_MULTIPLIER = 1.00015; // 매수 수수료 0.015% 포함 단가 배수
+
+    function floorQty4(x) { return Math.floor(x * 10000 + 1e-9) / 10000; }
+
+    // 현금으로 살 수 있는 정수 단위 최대 수량 (표시·"최대로 채우기"·입력 상한 모두 이 값)
+    function buyQtyMax(cash, price) {
+      if (!(price > 0) || !(cash > 0)) return 0;
+      return Math.floor(cash / (price * BUY_FEE_MULTIPLIER));
+    }
+
+    // 소수점 가능 종목이 직접 입력으로 살 수 있는 최대 수량 (소수 4자리 내림). 화면의 "최대"(정수)와 별개 상한.
+    function buyQtyMaxFractional(cash, price) {
+      if (!(price > 0) || !(cash > 0)) return 0;
+      return floorQty4(cash / (price * BUY_FEE_MULTIPLIER));
+    }
+
+    // 직접 입력값 보정. 소수점 가능 종목만 소수 4자리까지(상한 = maxFracQty), 그 외는 내림(상한 = maxQty).
+    // maxFracQty 를 생략하면 maxQty 를 상한으로 쓴다.
+    function normalizeBuyQty(raw, isFractional, maxQty, maxFracQty) {
+      const text = String(raw === null || raw === undefined ? '' : raw).trim();
+      let n = parseFloat(text);
+      if (text === '' || !isFinite(n) || n <= 0) return { qty: 0, kind: 'error', message: '수량을 입력하세요.' };
+      const cap = (isFractional && maxFracQty !== undefined) ? maxFracQty : maxQty;
+      if (!(cap > 0)) return { qty: 0, kind: 'error', message: '잔여 현금이 부족해요.' };
+      let kind = '', message = '';
+      if (isFractional) {
+        n = floorQty4(n);
+        if (n <= 0) return { qty: 0, kind: 'error', message: '0.0001주 이상 입력하세요.' };
+      } else if (n !== Math.floor(n)) {
+        n = Math.floor(n);
+        if (n <= 0) return { qty: 0, kind: 'error', message: '이 종목은 1주 단위로만 살 수 있어요.' };
+        kind = 'notice';
+        message = `이 종목은 1주 단위라 ${n}주로 적용돼요.`;
+      }
+      if (n > cap) {
+        n = cap;
+        kind = 'notice';
+        message = `가진 현금 기준 최대 ${cap}주까지만 적용돼요.`;
+      }
+      return { qty: n, kind, message };
+    }
+
+    // 입력칸에 쓸 글자. 입력 도중(typing)에는 null = 사용자가 친 글자를 그대로 둔다.
+    // (치는 도중에 "2.5" 를 "2" 로 덮어쓰면 소수점이 입력되지 않는 것처럼 보인다. 칸을 벗어날 때만 보정값을 쓴다.)
+    function buyQtyFieldText(qty, typing) {
+      if (typing) return null;
+      return qty > 0 ? String(qty) : '';
+    }
+
+    // 입력칸 너비(ch). 글자 수에 맞춰 "주" 가 숫자 바로 옆에 붙게 한다.
+    function buyQtyInputWidthCh(text) {
+      return Math.max(1, String(text === null || text === undefined ? '' : text).length) + 0.2;
+    }
+
+    // −/+ 버튼: 항상 1주 단위. 소수 수량에서는 가까운 정수로 맞춘다 (2.2781 → +3 / −2).
+    function stepBuyQty(qty, dir, maxQty) {
+      const q = Number(qty) || 0;
+      if (!(maxQty > 0)) return { qty: q, kind: 'error', message: '잔여 현금이 부족해요.' };
+      if (dir > 0) {
+        const next = Math.floor(q + 1e-9) + 1;
+        if (next > maxQty) return { qty: q, kind: 'notice', message: '최대 수량입니다.' };
+        return { qty: next, kind: '', message: '' };
+      }
+      const next = Math.ceil(q - 1e-9) - 1;
+      if (next <= 0) return { qty: q, kind: '', message: '' };
+      return { qty: next, kind: '', message: '' };
+    }
+    // </qty-logic>
+
+    // ===== 증권사 알약 (표시 전용. 전환 기능은 증권사가 더 추가될 때) =====
+    const CURRENT_BROKER = 'miraeasset'; // backend/fractional.py 의 DEFAULT_BROKER 키와 같다
+    const BROKER_LABELS = { miraeasset: '미래에셋' };
+    // 증권사 추가 시 색은 사용자가 따로 지정 (tint = 배경 틴트 RGB, dot = 점 색)
+    const BROKER_THEMES = { miraeasset: { tint: '255,159,10', dot: '#ff9f0a' } };
+
+    function renderBrokerPill() {
+      const pill = document.getElementById('brokerPill');
+      if (!pill) return;
+      const theme = BROKER_THEMES[CURRENT_BROKER];
+      document.getElementById('brokerPillLabel').textContent = BROKER_LABELS[CURRENT_BROKER] || CURRENT_BROKER;
+      if (!theme) return;
+      pill.style.background = `linear-gradient(180deg, rgba(${theme.tint},0.18), rgba(${theme.tint},0.08))`;
+      pill.style.border = `1px solid rgba(${theme.tint},0.32)`;
+      pill.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.14)';
+      pill.style.webkitBackdropFilter = pill.style.backdropFilter = 'blur(14px) saturate(1.4)';
+      document.getElementById('brokerPillDot').style.background = theme.dot;
+    }
     let expandedCardIndex = 0;
 
     // ===== 🔍 종목 검색 및 자동완성 로직 =====
@@ -800,13 +905,10 @@
       };
 
       const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
-      const unitCostWithFee = stockItem.current_price * 1.00015;
-
-      if (isFractional) {
-        maxPossibleBuyQty = Math.floor((cash / unitCostWithFee) * 10000) / 10000;
-      } else {
-        maxPossibleBuyQty = Math.floor(cash / unitCostWithFee);
-      }
+      // 최대 수량은 소수점 종목이든 아니든 정수 단위 (표시, "최대로 채우기", 입력 상한 모두 동일)
+      maxPossibleBuyQty = buyQtyMax(cash, stockItem.current_price);
+      maxPossibleBuyQtyFrac = buyQtyMaxFractional(cash, stockItem.current_price);
+      buyQtyMsg = { kind: '', message: '' };
 
       // 기본 매수 희망 금액 설정 (예: 3만원 또는 1주 가격)
       currentBuyAmount = Math.min(cash, Math.max(stockItem.current_price, 30000));
@@ -835,7 +937,7 @@
       }
 
       document.getElementById('buyCashAvailableText').textContent = cash.toLocaleString();
-      document.getElementById('buyMaxQtyText').textContent = isFractional ? `${maxPossibleBuyQty}` : maxPossibleBuyQty;
+      document.getElementById('buyMaxQtyText').textContent = maxPossibleBuyQty;
 
       const changeEl = document.getElementById('buyStockChange');
       const isGain = stockItem.change_rate >= 0;
@@ -864,6 +966,9 @@
       document.getElementById('gradeCard').className =
         `bg-[#0a0a0c] p-3.5 rounded-2xl border ${style.border} flex items-start gap-3`;
 
+      // 포커스가 남아 있어도 이전 종목의 수량이 보이지 않도록 입력칸을 새 값으로 맞춘다
+      writeBuyQtyInput();
+
       // 기본 탭은 금액 기준으로 설정
       setBuyMode('amount');
       document.getElementById('buyModal').classList.remove('hidden');
@@ -880,14 +985,83 @@
       }
     }
 
+    // 입력칸 너비를 현재 글자 수에 맞춘다 ("주" 가 숫자 옆에 붙도록)
+    function fitBuyQtyInput() {
+      const input = document.getElementById('buyQtyInput');
+      if (input) input.style.width = buyQtyInputWidthCh(input.value) + 'ch';
+    }
+
+    // 수량 입력칸을 현재 수량으로 맞춘다 (버튼·최대 채우기·칸을 벗어날 때처럼 코드가 값을 바꾸는 경우)
+    function writeBuyQtyInput() {
+      const input = document.getElementById('buyQtyInput');
+      if (!input) return;
+      input.value = buyQtyFieldText(currentBuyQty, false);
+      fitBuyQtyInput();
+    }
+
     function changeBuyQty(delta) {
-      if (maxPossibleBuyQty <= 0) return;
-      const step = (selectedRecForBuy && selectedRecForBuy.is_fractional && currentBuyQty < 1) ? 0.1 : 1;
-      const nextQty = Math.round((currentBuyQty + delta * step) * 10000) / 10000;
-      if (nextQty > 0 && nextQty <= maxPossibleBuyQty) {
-        currentBuyQty = nextQty;
-        updateBuyModalCalcs();
+      if (!selectedRecForBuy) return;
+      const r = stepBuyQty(currentBuyQty, delta, maxPossibleBuyQty);
+      currentBuyQty = r.qty;
+      buyQtyMsg = { kind: r.kind, message: r.message };
+      writeBuyQtyInput();
+      updateBuyModalCalcs();
+    }
+
+    // 직접 입력: 입력 도중에는 칸의 글자를 건드리지 않고 적용 수량·안내만 갱신한다.
+    // 보정값은 칸을 벗어날 때(onBuyQtyBlur) 반영한다.
+    function onBuyQtyInput(raw) {
+      if (!selectedRecForBuy) return;
+      const r = normalizeBuyQty(raw, selectedRecForBuy.is_fractional === true, maxPossibleBuyQty, maxPossibleBuyQtyFrac);
+      currentBuyQty = r.qty;
+      buyQtyMsg = { kind: r.kind, message: r.message };
+      fitBuyQtyInput(); // 칸의 글자는 그대로 두고 너비만 맞춘다 (buyQtyFieldText(·, true) === null)
+      updateBuyModalCalcs();
+    }
+
+    function onBuyQtyBlur() {
+      if (!selectedRecForBuy) return;
+      writeBuyQtyInput();
+    }
+
+    function fillMaxBuyQty() {
+      if (!selectedRecForBuy) return;
+      if (maxPossibleBuyQty > 0) {
+        currentBuyQty = maxPossibleBuyQty;
+        buyQtyMsg = { kind: 'notice', message: `현금으로 살 수 있는 최대 ${maxPossibleBuyQty}주예요.` };
+      } else {
+        currentBuyQty = 0;
+        buyQtyMsg = { kind: 'error', message: '잔여 현금이 부족해요.' };
       }
+      writeBuyQtyInput();
+      updateBuyModalCalcs();
+    }
+
+    // 수량 영역의 표시 상태(입력값 동기화, 안내문, 오류 테두리, −/+ 활성 여부)
+    function renderBuyQtyControls() {
+      const input = document.getElementById('buyQtyInput');
+      if (!input || !selectedRecForBuy) return;
+      if (document.activeElement !== input) writeBuyQtyInput();
+
+      document.getElementById('buyQtyField').style.borderColor =
+        buyQtyMsg.kind === 'error' ? 'rgba(255,69,58,0.6)' : '';
+
+      const isFrac = selectedRecForBuy.is_fractional === true;
+      const defaultHelp = isFrac
+        ? '숫자를 눌러 직접 입력할 수 있어요. 이 종목은 소수점 거래가 가능해서 0.0001주 단위까지 입력됩니다.'
+        : '소수점 거래가 안 되는 종목이라 1주 단위로만 살 수 있어요.';
+      const help = document.getElementById('buyQtyHelp');
+      help.textContent = buyQtyMsg.message || defaultHelp;
+      const tone = buyQtyMsg.kind === 'error' ? 'text-[#ff6a60]' : (buyQtyMsg.kind === 'notice' ? 'text-[#30d158]' : 'text-[#636366]');
+      help.className = `text-[11px] leading-relaxed border-t border-[#1c1c1e] pt-2 ${tone}`;
+
+      const minusOff = currentBuyQty <= 1;
+      const plusOff = !(maxPossibleBuyQty > 0) || (Math.floor(currentBuyQty + 1e-9) + 1 > maxPossibleBuyQty);
+      [['buyQtyMinusBtn', minusOff], ['buyQtyPlusBtn', plusOff]].forEach(([id, off]) => {
+        const btn = document.getElementById(id);
+        btn.disabled = off;
+        btn.classList.toggle('opacity-[0.35]', off);
+      });
     }
 
     function updateBuyModalCalcs() {
@@ -900,7 +1074,7 @@
       const ratio = currentPortfolio && currentPortfolio.total_asset > 0 ? ((totalCost / currentPortfolio.total_asset) * 100).toFixed(1) : 0;
 
       const qtyDisplayStr = (currentBuyQty > 0) ? `${currentBuyQty}` : '0';
-      document.getElementById('buyQtyDisplay').textContent = qtyDisplayStr;
+      renderBuyQtyControls();
       document.getElementById('buyCalcQtyResult').textContent = `${qtyDisplayStr}주`;
 
       document.getElementById('buyBudgetRatio').textContent = `내 자산의 ${ratio}%`;
@@ -1779,6 +1953,8 @@
         navigator.serviceWorker.register('/static/sw.js').catch(() => {});
       });
     }
+
+    renderBrokerPill();
 
     (async () => {
       if (await loadSession()) await refreshData();
