@@ -28,11 +28,13 @@
 4. `strategy.py`는 변경 금지 범위다. 3단계(추천 카드에 등급·소수점 포함)는 `strategy.get_recommendations`를 고치지 않고 `market_data.py`에 후처리 함수를 두는 방식으로 가야 한다
 5. `.env`는 복사해 오지 않았다. `.env.example`을 복사해 SESSION_SECRET을 새로 만든다
 6. 프론트 템플릿 리터럴에 Python 포맷(`${x:g}`) 금지(CLAUDE.md 참고)
-7. `scratch/`가 아직 `.gitignore`에 없다. 임시 파일을 만들기 전에 추가해야 한다(작은 문서성 커밋 대상, 푸시는 확인 후)
+7. `scratch/`가 아직 `.gitignore`에 없다. 임시 파일을 만들기 전에 추가해야 한다(작은 문서성 커밋 대상, 푸시는 확인 후). 당분간 임시 파일은 저장소 밖(세션 scratchpad)에 둔다
+8. **추천 점수(`analyze_stock_for_swing`)와 등급 점수(`get_stock_grade`)가 서로 다르다**(2026-10-10 합성 일봉 3,000건 시험: 추천 770건 중 356건 점수 불일치, 차이 −25~+10, 추천인데 등급 B인 경우 19건). 원인은 ① `strategy.py:83-88`의 골든크로스 `elif`가 `ma5 > ma20` 뒤에 있어 **도달 불가**(+30이 절대 안 줘짐) ② RSI 구간 배점이 다름. 결정: `strategy.py`는 PR #1 범위 밖이라 **고치지 않고**, 3단계는 카드에 등급(`grade`, `grade_reasons`)만 표시하는 방향. 버그는 별도 PR로 분리(아래 4번)
+9. 테스트(`tests/conftest.py`)의 `client` 픽스처는 `with` 없이 `TestClient`를 만들어 서버 startup 이벤트가 실행되지 않고, 시험 결과 pytest 56개 실행 중 네트워크 시도 0건. 시험으로 네트워크를 쓸 때는 mock/감시로 먼저 확인한다
 
 ## 0-3. 다음 할 일
 1. ~~0단계(환경 복구)~~ 완료
-2. 3단계(A2) 시작 여부를 사용자에게 확인. 시작 전에 `get_stock_grade` 입력 요구사항 확인과 T3(후처리 응답시간 측정)을 먼저 한다
+2. 3단계(A2) 시작 전: `get_stock_grade` 입력 요구사항 확인은 끝남(`current_price` + 일봉이면 충분, 함정 8·9 참고). 남은 것은 시험 c·d(네이버 읽기 전용 호출로 `get_recommendations` 소요 시간과 일봉 재사용 효과 측정)이며 사용자 허락 후 진행. 일봉 재사용은 `strategy.py`를 건드리지 않고 `server.py`에서 `get_stock_daily_candles`를 기억하는 제공자로 감싸 넘기는 방식을 검토 중
 3. PR #1 남은 단계(3→4→5단계, 세율 확인, 수동 확인, Google 로그인): 아래 3번 목록 참고, 한 단계씩 "진행해" 후
 4. 에이전트 데스크 설계: PROJECT_PLAN.md의 4번 작은 시험(T2~T5)부터
 
@@ -87,6 +89,7 @@
 - **PR-D `feat/beginner-guide`**: ① AI 스윙진단 쉬운 설명(현재 상태 → 전망 → 이유, 용어 괄호 풀이, 규칙 기반 템플릿, AI 호출 없음) ② 상단 오른쪽(알림·초기화 옆) `?` 버튼 → 오른쪽 슬라이드 패널(점수 산정을 초등학생 눈높이로, `strategy.py` 실제 점수 기준과 반드시 일치) ③ 같은 패널의 Q/A 탭(목적·대상·진행 이유·모의투자인 이유·주의사항). **문구 초안을 먼저 사용자 확인 후 구현**
 - **PR-B `feat/cash-ledger`**: 입출금 원장(DEPOSIT/WITHDRAW/BUY/SELL/RESET), `/api/cash/deposit`·`withdraw`, 수익률=순입금 기준, reset 이력 보존, schema_version만
 - **PR-C `chore/deploy`**: Dockerfile, 배포 문서(HTTPS, 영구 디스크, HTTP/3는 Caddy 등 앞단)
+- **PR-E `fix/strategy-score-consistency` (2026-10-10 분리 결정, PR #1 이후)**: 추천 점수와 등급 점수를 하나의 체계로 통일하고 골든크로스 도달 불가 `elif` 수정. 회귀 테스트 필수(수정을 되돌리면 테스트가 실패하는지 확인). 에이전트 데스크가 `strategy.py`에 의존하므로 그 전에 처리하는 게 좋다. 사용자 승인 후 착수
 - 순서는 PR-A 머지 후 사용자와 결정
 
 ## 5. 후보(요청 전까지 하지 않음)
