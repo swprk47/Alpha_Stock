@@ -5,8 +5,9 @@
 ## 0. 현재 상태 (2026-10-10)
 - 작업 위치: `C:\Users\47sha\source\repos\Alpha_Stock` (독립 git 저장소). 이전 작업 폴더 `...\AI\Gemini\k-stock-100k`에서 `.env`·`.venv`·`.pytest_cache`·`cloudflared.exe`를 뺀 나머지를 복사해 옴. 원본은 건드리지 않았다
 - 브랜치 `feat/auth-and-order-validation`, HEAD `92bd3a9`(lxml 추가), origin에 동일 브랜치 있음. Draft PR #1 열려 있음
-- **pytest "56 passed"는 이 PC에서 아직 확인 못 함** (`.venv` 없음 → 0단계에서 복구 예정)
-- 커밋 안 된 파일: `CLAUDE.md`, `PROGRESS.md`, `PROJECT_PLAN.md`, `START_PROMPT.md`, `step2b-lxml.patch`(이미 적용된 패치), `backend/data/users/`(테스트 데이터)
+- **0단계 완료(2026-10-10)**: `.venv`(Python 3.14.6) 생성, `requirements-dev.txt` 설치, `pytest -q` **56 passed**(경고 3개: httpx/starlette 폐기 예고, `on_event` 폐기 예고), 프론트 문법검사 통과, `.env` 생성(SESSION_SECRET 자동 생성, git 무시됨)
+- 문서 4개는 커밋 `9449e07`로 PR 브랜치에 올림(아직 push 안 함)
+- 커밋 안 된 파일: `step2b-lxml.patch`(이미 적용된 패치), `backend/data/users/`(테스트 데이터)
 - 새로 합의한 방향: PR #1 마무리 후, 문서 `6 AI Bot Trading Team - Setup Guide (Paper Mode).pdf`를 바탕으로 한 **에이전트 데스크**(모의투자 자율 운영)를 별도 브랜치로 설계·구현. 자세한 내용은 PROJECT_PLAN.md
 
 ## 0-1. 작업 규칙 (사용자 지침, 2026-10-10 합의)
@@ -30,10 +31,10 @@
 7. `scratch/`가 아직 `.gitignore`에 없다. 임시 파일을 만들기 전에 추가해야 한다(작은 문서성 커밋 대상, 푸시는 확인 후)
 
 ## 0-3. 다음 할 일
-1. **0단계(환경 복구)**: `.venv` 생성 → `requirements-dev.txt` 설치 → `pytest -q`로 56개 통과 확인 → 프론트 문법검사 → `.env` 생성. 설치·`.env` 생성은 사용자 확인 후
-2. 문서와 코드 차이 점검 결과 보고
+1. ~~0단계(환경 복구)~~ 완료
+2. 3단계(A2) 시작 여부를 사용자에게 확인. 시작 전에 `get_stock_grade` 입력 요구사항 확인과 T3(후처리 응답시간 측정)을 먼저 한다
 3. PR #1 남은 단계(3→4→5단계, 세율 확인, 수동 확인, Google 로그인): 아래 3번 목록 참고, 한 단계씩 "진행해" 후
-4. 에이전트 데스크 설계: PROJECT_PLAN.md의 단계 1(작은 시험)부터
+4. 에이전트 데스크 설계: PROJECT_PLAN.md의 4번 작은 시험(T2~T5)부터
 
 ---
 
