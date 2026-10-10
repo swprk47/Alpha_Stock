@@ -88,8 +88,8 @@ def test_sell_uses_server_price_and_pnl(client):
     r = client.post("/api/sell", json={"code": "005930", "quantity": 2})
     assert r.status_code == 200
     o = r.json()["order"]
-    # 22,000 - 수수료 3 - 세금 39 = 21,958 ; 원가 20,000
-    assert o["net"] == 21_958 and o["pnl"] == 1_958
+    # 22,000 - 수수료 3(0.015%) - 세금 44(2026년 0.20%) = 21,953 ; 원가 20,000
+    assert o["net"] == 21_953 and o["pnl"] == 1_953
 
 
 def test_oversell_400(client):

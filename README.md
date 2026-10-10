@@ -29,9 +29,9 @@ cd backend && uvicorn server:app --reload --port 8000
 | `GOOGLE_CLIENT_ID` | Google 로그인용 (연동 예정) | 빈 값 |
 | `ALLOWED_ORIGINS` | 프론트를 다른 출처에서 띄울 때만 (쉼표 구분) | 빈 값 |
 | `DATA_DIR` | 사용자 계좌 JSON 저장 위치 | `./data` |
-| `BUY_FEE_RATE` / `SELL_FEE_RATE` / `SELL_TAX_RATE` | 수수료·세율 | 0.015% / 0.015% / 0.18% |
+| `BUY_FEE_RATE` / `SELL_FEE_RATE` / `SELL_TAX_RATE` | 수수료·세율 | 0.015% / 0.015% / 0.20% |
 
-> 증권거래세율은 연도별로 바뀝니다. 2026년 적용 세율은 아직 검증하지 않았습니다(`config.py` TODO).
+> 매도 세율 0.20%는 2026년 1월 1일 이후 양도분 기준입니다(코스피: 증권거래세 0.05% + 농어촌특별세 0.15%, 코스닥: 증권거래세 0.20%. 근거는 증권거래세법 시행령 제5조). 코넥스는 0.10%이고 세율은 법령 개정으로 바뀔 수 있어 `SELL_TAX_RATE`로 조정합니다. `.env` 에 이전 값(0.0018)이 남아 있으면 그 값이 우선하니 함께 고쳐 주세요.
 
 ## 테스트
 

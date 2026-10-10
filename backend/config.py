@@ -38,8 +38,12 @@ MIN_FRACTION_STEP = 0.0001
 # 수수료 / 세금 (세율은 연도별 세법에 따라 변경 → 환경변수로 조정)
 BUY_FEE_RATE = float(os.getenv("BUY_FEE_RATE", "0.00015"))
 SELL_FEE_RATE = float(os.getenv("SELL_FEE_RATE", "0.00015"))
-# TODO: 2026년 증권거래세율 확인 후 기본값 갱신 (현재 기존 코드 값 유지)
-SELL_TAX_RATE = float(os.getenv("SELL_TAX_RATE", "0.0018"))
+# 매도 세율 합계 0.20% (2026-01-01 이후 양도분, 2026-10-10 법령 확인).
+#   코스피: 증권거래세 0.05%(1만분의 5) + 농어촌특별세 0.15% = 0.20%
+#   코스닥: 증권거래세 0.20%(1만분의 20), 농특세 없음 = 0.20%
+#   근거: 증권거래세법 시행령 제5조(탄력세율), 농어촌특별세법 제5조. 코넥스는 0.10%라 이 기본값과 다르다.
+# 세율은 법령 개정으로 바뀔 수 있으므로 환경변수로 조정한다. (.env 에 값이 있으면 이 기본값보다 우선)
+SELL_TAX_RATE = float(os.getenv("SELL_TAX_RATE", "0.0020"))
 
 # 추천 강제 갱신 최소 간격(초)
 REFRESH_MIN_INTERVAL = int(os.getenv("REFRESH_MIN_INTERVAL", "60"))
