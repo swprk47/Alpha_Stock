@@ -1,0 +1,12 @@
+# graphify 분석에서 제외 (.gitignore 와 별개로 독립 보장, 제외만 추가하고 되살리지 못한다)
+
+# 개인 매매 기록·테스트 계정 (이미 .gitignore 대상이지만 graphify 쪽에서도 독립적으로 보장)
+data/
+
+# 소수점 종목 목록(공개 데이터지만 그래프에 노이즈)
+backend/data/
+
+# 설정/비밀 가능성이 있는 파일
+.env
+.env.*
+config.yml
