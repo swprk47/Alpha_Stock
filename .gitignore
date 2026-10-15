@@ -1,4 +1,4 @@
-﻿# 바이너리
+# 바이너리
 cloudflared.exe
 
 # Python 캐시
@@ -13,6 +13,10 @@ data/portfolio.json
 # 환경변수
 .env
 .env.*
+!.env.example
+
+# graphify 산출물 (다시 만들 수 있고 이 PC 전용 절대 경로가 들어 있다)
+graphify-out/
 
 # IDE
 .vscode/
