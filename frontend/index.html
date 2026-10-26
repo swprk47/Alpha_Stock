@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Alpha Stock</title>
   
   <!-- PWA & iOS Safari Meta -->
@@ -13,9 +13,8 @@
   <link rel="apple-touch-icon" href="https://img.icons8.com/fluency/192/bullish.png">
   <meta name="theme-color" content="#000000">
 
-  <!-- Tailwind CSS & FontAwesome -->
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   
   <style>
     :root {
@@ -26,9 +25,14 @@
       padding-bottom: env(safe-area-inset-bottom);
       -webkit-tap-highlight-color: transparent;
       user-select: none;
-      background-color: #000000;
+      background:
+        radial-gradient(520px 380px at 8% 0%, rgba(70,110,255,0.26), transparent 70%),
+        radial-gradient(520px 420px at 100% 30%, rgba(150,90,255,0.20), transparent 70%),
+        radial-gradient(600px 420px at 60% 100%, rgba(20,190,170,0.18), transparent 70%),
+        #000000;
+      background-attachment: fixed;
       color: #f5f5f7;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Pretendard", sans-serif;
+      font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Malgun Gothic", sans-serif;
     }
     .tap-press:active {
       opacity: 0.75;
@@ -43,27 +47,83 @@
     ::-webkit-scrollbar {
       display: none;
     }
+    /* ===== UI 개편 공통 토큰 (docs/superpowers/specs/2026-10-26-ui-redesign-design.md 3·7·8항) ===== */
+    :root {
+      --text: #f5f5f7;
+      --text-2: #d3d6e2;
+      --text-3: #a9aebf;
+      --up: #ff6a60;
+      --up-fill: #ff453a;
+      --down: #5aa9ff;
+      --down-fill: #0a84ff;
+      --ok: #30d158;
+      --danger: #ff453a;
+    }
+    .ic { width: 1em; height: 1em; flex-shrink: 0; display: inline-block; vertical-align: -0.125em; }
+    .glass-bar {
+      background: rgba(21, 24, 34, 0.72);
+      -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+    }
+    .glass-bar-bottom {
+      background: rgba(18, 18, 24, 0.88);
+      -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+      border-top: 1px solid rgba(255, 255, 255, 0.16);
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.08);
+      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 0 24px rgba(140, 170, 255, 0.18), 0 8px 20px rgba(0, 0, 0, 0.35);
+    }
+    .glass-modal {
+      background: rgba(18, 18, 24, 0.88);
+      -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+    }
+    /* 블러를 못 쓰거나 투명 효과 줄이기를 켠 환경: 불투명 면으로 대체 */
+    @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+      .glass-bar, .glass-bar-bottom, .glass-card, .glass-modal { background: #12141c; }
+    }
+    @media (prefers-reduced-transparency: reduce) {
+      .glass-bar, .glass-bar-bottom, .glass-card, .glass-modal { background: #12141c; -webkit-backdrop-filter: none; backdrop-filter: none; }
+    }
+    /* 아이콘 움직임 6가지 중 일부: 누르는 순간(모바일)·호버(마우스) */
+    @keyframes ic-ring { 0%,100% { transform: rotate(0) } 20% { transform: rotate(18deg) } 40% { transform: rotate(-16deg) } 60% { transform: rotate(10deg) } 80% { transform: rotate(-6deg) } }
+    @keyframes ic-pulse { 0%,100% { transform: scale(1) } 50% { transform: scale(1.25) } }
+    @keyframes ic-spin { to { transform: rotate(360deg) } }
+    .m-ring:active .ic { animation: ic-ring .7s ease-in-out; }
+    .m-pulse:active .ic { animation: ic-pulse .6s ease-in-out; }
+    .m-spin:active .ic { animation: ic-spin .8s ease-in-out; }
+    @media (hover: hover) {
+      .m-ring:hover .ic { animation: ic-ring .7s ease-in-out; }
+      .m-pulse:hover .ic { animation: ic-pulse .6s ease-in-out; }
+      .m-spin:hover .ic { animation: ic-spin .8s ease-in-out; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+    }
   </style>
 </head>
-<body class="min-h-screen flex flex-col justify-between bg-black text-[#f5f5f7] pb-16">
+<body class="min-h-screen flex flex-col justify-between bg-black text-[#f5f5f7] pb-24">
 
   <!-- 상단 애플 스타일 미니멀 헤더 -->
-  <header class="sticky top-0 z-30 bg-black/85 backdrop-blur-xl border-b border-[#1c1c1e] px-4 pt-3 pb-3 flex items-center justify-between">
+  <header class="sticky top-0 z-30 glass-bar px-4 pt-3 pb-3 flex items-center justify-between">
     <div class="flex items-center gap-2.5">
       <!-- 구글 프로필 아바타 -->
-      <div id="userProfileWrap" onclick="openAuthModal()" class="cursor-pointer flex items-center gap-2 tap-press">
-        <div class="w-8 h-8 rounded-full bg-[#1c1c1e] border border-[#2c2c2e] overflow-hidden flex items-center justify-center text-xs">
+      <div id="userProfileWrap" onclick="openAuthModal()" role="button" tabindex="0" aria-label="내 계정 열기" class="cursor-pointer flex items-center gap-2 tap-press">
+        <div class="w-8 h-8 rounded-full bg-[#1c1c1e] border border-[#2c2c2e] overflow-hidden flex items-center justify-center text-[13px]">
           <img id="userAvatar" src="" class="w-full h-full object-cover hidden">
-          <i id="userDefaultIcon" class="fa-solid fa-user text-[#86868b]"></i>
+          <i id="userDefaultIcon" data-icon="circle-user-round" class="text-[#a9aebf]"></i>
         </div>
         <div>
-          <div class="text-[10px] font-semibold text-[#86868b] tracking-wider uppercase flex items-center gap-1">
+          <div class="text-[13px] font-semibold text-[#a9aebf] tracking-wider uppercase flex items-center gap-1">
             <span id="userName">로그인 필요</span>
-            <i class="fa-solid fa-chevron-down text-[8px]"></i>
+            <i data-icon="chevron-down" class="text-[13px]"></i>
           </div>
           <h1 class="text-base font-bold tracking-tight text-white leading-none">Alpha Stock</h1>
           <!-- 증권사 알약 (표시 전용). 색은 BROKER_THEMES 에서 적용 -->
-          <div id="brokerPill" class="inline-flex items-center gap-1.5 h-[22px] pl-2 pr-2.5 mt-2 rounded-full text-[10.5px] font-semibold text-[#f5f5f7] select-none" title="연결된 증권사 (표시 전용)">
+          <div id="brokerPill" class="inline-flex items-center gap-1.5 h-[22px] pl-2 pr-2.5 mt-2 rounded-full text-[13px] font-semibold text-[#f5f5f7] select-none" title="연결된 증권사 (표시 전용)">
             <span id="brokerPillDot" class="w-1.5 h-1.5 rounded-full"></span>
             <span id="brokerPillLabel"></span>
           </div>
@@ -73,14 +133,14 @@
 
     <div class="flex items-center gap-1.5">
       <!-- 알림 설정 토글 버튼 -->
-      <button onclick="toggleNotificationSetting()" id="notifBtn" class="w-8 h-8 rounded-full bg-[#1c1c1e] text-[#86868b] hover:text-white flex items-center justify-center tap-press transition relative" title="실시간 알림">
-        <i class="fa-regular fa-bell text-xs"></i>
+      <button onclick="toggleNotificationSetting()" id="notifBtn" aria-label="알림 설정" class="m-ring w-11 h-11 rounded-full bg-[#1c1c1e] text-[#a9aebf] hover:text-white flex items-center justify-center tap-press transition relative" title="실시간 알림">
+        <i data-icon="bell" class="text-[20px]"></i>
         <span id="notifBadge" class="w-1.5 h-1.5 rounded-full bg-[#30d158] absolute top-1.5 right-1.5 hidden"></span>
       </button>
-      <button onclick="refreshData(true)" id="refreshBtn" class="w-8 h-8 rounded-full bg-[#1c1c1e] text-[#86868b] hover:text-white flex items-center justify-center tap-press transition">
-        <i class="fa-solid fa-arrow-rotate-right text-xs"></i>
+      <button onclick="refreshData(true)" id="refreshBtn" aria-label="추천 새로고침" class="m-spin w-11 h-11 rounded-full bg-[#1c1c1e] text-[#a9aebf] hover:text-white flex items-center justify-center tap-press transition">
+        <i data-icon="refresh-cw" class="text-[20px]"></i>
       </button>
-      <button onclick="resetAccount()" class="text-xs px-2.5 py-1.5 rounded-full bg-[#1c1c1e] text-[#86868b] hover:text-[#ff453a] font-medium tap-press transition">
+      <button onclick="resetAccount()" class="text-[13px] px-3 min-h-[44px] rounded-full bg-[#1c1c1e] text-[#a9aebf] hover:text-[#ff6a60] font-medium tap-press transition">
         초기화
       </button>
     </div>
@@ -92,12 +152,12 @@
     <!-- 🔍 상단 미니멀 검색바 (애플 주식 스타일) -->
     <div class="relative z-20">
       <div class="flex items-center bg-[#1c1c1e] rounded-xl px-3 py-2 border border-[#2c2c2e] focus-within:border-[#30d158] transition">
-        <i class="fa-solid fa-magnifying-glass text-xs text-[#86868b] mr-2"></i>
-        <input type="text" id="searchInput" oninput="onSearchInput(event)" onfocus="onSearchFocus()"
+        <i data-icon="search" class="text-[13px] text-[#a9aebf] mr-2"></i>
+        <input type="text" id="searchInput" oninput="onSearchInput(event)" onfocus="onSearchFocus()" aria-label="종목명 또는 코드 검색"
                placeholder="종목명 또는 코드 검색 (예: 카카오, 삼전우...)" 
-               class="bg-transparent text-xs text-white placeholder-[#636366] focus:outline-none w-full">
-        <button onclick="clearSearch()" id="searchClearBtn" class="text-[#86868b] hover:text-white text-xs hidden">
-          <i class="fa-solid fa-circle-xmark"></i>
+               class="bg-transparent text-[13px] text-white placeholder-[#8e93a3] focus:outline-none w-full">
+        <button onclick="clearSearch()" id="searchClearBtn" aria-label="검색어 지우기" class="text-[#a9aebf] hover:text-white text-[16px] w-11 h-11 -mr-3 flex items-center justify-center hidden">
+          <i data-icon="circle-x"></i>
         </button>
       </div>
 
@@ -108,23 +168,23 @@
     </div>
 
     <!-- 시드 자산 요약 (애플 주식 상단 위젯 느낌 + 시드머니 변경 버튼) -->
-    <section class="py-2 bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#1c1c1e]">
+    <section class="py-2 glass-card p-3.5 rounded-2xl">
       <div class="flex justify-between items-center">
-        <span class="text-xs font-medium text-[#86868b] flex items-center gap-1.5">
+        <span class="text-[13px] font-medium text-[#a9aebf] flex items-center gap-1.5">
           <span>내 시드 자산</span>
-          <button onclick="openBudgetModal()" class="text-[10px] px-2 py-0.5 rounded-md bg-[#1c1c1e] hover:bg-[#2c2c2e] text-[#86868b] hover:text-white tap-press transition flex items-center gap-1" title="시드머니 예산 변경">
-            <i class="fa-solid fa-sliders text-[9px]"></i> 예산 설정
+          <button onclick="openBudgetModal()" class="min-h-[44px] flex items-center tap-press" title="시드머니 예산 변경">
+            <span class="text-[13px] px-3 py-1 rounded-md bg-[#1c1c1e] hover:bg-[#2c2c2e] text-[#a9aebf] hover:text-white transition flex items-center gap-1"><i data-icon="sliders-horizontal" class="text-[13px]"></i> 예산 설정</span>
           </button>
         </span>
-        <span id="accountReturnBadge" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#1c1c1e] text-[#86868b]">
+        <span id="accountReturnBadge" class="text-[13px] font-semibold px-2 py-0.5 rounded-full bg-[#1c1c1e] text-[#a9aebf]">
           +0.0%
         </span>
       </div>
 
       <div class="flex items-baseline gap-1.5 mt-1 cursor-pointer tap-press" onclick="openBudgetModal()">
         <span id="totalAsset" class="text-3xl font-extrabold tracking-tight text-white">100,000</span>
-        <span class="text-sm font-semibold text-[#86868b]">원</span>
-        <span id="seedTargetLabel" class="text-[10px] text-[#636366] ml-1">(시드 100,000원)</span>
+        <span class="text-sm font-semibold text-[#a9aebf]">원</span>
+        <span id="seedTargetLabel" class="text-[13px] text-[#a9aebf] ml-1">(시드 100,000원)</span>
       </div>
 
       <!-- 세련된 슬림 게이지 바 -->
@@ -133,25 +193,25 @@
         <div id="stockBar" class="bg-[#0a84ff] h-full transition-all duration-500" style="width: 0%"></div>
       </div>
 
-      <div class="flex justify-between text-[11px] text-[#86868b]">
+      <div class="flex justify-between text-[13px] text-[#a9aebf]">
         <div>현금 <span id="cashBalance" class="text-white font-medium ml-1">100,000원</span></div>
         <div>주식 평가 <span id="stockEval" class="text-white font-medium ml-1">0원</span></div>
       </div>
     </section>
 
     <!-- 세그먼트 컨트롤 탭 (애플 iOS Segmented Control) -->
-    <div class="flex p-1 bg-[#1c1c1e] rounded-xl text-xs font-semibold">
-      <button onclick="switchTab('recs')" id="tabRecs" class="flex-1 py-1.5 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center">
+    <div class="flex p-1 bg-[#1c1c1e] rounded-xl text-[13px] font-semibold">
+      <button onclick="switchTab('recs')" id="tabRecs" class="flex-1 py-3 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center">
         스윙 추천
       </button>
-      <button onclick="switchTab('holdings')" id="tabHoldings" class="flex-1 py-1.5 rounded-lg text-[#86868b] hover:text-white tap-press transition text-center">
+      <button onclick="switchTab('holdings')" id="tabHoldings" class="flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center">
         보유 종목 (<span id="holdingsCount">0</span>)
       </button>
     </div>
 
     <!-- TAB 1: 추천 종목 섹션 (애플 주식 리스트 + 카카오페이 인터랙티브 차트) -->
     <div id="sectionRecs" class="space-y-1">
-      <div class="flex justify-between items-center text-[11px] text-[#86868b] px-1 pb-1">
+      <div class="flex justify-between items-center text-[13px] text-[#a9aebf] px-1 pb-1">
         <span id="recsBudgetLabel">예산 맞춤 종목</span>
         <span id="lastUpdated">방금 갱신됨</span>
       </div>
@@ -172,9 +232,9 @@
     <div id="sectionHoldings" class="space-y-1 hidden">
       <div id="holdingsCards" class="divide-y divide-[#1c1c1e] border-y border-[#1c1c1e]">
         <div class="text-center py-14 px-4">
-          <i class="fa-solid fa-wallet text-3xl text-[#2c2c2e] mb-2.5"></i>
-          <p class="text-sm font-medium text-[#86868b]">보유 중인 주식이 없습니다.</p>
-          <p class="text-xs text-[#636366] mt-1">[스윙 추천] 탭에서 원하는 종목을 모의 매수해보세요.</p>
+          <i data-icon="wallet" class="text-3xl text-[#a9aebf] mb-2.5"></i>
+          <p class="text-sm font-medium text-[#a9aebf]">보유 중인 주식이 없습니다.</p>
+          <p class="text-[13px] text-[#a9aebf] mt-1">[스윙 추천] 탭에서 원하는 종목을 모의 매수해보세요.</p>
         </div>
       </div>
     </div>
@@ -182,32 +242,32 @@
   </main>
 
   <!-- 애플 스타일 플로팅 토스트 알림 (모바일 Safari 최적화) -->
-  <div id="toastNotification" class="fixed top-5 left-1/2 transform -translate-x-1/2 z-50 px-4 py-3 rounded-2xl bg-[#1c1c1e]/95 backdrop-blur-xl border border-[#2c2c2e] text-white shadow-2xl flex items-center gap-2.5 text-xs font-semibold pointer-events-none opacity-0 -translate-y-4 transition-all duration-300 max-w-[90vw]">
-    <i id="toastIcon" class="fa-solid fa-circle-check text-[#30d158] text-sm"></i>
+  <div id="toastNotification" class="fixed top-5 left-1/2 transform -translate-x-1/2 z-50 px-4 py-3 rounded-2xl glass-modal text-white shadow-2xl flex items-center gap-2.5 text-[13px] font-semibold pointer-events-none opacity-0 -translate-y-4 transition-all duration-300 max-w-[90vw]">
+    <i id="toastIcon" data-icon="circle-check" class="text-[#30d158] text-base"></i>
     <span id="toastMessage">알림</span>
   </div>
 
   <!-- 하단 팁 바 -->
-  <footer class="fixed bottom-0 left-0 right-0 z-20 bg-black/80 backdrop-blur-xl border-t border-[#1c1c1e] px-4 py-2.5 text-center">
-    <div class="max-w-md mx-auto flex items-center justify-between text-[11px] text-[#86868b]">
-      <span>💡 사파리 [공유] ➔ [홈 화면에 추가]</span>
-      <span class="text-[#86868b]">보유 기한 3~5영업일 룰</span>
+  <footer class="fixed bottom-0 left-0 right-0 z-20 glass-bar-bottom px-4 py-2.5 text-center">
+    <div class="max-w-md mx-auto flex flex-col items-center gap-0.5 text-[13px] text-[#a9aebf]">
+      <span class="flex items-center gap-1.5"><i data-icon="lightbulb"></i> 사파리 [공유] → [홈 화면에 추가]</span>
+      <span class="text-[#a9aebf]">보유 기한 3~5영업일 룰</span>
     </div>
   </footer>
 
   <!-- 구글 로그인 및 계정 관리 모달 -->
   <div id="authModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
-    <div class="bg-[#1c1c1e] w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4 shadow-2xl border-t border-[#2c2c2e]">
+    <div class="glass-modal w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4">
       <div class="flex justify-between items-center pb-2 border-b border-[#2c2c2e]">
         <h3 class="font-bold text-base text-white flex items-center gap-2">
-          <i class="fa-brands fa-google text-white"></i> 계정 연동 및 로그인
+          <i data-icon="circle-user-round" class="text-white"></i> 계정 연동 및 로그인
         </h3>
-        <button onclick="closeAuthModal()" id="authCloseBtn" class="text-[#86868b] hover:text-white text-lg">
-          <i class="fa-solid fa-xmark"></i>
+        <button onclick="closeAuthModal()" id="authCloseBtn" aria-label="닫기" class="text-[#a9aebf] hover:text-white text-lg w-11 h-11 -mr-2 flex items-center justify-center">
+          <i data-icon="x" class=""></i>
         </button>
       </div>
 
-      <div class="space-y-3 text-xs text-[#86868b]">
+      <div class="space-y-3 text-[13px] text-[#a9aebf]">
         <p class="text-white text-sm font-medium">로그인하면 나만의 10만원 시드 계좌가 유지됩니다.</p>
         <p class="leading-relaxed">
           지인들과 각자 다른 구글 계정으로 접속하여 독립적인 포트폴리오와 수익률을 운용할 수 있습니다.
@@ -218,25 +278,25 @@
           <div class="flex items-center gap-2.5">
             <div class="w-9 h-9 rounded-full bg-[#1c1c1e] overflow-hidden flex items-center justify-center">
               <img id="modalUserAvatar" src="" class="w-full h-full object-cover hidden">
-              <i id="modalUserDefaultIcon" class="fa-solid fa-user text-[#86868b]"></i>
+              <i id="modalUserDefaultIcon" data-icon="circle-user-round" class="text-[#a9aebf]"></i>
             </div>
             <div>
               <div id="modalUserName" class="font-bold text-white text-sm">로그인 필요</div>
-              <div id="modalUserEmail" class="text-[11px] text-[#86868b]"></div>
+              <div id="modalUserEmail" class="text-[13px] text-[#a9aebf]"></div>
             </div>
           </div>
-          <button onclick="logout()" id="logoutBtn" class="text-xs px-2.5 py-1 rounded-lg bg-[#2c2c2e] text-[#86868b] hover:text-[#ff453a] hidden">
+          <button onclick="logout()" id="logoutBtn" class="text-[13px] px-2.5 py-1 rounded-lg bg-[#2c2c2e] text-[#a9aebf] hover:text-[#ff6a60] hidden">
             로그아웃
           </button>
         </div>
 
         <!-- 1초 빠른 계정 전환 (이름 입력식 간편 로그인 지원) -->
         <div class="pt-1 space-y-2">
-          <label class="text-[11px] text-[#86868b] block font-medium">개발용 닉네임 로그인 (운영에서는 비활성)</label>
+          <label class="text-[13px] text-[#a9aebf] block font-medium">개발용 닉네임 로그인 (운영에서는 비활성)</label>
           <div class="flex gap-1.5">
             <input type="text" id="quickLoginInput" placeholder="닉네임 (개발용)" 
-                   class="flex-1 bg-[#0a0a0c] border border-[#2c2c2e] rounded-xl px-3 py-2 text-xs text-white placeholder-[#636366] focus:outline-none focus:border-[#30d158]">
-            <button onclick="quickLogin()" class="px-3.5 py-2 rounded-xl bg-white text-black font-bold text-xs tap-press">
+                   class="flex-1 bg-[#0a0a0c] border border-[#2c2c2e] rounded-xl px-3 py-2 text-[13px] text-white placeholder-[#8e93a3] focus:outline-none focus:border-[#30d158]">
+            <button onclick="quickLogin()" class="px-3.5 py-2 rounded-xl bg-white text-black font-bold text-[13px] tap-press">
               접속
             </button>
           </div>
@@ -244,7 +304,7 @@
 
         <!-- Google 로그인: PR-A 마지막 단계에서 /api/config 의 client id 로 연동 예정 -->
         <div id="googleLoginSlot" class="pt-2 text-center">
-          <div class="text-[11px] text-[#636366]"><i class="fa-brands fa-google mr-1"></i> Google 로그인 준비 중</div>
+          <div class="text-[13px] text-[#a9aebf]">Google 로그인 준비 중</div>
         </div>
       </div>
     </div>
@@ -252,17 +312,17 @@
 
   <!-- 알림 설정 모달 -->
   <div id="notifModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
-    <div class="bg-[#1c1c1e] w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4 shadow-2xl border-t border-[#2c2c2e]">
+    <div class="glass-modal w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4">
       <div class="flex justify-between items-center pb-2 border-b border-[#2c2c2e]">
         <h3 class="font-bold text-base text-white flex items-center gap-2">
-          <i class="fa-solid fa-bell text-[#30d158]"></i> 스마트폰 실시간 알림
+          <i data-icon="bell" class="text-[#30d158]"></i> 스마트폰 실시간 알림
         </h3>
-        <button onclick="closeNotifModal()" class="text-[#86868b] hover:text-white text-lg">
-          <i class="fa-solid fa-xmark"></i>
+        <button onclick="closeNotifModal()" aria-label="닫기" class="text-[#a9aebf] hover:text-white text-lg w-11 h-11 -mr-2 flex items-center justify-center">
+          <i data-icon="x" class=""></i>
         </button>
       </div>
 
-      <div class="space-y-3 text-xs text-[#86868b] leading-relaxed">
+      <div class="space-y-3 text-[13px] text-[#a9aebf] leading-relaxed">
         <p class="text-white text-sm font-medium">일반 앱처럼 스마트폰 화면에 배너로 바로 뜹니다.</p>
         
         <div class="space-y-2 bg-[#0a0a0c] p-3 rounded-xl border border-[#2c2c2e]">
@@ -280,8 +340,8 @@
           </div>
         </div>
 
-        <p class="text-[11px] text-[#86868b]">
-          * 아이폰에서는 사파리 [공유] ➔ [홈 화면에 추가] 후 실행해야 잠금화면 푸시 알림이 완벽 지원됩니다.
+        <p class="text-[13px] text-[#a9aebf]">
+          * 아이폰에서는 사파리 [공유] → [홈 화면에 추가] 후 실행해야 잠금화면 푸시 알림이 완벽 지원됩니다.
         </p>
       </div>
 
@@ -290,15 +350,15 @@
         <div class="flex items-center justify-between p-3.5 bg-[#0a0a0c] rounded-2xl border border-[#2c2c2e]">
           <div>
             <div class="text-sm font-bold text-white">알림 수신 상태</div>
-            <div id="notifStatusText" class="text-[11px] text-[#86868b]">알림이 꺼져 있습니다.</div>
+            <div id="notifStatusText" class="text-[13px] text-[#a9aebf]">알림이 꺼져 있습니다.</div>
           </div>
-          <button onclick="toggleNotificationSwitch()" id="notifToggleSwitch" class="w-12 h-7 rounded-full bg-[#2c2c2e] p-1 transition-colors duration-200 ease-in-out relative tap-press">
+          <button onclick="toggleNotificationSwitch()" id="notifToggleSwitch" role="switch" aria-checked="false" aria-label="알림 수신" class="w-12 h-7 rounded-full bg-[#2c2c2e] p-1 transition-colors duration-200 ease-in-out relative tap-press">
             <div id="notifToggleKnob" class="w-5 h-5 rounded-full bg-[#86868b] shadow-md transform transition-transform duration-200 ease-in-out translate-x-0"></div>
           </button>
         </div>
 
-        <button onclick="sendTestNotification()" class="w-full py-2.5 rounded-xl bg-[#1c1c1e] hover:bg-[#2c2c2e] text-[#86868b] hover:text-white font-medium text-xs tap-press transition border border-[#2c2c2e]">
-          🔔 테스트 알림 보내보기
+        <button onclick="sendTestNotification()" class="w-full min-h-[44px] rounded-xl bg-[#1c1c1e] hover:bg-[#2c2c2e] text-[#a9aebf] hover:text-white font-medium text-[13px] tap-press transition border border-[#2c2c2e] flex items-center justify-center gap-2">
+          <i data-icon="bell"></i> 테스트 알림 보내보기
         </button>
       </div>
     </div>
@@ -306,17 +366,17 @@
 
   <!-- 💰 시드머니 예산 설정 모달 -->
   <div id="budgetModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
-    <div class="bg-[#1c1c1e] w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4 shadow-2xl border-t border-[#2c2c2e]">
+    <div class="glass-modal w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4">
       <div class="flex justify-between items-center pb-2 border-b border-[#2c2c2e]">
         <h3 class="font-bold text-base text-white flex items-center gap-2">
-          <i class="fa-solid fa-sliders text-[#30d158]"></i> 시드머니 예산 설정
+          <i data-icon="sliders-horizontal" class="text-[#30d158]"></i> 시드머니 예산 설정
         </h3>
-        <button onclick="closeBudgetModal()" class="text-[#86868b] hover:text-white text-lg">
-          <i class="fa-solid fa-xmark"></i>
+        <button onclick="closeBudgetModal()" aria-label="닫기" class="text-[#a9aebf] hover:text-white text-lg w-11 h-11 -mr-2 flex items-center justify-center">
+          <i data-icon="x" class=""></i>
         </button>
       </div>
 
-      <div class="space-y-3 text-xs text-[#86868b]">
+      <div class="space-y-3 text-[13px] text-[#a9aebf]">
         <p class="text-white text-sm font-medium">나의 투자 연습 예산(시드)을 변경합니다.</p>
         <p class="leading-relaxed">
           예산 규모에 맞춰 스윙 추천 종목 및 1회 진입 추천 수량이 자동으로 최적화됩니다.
@@ -324,19 +384,19 @@
 
         <!-- 빠른 선택 칩 버튼들 -->
         <div class="grid grid-cols-4 gap-1.5 pt-1">
-          <button onclick="selectQuickBudget(100000)" class="py-2 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white font-bold text-xs tap-press">10만</button>
-          <button onclick="selectQuickBudget(300000)" class="py-2 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white font-bold text-xs tap-press">30만</button>
-          <button onclick="selectQuickBudget(500000)" class="py-2 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white font-bold text-xs tap-press">50만</button>
-          <button onclick="selectQuickBudget(1000000)" class="py-2 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white font-bold text-xs tap-press">100만</button>
+          <button onclick="selectQuickBudget(100000)" class="py-3 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white font-bold text-[13px] tap-press">10만</button>
+          <button onclick="selectQuickBudget(300000)" class="py-3 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white font-bold text-[13px] tap-press">30만</button>
+          <button onclick="selectQuickBudget(500000)" class="py-3 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white font-bold text-[13px] tap-press">50만</button>
+          <button onclick="selectQuickBudget(1000000)" class="py-3 rounded-xl bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white font-bold text-[13px] tap-press">100만</button>
         </div>
 
         <!-- 직접 입력 필드 -->
         <div class="space-y-1.5 pt-2">
-          <label class="text-[11px] text-[#86868b] block font-medium">직접 금액 입력 (원)</label>
+          <label class="text-[13px] text-[#a9aebf] block font-medium">직접 금액 입력 (원)</label>
           <div class="relative flex items-center">
             <input type="number" id="budgetAmountInput" placeholder="예: 200000" 
-                   class="w-full bg-[#0a0a0c] border border-[#2c2c2e] rounded-xl px-3.5 py-3 text-sm text-white placeholder-[#636366] focus:outline-none focus:border-[#30d158] font-bold">
-            <span class="absolute right-3.5 text-xs text-[#86868b]">원</span>
+                   class="w-full bg-[#0a0a0c] border border-[#2c2c2e] rounded-xl px-3.5 py-3 text-sm text-white placeholder-[#8e93a3] focus:outline-none focus:border-[#30d158] font-bold">
+            <span class="absolute right-3.5 text-[13px] text-[#a9aebf]">원</span>
           </div>
         </div>
 
@@ -349,14 +409,14 @@
 
   <!-- 종목 상세 및 수량/금액 조절 매수 모달 시트 (애플 액션 시트) -->
   <div id="buyModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
-    <div class="bg-[#1c1c1e] w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4 shadow-2xl border-t border-[#2c2c2e] max-h-[90vh] overflow-y-auto">
+    <div class="glass-modal w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center pb-2 border-b border-[#2c2c2e]">
         <div>
           <h3 id="buyModalTitle" class="font-bold text-base text-white">종목 매수</h3>
-          <span id="buyModalSubtitle" class="text-[11px] text-[#86868b]">시드머니 맞춤 매수 시뮬레이션</span>
+          <span id="buyModalSubtitle" class="text-[13px] text-[#a9aebf]">시드머니 맞춤 매수 시뮬레이션</span>
         </div>
-        <button onclick="closeBuyModal()" class="text-[#86868b] hover:text-white text-lg">
-          <i class="fa-solid fa-xmark"></i>
+        <button onclick="closeBuyModal()" aria-label="닫기" class="text-[#a9aebf] hover:text-white text-lg w-11 h-11 -mr-2 flex items-center justify-center">
+          <i data-icon="x" class=""></i>
         </button>
       </div>
 
@@ -365,16 +425,16 @@
         <div>
           <div class="flex items-center gap-1.5">
             <h4 id="buyStockName" class="font-bold text-base text-white">종목명</h4>
-            <span id="buyStockCode" class="text-[10px] text-[#86868b]">000000</span>
+            <span id="buyStockCode" class="text-[13px] text-[#a9aebf]">000000</span>
           </div>
           <div class="flex items-center gap-1 mt-0.5">
-            <span id="buyStockMarket" class="text-[9px] px-1.5 py-0.5 rounded bg-[#1c1c1e] text-[#86868b]">KOSPI</span>
-            <span id="buyFractionalTag" class="text-[9px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold">소수점 가능 ⚡</span>
+            <span id="buyStockMarket" class="text-[13px] px-1.5 py-0.5 rounded bg-[#1c1c1e] text-[#a9aebf]">KOSPI</span>
+            <span id="buyFractionalTag" class="text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold">소수점 가능</span>
           </div>
         </div>
         <div class="text-right">
           <div id="buyStockPrice" class="text-base font-black text-white">0원</div>
-          <div id="buyStockChange" class="text-xs font-semibold text-[#ff453a]">+0.0%</div>
+          <div id="buyStockChange" class="text-[13px] font-semibold text-[#ff6a60]">+0.0%</div>
         </div>
       </div>
 
@@ -390,61 +450,61 @@
         <!-- 텍스트 영역 -->
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-1.5 mb-1">
-            <span class="text-[10px] text-[#86868b] font-medium">AI 스윙 진단</span>
-            <span id="gradeScoreTag" class="text-[9px] px-1.5 py-0.5 rounded bg-[#2c2c2e] text-[#86868b]">-점</span>
+            <span class="text-[13px] text-[#a9aebf] font-medium flex items-center gap-1"><i data-icon="brain"></i> AI 스윙 진단</span>
+            <span id="gradeScoreTag" class="text-[13px] px-1.5 py-0.5 rounded bg-[#2c2c2e] text-[#a9aebf]">-점</span>
           </div>
           <div id="gradeReasonsList" class="space-y-0.5"></div>
         </div>
       </div>
 
       <!-- 🎛️ 매수 방식 탭: [금액으로 매수] vs [수량으로 매수] -->
-      <div class="flex p-1 bg-[#0a0a0c] rounded-xl text-xs font-semibold border border-[#2c2c2e]">
-        <button onclick="setBuyMode('amount')" id="buyModeAmountBtn" class="flex-1 py-1.5 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center">
+      <div class="flex p-1 bg-[#0a0a0c] rounded-xl text-[13px] font-semibold border border-[#2c2c2e]">
+        <button onclick="setBuyMode('amount')" id="buyModeAmountBtn" class="flex-1 py-3 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center">
           금액으로 매수
         </button>
-        <button onclick="setBuyMode('qty')" id="buyModeQtyBtn" class="flex-1 py-1.5 rounded-lg text-[#86868b] hover:text-white tap-press transition text-center">
+        <button onclick="setBuyMode('qty')" id="buyModeQtyBtn" class="flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center">
           수량으로 매수
         </button>
       </div>
 
       <!-- 💡 1. 금액 기준 매수 영역 -->
       <div id="buyAmountSection" class="bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#2c2c2e] space-y-2.5">
-        <div class="flex justify-between items-center text-xs">
-          <span class="text-[#86868b] font-medium">매수 희망 금액</span>
-          <span class="text-[11px] text-[#86868b]">
+        <div class="flex justify-between items-center text-[13px]">
+          <span class="text-[#a9aebf] font-medium">매수 희망 금액</span>
+          <span class="text-[13px] text-[#a9aebf]">
             잔여 현금 <strong id="buyCashAvailableText" class="text-white">100,000</strong>원
           </span>
         </div>
 
         <div class="relative flex items-center">
           <input type="number" id="buyAmountInput" oninput="onBuyAmountChange(this.value)" placeholder="매수할 금액 입력"
-                 class="w-full bg-[#1c1c1e] border border-[#2c2c2e] rounded-xl px-3.5 py-2.5 text-base text-white placeholder-[#636366] focus:outline-none focus:border-[#30d158] font-bold">
-          <span class="absolute right-3.5 text-xs text-[#86868b]">원</span>
+                 class="w-full bg-[#1c1c1e] border border-[#2c2c2e] rounded-xl px-3.5 py-2.5 text-base text-white placeholder-[#8e93a3] focus:outline-none focus:border-[#30d158] font-bold">
+          <span class="absolute right-3.5 text-[13px] text-[#a9aebf]">원</span>
         </div>
 
         <!-- 빠른 금액 칩 버튼들 -->
         <div class="grid grid-cols-4 gap-1.5">
-          <button onclick="setQuickBuyAmount(10000)" class="py-1.5 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-white font-medium text-[11px] tap-press">+1만</button>
-          <button onclick="setQuickBuyAmount(30000)" class="py-1.5 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-white font-medium text-[11px] tap-press">+3만</button>
-          <button onclick="setQuickBuyAmount(50000)" class="py-1.5 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-white font-medium text-[11px] tap-press">+5만</button>
-          <button onclick="setQuickBuyAmount('max')" class="py-1.5 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-[#30d158] font-bold text-[11px] tap-press">전액(최대)</button>
+          <button onclick="setQuickBuyAmount(10000)" class="py-3 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-white font-medium text-[13px] tap-press">+1만</button>
+          <button onclick="setQuickBuyAmount(30000)" class="py-3 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-white font-medium text-[13px] tap-press">+3만</button>
+          <button onclick="setQuickBuyAmount(50000)" class="py-3 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-white font-medium text-[13px] tap-press">+5만</button>
+          <button onclick="setQuickBuyAmount('max')" class="py-3 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-[#30d158] font-bold text-[13px] tap-press">전액(최대)</button>
         </div>
 
         <!-- 계산된 수량 안내 -->
-        <div class="p-2.5 rounded-xl bg-[#1c1c1e] flex justify-between items-center text-xs">
-          <span class="text-[#86868b]">자동 환산 주식 수</span>
+        <div class="p-2.5 rounded-xl bg-[#1c1c1e] flex justify-between items-center text-[13px]">
+          <span class="text-[#a9aebf]">자동 환산 주식 수</span>
           <div class="text-right">
             <span id="buyCalcQtyResult" class="text-sm font-extrabold text-[#30d158]">0주</span>
-            <span id="buyCalcModeNotice" class="text-[10px] text-[#86868b] block">(소수점 매매 적용)</span>
+            <span id="buyCalcModeNotice" class="text-[13px] text-[#a9aebf] block">(소수점 매매 적용)</span>
           </div>
         </div>
       </div>
 
       <!-- 💡 2. 수량 기준 매수 영역 -->
       <div id="buyQtySection" class="bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#2c2c2e] space-y-2.5 hidden">
-        <div class="flex justify-between items-center text-xs">
-          <span class="text-[#86868b] font-medium">매수 수량</span>
-          <span class="text-[11px] text-[#86868b]">
+        <div class="flex justify-between items-center text-[13px]">
+          <span class="text-[#a9aebf] font-medium">매수 수량</span>
+          <span class="text-[13px] text-[#a9aebf]">
             최대 <strong id="buyMaxQtyText" class="text-white">0</strong>주 가능
           </span>
         </div>
@@ -452,41 +512,41 @@
         <div class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
           <!-- 마이너스: 1주씩 -->
           <button id="buyQtyMinusBtn" onclick="changeBuyQty(-1)" aria-label="수량 줄이기" class="w-11 h-11 rounded-[13px] bg-[#26262a] hover:bg-[#303034] border border-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] text-white flex items-center justify-center tap-press text-sm transition">
-            <i class="fa-solid fa-minus"></i>
+            <i data-icon="minus" class=""></i>
           </button>
 
           <!-- 수량 직접 입력 (정수 중심, 소수점 가능 종목만 소수 허용) -->
           <label id="buyQtyField" class="flex items-baseline justify-center gap-1 rounded-[14px] border border-transparent py-1 transition focus-within:border-[#30d158]/60">
             <input type="number" id="buyQtyInput" inputmode="decimal" step="any" min="0" oninput="onBuyQtyInput(this.value)" onblur="onBuyQtyBlur()" aria-label="매수 수량"
                    class="min-w-0 max-w-full bg-transparent text-center text-4xl font-black tracking-tight text-white focus:outline-none" style="width:1.2ch">
-            <span class="text-[13px] text-[#86868b] shrink-0">주</span>
+            <span class="text-[13px] text-[#a9aebf] shrink-0">주</span>
           </label>
 
           <!-- 플러스: 1주씩 -->
           <button id="buyQtyPlusBtn" onclick="changeBuyQty(1)" aria-label="수량 늘리기" class="w-11 h-11 rounded-[13px] bg-[#26262a] hover:bg-[#303034] border border-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] text-white flex items-center justify-center tap-press text-sm transition">
-            <i class="fa-solid fa-plus"></i>
+            <i data-icon="plus" class=""></i>
           </button>
         </div>
 
         <div class="flex justify-between items-center">
-          <span id="buyBudgetRatio" class="text-[11px] text-[#30d158]">내 자산의 0%</span>
-          <button onclick="fillMaxBuyQty()" class="text-[11px] font-bold text-[#30d158] px-1 py-1.5 tap-press">최대로 채우기</button>
+          <span id="buyBudgetRatio" class="text-[13px] text-[#30d158]">내 자산의 0%</span>
+          <button onclick="fillMaxBuyQty()" class="text-[13px] font-bold text-[#30d158] px-1 py-1.5 tap-press">최대로 채우기</button>
         </div>
 
-        <div id="buyQtyHelp" class="text-[11px] leading-relaxed text-[#636366] border-t border-[#1c1c1e] pt-2"></div>
+        <div id="buyQtyHelp" class="text-[13px] leading-relaxed text-[#a9aebf] border-t border-[#1c1c1e] pt-2"></div>
       </div>
 
       <!-- 결제 예상 금액 및 잔고 변동 내역 -->
-      <div class="space-y-1.5 px-1 text-xs">
-        <div class="flex justify-between text-[#86868b]">
+      <div class="space-y-1.5 px-1 text-[13px]">
+        <div class="flex justify-between text-[#a9aebf]">
           <span>총 결제 예상 금액 (수수료 0.015% 포함)</span>
           <span id="buyTotalCost" class="text-white font-bold">0원</span>
         </div>
-        <div class="flex justify-between text-[#86868b]">
+        <div class="flex justify-between text-[#a9aebf]">
           <span>매수 후 남는 현금</span>
           <span id="buyRemainingCash" class="text-[#30d158] font-semibold">100,000원</span>
         </div>
-        <div class="flex justify-between text-[11px] text-[#86868b] pt-0.5">
+        <div class="flex justify-between text-[13px] text-[#a9aebf] pt-0.5">
           <span>스윙 룰 적용</span>
           <span>익절 +6.5% / 손절 -3.0% (5영업일)</span>
         </div>
@@ -494,7 +554,7 @@
 
       <!-- 최종 매수 체결 버튼 -->
       <button onclick="executeSelectedBuy()" id="confirmBuyBtn" class="w-full py-3.5 rounded-xl bg-[#ff453a] hover:bg-[#ff3b30] text-white font-extrabold text-sm shadow-lg shadow-[#ff453a]/25 tap-press flex items-center justify-center gap-2 transition">
-        <i class="fa-solid fa-bolt text-xs"></i>
+        <i data-icon="zap" class="text-[13px]"></i>
         <span id="confirmBuyBtnText">매수 주문 실행</span>
       </button>
     </div>
@@ -558,6 +618,52 @@
     let buyQtyMsg = { kind: '', message: '' }; // 수량 입력 안내: kind = '' | 'notice' | 'error'
     let searchDebounceTimer = null;
 
+    // ===== 아이콘 (Lucide 원본 인라인 SVG, ISC 라이선스. 명세 8항. tests/test_frontend_foundation.py 가 이 구간을 검증) =====
+    // <icons>
+    const ICONS = {
+      'search': '<path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/>',
+      'refresh-cw': '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+      'bell': '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
+      'bell-off': '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M17 17H4a1 1 0 0 1-.74-1.673C4.59 13.956 6 12.499 6 8a6 6 0 0 1 .258-1.742"/><path d="m2 2 20 20"/><path d="M8.668 3.01A6 6 0 0 1 18 8c0 2.687.77 4.653 1.707 6.05"/>',
+      'circle-user-round': '<path d="M17.925 20.056a6 6 0 0 0-11.851.001"/><circle cx="12" cy="11" r="4"/><circle cx="12" cy="12" r="10"/>',
+      'chevron-down': '<path d="m6 9 6 6 6-6"/>',
+      'x': '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+      'circle-x': '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
+      'minus': '<path d="M5 12h14"/>',
+      'plus': '<path d="M5 12h14"/><path d="M12 5v14"/>',
+      'zap': '<path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"/>',
+      'sliders-horizontal': '<path d="M10 5H3"/><path d="M12 19H3"/><path d="M14 3v4"/><path d="M16 17v4"/><path d="M21 12h-9"/><path d="M21 19h-5"/><path d="M21 5h-7"/><path d="M8 10v4"/><path d="M8 12H3"/>',
+      'wallet': '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
+      'triangle-alert': '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+      'brain': '<path d="M12 18V5"/><path d="M15 13a4.17 4.17 0 01-3-4 4.17 4.17 0 01-3 4"/><path d="M17.707 6.294A3 3 0 1012 5a3 3 0 10-5.707 1.294"/><path d="M17.996 5.125a4 4 0 012.526 5.77"/><path d="M18 18a4 4 0 002-7.465"/><path d="M19.967 17.482a4 4 0 11-7.967.517 4 4 0 11-7.967-.517"/><path d="M6 18a4 4 0 01-2-7.465"/><path d="M6.004 5.125a4 4 0 00-2.526 5.77"/>',
+      'lightbulb': '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>',
+      'info': '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+      'circle-check': '<circle cx="12" cy="12" r="10"/><path d="m16 9-5.5 5.5L8 12"/>',
+      'circle-alert': '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
+      'loader-circle': '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
+      'target': '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+      'hourglass': '<path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/>',
+      'timer': '<line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>',
+    };
+
+    function icon(name, cls = '') {
+      const body = ICONS[name];
+      if (!body) return '';
+      return '<svg class="ic' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + body + '</svg>';
+    }
+
+    // <i data-icon="이름" class="..."></i> 자리표시를 SVG 로 바꾼다 (id·class 는 유지)
+    function hydrateIcons(root) {
+      root.querySelectorAll('i[data-icon]').forEach(el => {
+        const tpl = document.createElement('template');
+        tpl.innerHTML = icon(el.dataset.icon, el.className);
+        const svg = tpl.content.firstChild;
+        if (!svg) return;
+        if (el.id) svg.id = el.id;
+        el.replaceWith(svg);
+      });
+    }
+    // </icons>
     // ===== 수량 입력 로직 (DOM 을 쓰지 않는 순수 함수. tests/test_frontend_qty.py 가 이 구간을 그대로 실행해 검증) =====
     // <qty-logic>
     const BUY_FEE_MULTIPLIER = 1.00015; // 매수 수수료 0.015% 포함 단가 배수
@@ -679,7 +785,7 @@
 
       clearBtn.classList.remove('hidden');
       dropdown.classList.remove('hidden');
-      dropdown.innerHTML = '<div class="p-3 text-center text-xs text-[#86868b]"><i class="fa-solid fa-spinner animate-spin mr-1"></i> 검색 중...</div>';
+      dropdown.innerHTML = '<div class="p-3 text-center text-[13px] text-[#a9aebf]"><i data-icon="loader-circle" class="animate-spin mr-1"></i> 검색 중...</div>';
 
       clearTimeout(searchDebounceTimer);
       searchDebounceTimer = setTimeout(async () => {
@@ -690,7 +796,7 @@
             renderSearchResults(data.results);
           }
         } catch (err) {
-          dropdown.innerHTML = '<div class="p-3 text-center text-xs text-[#86868b]">검색 오류가 발생했습니다.</div>';
+          dropdown.innerHTML = '<div class="p-3 text-center text-[13px] text-[#a9aebf]">검색 오류가 발생했습니다.</div>';
         }
       }, 200);
     }
@@ -698,43 +804,43 @@
     function renderSearchResults(results) {
       const dropdown = document.getElementById('searchDropdown');
       if (!results || results.length === 0) {
-        dropdown.innerHTML = '<div class="p-3 text-center text-xs text-[#86868b]">검색 결과가 없습니다.</div>';
+        dropdown.innerHTML = '<div class="p-3 text-center text-[13px] text-[#a9aebf]">검색 결과가 없습니다.</div>';
         return;
       }
 
       dropdown.innerHTML = results.map(item => {
         const isGain = item.change_rate >= 0;
         const changeSign = isGain ? '+' : '';
-        const changeClass = isGain ? 'text-[#ff453a]' : 'text-[#0a84ff]';
+        const changeClass = isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]';
 
         let budgetBadge = '';
         if (item.budget_status === 'FIT_SPLIT') {
-          budgetBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-[#30d158]/15 text-[#30d158] font-bold">10만원 적합</span>';
+          budgetBadge = '<span class="text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/15 text-[#30d158] font-bold">10만원 적합</span>';
         } else if (item.budget_status === 'FIT_SINGLE') {
-          budgetBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-[#ffd60a]/15 text-[#ffd60a] font-bold">1주 가능</span>';
+          budgetBadge = '<span class="text-[13px] px-1.5 py-0.5 rounded bg-[#ffd60a]/15 text-[#ffd60a] font-bold">1주 가능</span>';
         } else {
-          budgetBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-[#86868b]/20 text-[#86868b]">10만 초과</span>';
+          budgetBadge = '<span class="text-[13px] px-1.5 py-0.5 rounded bg-[#86868b]/20 text-[#a9aebf]">10만 초과</span>';
         }
 
         return `
           <div onclick="selectSearchResult('${item.code}')" class="p-3 flex items-center justify-between hover:bg-[#2c2c2e] cursor-pointer tap-press transition">
             <div class="flex items-center gap-2.5">
               <div class="w-7 h-7 rounded-full bg-[#2c2c2e] overflow-hidden flex items-center justify-center p-1">
-                <img src="${item.logo_url}" onerror="this.parentElement.innerHTML='<span class=\\'text-[10px] text-white font-bold\\'>${item.name.charAt(0)}</span>'" class="w-full h-full object-contain">
+                <img src="${item.logo_url}" onerror="this.parentElement.innerHTML='<span class=\\'text-[13px] text-white font-bold\\'>${item.name.charAt(0)}</span>'" class="w-full h-full object-contain">
               </div>
               <div>
                 <div class="flex items-center gap-1.5">
-                  <h4 class="font-bold text-xs text-white">${item.name}</h4>
-                  <span class="text-[9px] text-[#86868b]">${item.market}</span>
+                  <h4 class="font-bold text-[13px] text-white">${item.name}</h4>
+                  <span class="text-[13px] text-[#a9aebf]">${item.market}</span>
                   ${budgetBadge}
                 </div>
-                <div class="text-[10px] text-[#86868b]">${item.code}</div>
+                <div class="text-[13px] text-[#a9aebf]">${item.code}</div>
               </div>
             </div>
 
             <div class="text-right">
-              <div class="text-xs font-bold text-white">${item.current_price.toLocaleString()}원</div>
-              <div class="text-[10px] font-semibold ${changeClass}">${changeSign}${item.change_rate}%</div>
+              <div class="text-[13px] font-bold text-white">${item.current_price.toLocaleString()}원</div>
+              <div class="text-[13px] font-semibold ${changeClass}">${changeSign}${item.change_rate}%</div>
             </div>
           </div>
         `;
@@ -763,13 +869,12 @@
       if (!toast) return;
 
       toastMsg.textContent = message;
-      if (type === 'success') {
-        toastIcon.className = 'fa-solid fa-circle-check text-[#30d158] text-sm';
-      } else if (type === 'error') {
-        toastIcon.className = 'fa-solid fa-circle-exclamation text-[#ff453a] text-sm';
-      } else {
-        toastIcon.className = 'fa-solid fa-circle-info text-[#0a84ff] text-sm';
-      }
+      const toastKind = {
+        success: ['circle-check', 'text-[#30d158]'],
+        error: ['circle-alert', 'text-[#ff6a60]'],
+        info: ['info', 'text-[#5aa9ff]']
+      }[type] || ['info', 'text-[#5aa9ff]'];
+      toastIcon.outerHTML = icon(toastKind[0], toastKind[1] + ' text-base').replace('<svg ', '<svg id="toastIcon" ');
 
       toast.classList.remove('opacity-0', '-translate-y-4', 'pointer-events-none');
       toast.classList.add('opacity-100', 'translate-y-0');
@@ -826,13 +931,13 @@
       const qtySec = document.getElementById('buyQtySection');
 
       if (mode === 'amount') {
-        amountBtn.className = 'flex-1 py-1.5 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
-        qtyBtn.className = 'flex-1 py-1.5 rounded-lg text-[#86868b] hover:text-white tap-press transition text-center';
+        amountBtn.className = 'flex-1 py-3 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
+        qtyBtn.className = 'flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center';
         amountSec.classList.remove('hidden');
         qtySec.classList.add('hidden');
       } else {
-        amountBtn.className = 'flex-1 py-1.5 rounded-lg text-[#86868b] hover:text-white tap-press transition text-center';
-        qtyBtn.className = 'flex-1 py-1.5 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
+        amountBtn.className = 'flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center';
+        qtyBtn.className = 'flex-1 py-3 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
         amountSec.classList.add('hidden');
         qtySec.classList.remove('hidden');
       }
@@ -882,7 +987,7 @@
       'A': { bg: 'bg-[#30d158]', text: 'text-black', border: 'border-[#30d158]/30', label: '매수 추천' },
       'B': { bg: 'bg-[#ff9f0a]', text: 'text-black', border: 'border-[#ff9f0a]/30', label: '중립 · 관망' },
       'C': { bg: 'bg-[#48484a]', text: 'text-white',  border: 'border-[#48484a]/50', label: '비추천' },
-      'N/A': { bg: 'bg-[#2c2c2e]', text: 'text-[#86868b]', border: 'border-[#2c2c2e]', label: '분석 불가' }
+      'N/A': { bg: 'bg-[#2c2c2e]', text: 'text-[#a9aebf]', border: 'border-[#2c2c2e]', label: '분석 불가' }
     };
 
     function openCustomBuyModal(stockItem) {
@@ -924,15 +1029,15 @@
       const fracTag = document.getElementById('buyFractionalTag');
       if (fracTag) {
         if (isFractional) {
-          fracTag.className = 'text-[9px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold';
-          fracTag.textContent = '소수점 가능 ⚡';
+          fracTag.className = 'text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold';
+          fracTag.textContent = '소수점 가능';
           document.getElementById('buyCalcModeNotice').textContent = '(소수점 거래 가능 종목)';
-          document.getElementById('buyCalcModeNotice').className = 'text-[10px] text-[#30d158] block';
+          document.getElementById('buyCalcModeNotice').className = 'text-[13px] text-[#30d158] block';
         } else {
-          fracTag.className = 'text-[9px] px-1.5 py-0.5 rounded bg-[#ff9f0a]/20 text-[#ff9f0a] font-semibold';
-          fracTag.textContent = '1주 단위 일반종목 🔒';
+          fracTag.className = 'text-[13px] px-1.5 py-0.5 rounded bg-[#ff9f0a]/20 text-[#ff9f0a] font-semibold';
+          fracTag.textContent = '1주 단위 일반종목';
           document.getElementById('buyCalcModeNotice').textContent = '(1주 단위 매수)';
-          document.getElementById('buyCalcModeNotice').className = 'text-[10px] text-[#ff9f0a] block';
+          document.getElementById('buyCalcModeNotice').className = 'text-[13px] text-[#ff9f0a] block';
         }
       }
 
@@ -942,7 +1047,7 @@
       const changeEl = document.getElementById('buyStockChange');
       const isGain = stockItem.change_rate >= 0;
       changeEl.textContent = (isGain ? '+' : '') + stockItem.change_rate + '%';
-      changeEl.className = isGain ? 'text-xs font-semibold text-[#ff453a]' : 'text-xs font-semibold text-[#0a84ff]';
+      changeEl.className = isGain ? 'text-[13px] font-semibold text-[#ff6a60]' : 'text-[13px] font-semibold text-[#5aa9ff]';
 
       // ── AI 등급 카드 렌더링 ──────────────────────────────
       const grade = stockItem.grade || 'N/A';
@@ -960,8 +1065,8 @@
       gradeScoreTag.textContent = grade === 'N/A' ? style.label : `${gradeScore}점 · ${style.label}`;
 
       gradeReasonsList.innerHTML = gradeReasons.map(r =>
-        `<div class="text-[11px] text-[#ebebf5] leading-tight">· ${r}</div>`
-      ).join('') || '<div class="text-[11px] text-[#86868b]">근거 없음</div>';
+        `<div class="text-[13px] text-[#ebebf5] leading-tight">· ${r}</div>`
+      ).join('') || '<div class="text-[13px] text-[#a9aebf]">근거 없음</div>';
 
       document.getElementById('gradeCard').className =
         `bg-[#0a0a0c] p-3.5 rounded-2xl border ${style.border} flex items-start gap-3`;
@@ -1052,8 +1157,8 @@
         : '소수점 거래가 안 되는 종목이라 1주 단위로만 살 수 있어요.';
       const help = document.getElementById('buyQtyHelp');
       help.textContent = buyQtyMsg.message || defaultHelp;
-      const tone = buyQtyMsg.kind === 'error' ? 'text-[#ff6a60]' : (buyQtyMsg.kind === 'notice' ? 'text-[#30d158]' : 'text-[#636366]');
-      help.className = `text-[11px] leading-relaxed border-t border-[#1c1c1e] pt-2 ${tone}`;
+      const tone = buyQtyMsg.kind === 'error' ? 'text-[#ff6a60]' : (buyQtyMsg.kind === 'notice' ? 'text-[#30d158]' : 'text-[#a9aebf]');
+      help.className = `text-[13px] leading-relaxed border-t border-[#1c1c1e] pt-2 ${tone}`;
 
       const minusOff = currentBuyQty <= 1;
       const plusOff = !(maxPossibleBuyQty > 0) || (Math.floor(currentBuyQty + 1e-9) + 1 > maxPossibleBuyQty);
@@ -1086,14 +1191,14 @@
 
       if (currentBuyQty <= 0 || totalRequired > cash) {
         confirmBtn.disabled = true;
-        confirmBtn.className = 'w-full py-3.5 rounded-xl bg-[#2c2c2e] text-[#86868b] font-extrabold text-sm flex items-center justify-center gap-2 cursor-not-allowed';
+        confirmBtn.className = 'w-full py-3.5 rounded-xl bg-[#2c2c2e] text-[#a9aebf] font-extrabold text-sm flex items-center justify-center gap-2 cursor-not-allowed';
         confirmBtnText.textContent = totalRequired > cash ? '잔여 현금 부족' : '매수 수량 0';
       } else {
         confirmBtn.disabled = false;
         const isGradeC = selectedRecForBuy && selectedRecForBuy.grade === 'C';
         if (isGradeC) {
           confirmBtn.className = 'w-full py-3.5 rounded-xl bg-[#48484a] hover:bg-[#636366] text-white font-extrabold text-sm tap-press flex items-center justify-center gap-2 transition';
-          confirmBtnText.textContent = `⚠️ 비추천 종목 ${qtyDisplayStr}주 매수`;
+          confirmBtnText.textContent = `비추천 종목 ${qtyDisplayStr}주 매수`;
         } else {
           confirmBtn.className = 'w-full py-3.5 rounded-xl bg-[#ff453a] hover:bg-[#ff3b30] text-white font-extrabold text-sm shadow-lg shadow-[#ff453a]/25 tap-press flex items-center justify-center gap-2 transition';
           confirmBtnText.textContent = `${qtyDisplayStr}주 매수 주문 실행 (${totalCost.toLocaleString()}원)`;
@@ -1121,7 +1226,7 @@
       const originalText = confirmBtnText.textContent;
 
       confirmBtn.disabled = true;
-      confirmBtnText.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> 주문 체결 중...';
+      confirmBtnText.innerHTML = '<i data-icon="loader-circle" class="animate-spin"></i> 주문 체결 중...';
 
       try {
         const data = await api('/api/buy', {
@@ -1240,13 +1345,13 @@
       const secHoldings = document.getElementById('sectionHoldings');
 
       if (tab === 'recs') {
-        recsBtn.className = 'flex-1 py-1.5 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
-        holdingsBtn.className = 'flex-1 py-1.5 rounded-lg text-[#86868b] hover:text-white tap-press transition text-center';
+        recsBtn.className = 'flex-1 py-3 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
+        holdingsBtn.className = 'flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center';
         secRecs.classList.remove('hidden');
         secHoldings.classList.add('hidden');
       } else {
-        recsBtn.className = 'flex-1 py-1.5 rounded-lg text-[#86868b] hover:text-white tap-press transition text-center';
-        holdingsBtn.className = 'flex-1 py-1.5 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
+        recsBtn.className = 'flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center';
+        holdingsBtn.className = 'flex-1 py-3 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
         secRecs.classList.add('hidden');
         secHoldings.classList.remove('hidden');
       }
@@ -1329,13 +1434,13 @@
       const returnBadge = document.getElementById('accountReturnBadge');
       const ret = data.total_return_pct;
       if (ret > 0) {
-        returnBadge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-[#ff453a]/20 text-[#ff453a]';
+        returnBadge.className = 'text-[13px] font-semibold px-2 py-0.5 rounded-full bg-[#ff453a]/20 text-[#ff6a60]';
         returnBadge.textContent = `+${ret}%`;
       } else if (ret < 0) {
-        returnBadge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-[#0a84ff]/20 text-[#0a84ff]';
+        returnBadge.className = 'text-[13px] font-semibold px-2 py-0.5 rounded-full bg-[#0a84ff]/20 text-[#5aa9ff]';
         returnBadge.textContent = `${ret}%`;
       } else {
-        returnBadge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-[#1c1c1e] text-[#86868b]';
+        returnBadge.className = 'text-[13px] font-semibold px-2 py-0.5 rounded-full bg-[#1c1c1e] text-[#a9aebf]';
         returnBadge.textContent = `0.0%`;
       }
 
@@ -1351,9 +1456,9 @@
       if (holdings.length === 0) {
         container.innerHTML = `
           <div class="text-center py-14 px-4">
-            <i class="fa-solid fa-wallet text-3xl text-[#2c2c2e] mb-2.5"></i>
-            <p class="text-sm font-medium text-[#86868b]">보유 중인 주식이 없습니다.</p>
-            <p class="text-xs text-[#636366] mt-1">[스윙 추천] 탭에서 원하는 종목을 모의 매수해보세요.</p>
+            <i data-icon="wallet" class="text-3xl text-[#a9aebf] mb-2.5"></i>
+            <p class="text-sm font-medium text-[#a9aebf]">보유 중인 주식이 없습니다.</p>
+            <p class="text-[13px] text-[#a9aebf] mt-1">[스윙 추천] 탭에서 원하는 종목을 모의 매수해보세요.</p>
           </div>
         `;
         return;
@@ -1367,11 +1472,11 @@
 
         let statusBadge = '';
         if (h.signal_status === 'TARGET_REACHED') {
-          statusBadge = '<span class="bg-[#ff453a] text-white text-[10px] font-bold px-2 py-0.5 rounded-md">🎉 목표가 도달 (익절)</span>';
+          statusBadge = '<span class="bg-[#ff453a] text-white text-[13px] font-bold px-2 py-0.5 rounded-md inline-flex items-center gap-1"><i data-icon="target"></i> 목표가 도달 (익절)</span>';
         } else if (h.signal_status === 'STOP_LOSS_REACHED') {
-          statusBadge = '<span class="bg-[#0a84ff] text-white text-[10px] font-bold px-2 py-0.5 rounded-md">⚠️ 손절선 터치</span>';
+          statusBadge = '<span class="bg-[#0a84ff] text-white text-[13px] font-bold px-2 py-0.5 rounded-md inline-flex items-center gap-1"><i data-icon="triangle-alert"></i> 손절선 터치</span>';
         } else if (h.signal_status === 'TIME_EXPIRED') {
-          statusBadge = '<span class="bg-[#ffd60a] text-black text-[10px] font-bold px-2 py-0.5 rounded-md">⏳ 5일 만료</span>';
+          statusBadge = '<span class="bg-[#ffd60a] text-black text-[13px] font-bold px-2 py-0.5 rounded-md inline-flex items-center gap-1"><i data-icon="hourglass"></i> 5일 만료</span>';
         }
 
         return `
@@ -1380,18 +1485,18 @@
               <div>
                 <div class="flex items-center gap-1.5">
                   <h4 class="font-bold text-sm text-white">${h.name}</h4>
-                  <span class="text-[10px] text-[#86868b]">${h.code}</span>
+                  <span class="text-[13px] text-[#a9aebf]">${h.code}</span>
                 </div>
-                <div class="text-[11px] text-[#86868b] mt-0.5">
+                <div class="text-[13px] text-[#a9aebf] mt-0.5">
                   ${qtyFormatted}주 · 평단 ${h.avg_price.toLocaleString()}원
                 </div>
               </div>
               <div class="flex items-center gap-2">
                 <div class="text-right">
-                  <div class="text-sm font-extrabold text-white">${h.current_price.toLocaleString()}원</div>
-                  <div class="text-[11px] text-[#86868b]">${pnlSign}${h.unrealized_pnl.toLocaleString()}원</div>
+                  <div class="text-sm font-extrabold text-white whitespace-nowrap">${h.current_price.toLocaleString()}원</div>
+                  <div class="text-[13px] text-[#a9aebf]">${pnlSign}${h.unrealized_pnl.toLocaleString()}원</div>
                 </div>
-                <div class="${pillBg} text-white font-bold text-xs px-2.5 py-1 rounded-md min-w-[58px] text-center">
+                <div class="${pillBg} text-white font-bold text-[13px] px-2.5 py-1 rounded-md min-w-[58px] text-center">
                   ${pnlSign}${h.pnl_pct}%
                 </div>
               </div>
@@ -1404,9 +1509,9 @@
               <canvas id="holdingChart_${idx}" class="w-full h-full"></canvas>
             </div>
 
-            <div class="flex items-center justify-between text-[11px] text-[#86868b] pt-1">
+            <div class="flex items-center justify-between text-[13px] text-[#a9aebf] pt-1">
               <span>보유 ${h.hold_days}일차 / 목표 ${h.target_price.toLocaleString()}원 / 손절 ${h.stop_loss_price.toLocaleString()}원</span>
-              <button onclick="executeSell('${h.code}')" class="px-3 py-1 rounded-lg bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white text-xs font-semibold tap-press transition">
+              <button onclick="executeSell('${h.code}')" class="px-4 min-h-[44px] rounded-lg bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white text-[13px] font-semibold tap-press transition">
                 전량 매도
               </button>
             </div>
@@ -1432,7 +1537,7 @@
               ? '이 예산에 맞는 추천 종목이 없어요. 예산을 바꾸거나 잠시 후 새로고침해 보세요.'
               : '시세를 불러오지 못해 추천을 만들지 못했어요. 잠시 후 새로고침해 주세요.');
         container.innerHTML = `
-          <div class="text-center py-12 text-[#86868b] text-xs">
+          <div class="text-center py-12 text-[#a9aebf] text-[13px]">
             ${emptyMsg}
           </div>
         `;
@@ -1454,17 +1559,17 @@
             <!-- 1. 애플 주식 행(Row) 헤더 -->
             <div onclick="toggleAccordion(${idx})" class="flex items-center justify-between cursor-pointer tap-press">
               <div class="flex items-center gap-3">
-                <div class="w-6 h-6 rounded-full bg-[#1c1c1e] text-[#86868b] text-xs font-bold flex items-center justify-center">
+                <div class="w-6 h-6 rounded-full bg-[#1c1c1e] text-[#a9aebf] text-[13px] font-bold flex items-center justify-center">
                   ${idx + 1}
                 </div>
                 <div>
-                  <div class="flex items-center gap-1.5">
+                  <div class="flex flex-wrap items-center gap-1.5">
                     <h3 class="font-bold text-sm text-white tracking-tight">${item.name}</h3>
-                    <span class="text-[10px] text-[#86868b]">${item.market}</span>
-                    <span class="text-[10px] font-black px-1.5 py-0.5 rounded ${gradeStyle.bg} ${gradeStyle.text}" title="${gradeStyle.label}">${gradeLabel}</span>
-                    ${item.is_fractional === true ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold">소수점 가능</span>' : ''}
+                    <span class="text-[13px] text-[#a9aebf]">${item.market}</span>
+                    <span class="text-[13px] font-black px-1.5 py-0.5 rounded ${gradeStyle.bg} ${gradeStyle.text}" title="${gradeStyle.label}">${gradeLabel}</span>
+                    ${item.is_fractional === true ? '<span class="text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>' : ''}
                   </div>
-                  <div class="text-[11px] text-[#86868b] mt-0.5">
+                  <div class="text-[13px] text-[#a9aebf] mt-0.5">
                     <span class="text-white font-medium">${s.recommended_quantity}주 매수 추천</span> · 약 ${s.total_cost.toLocaleString()}원
                   </div>
                 </div>
@@ -1472,9 +1577,9 @@
 
               <div class="flex items-center gap-2">
                 <div class="text-right">
-                  <div class="text-sm font-extrabold text-white">${item.current_price.toLocaleString()}원</div>
+                  <div class="text-sm font-extrabold text-white whitespace-nowrap">${item.current_price.toLocaleString()}원</div>
                 </div>
-                <div class="${pillBg} text-white font-bold text-xs px-2.5 py-1 rounded-md min-w-[62px] text-center shadow-sm">
+                <div class="${pillBg} text-white font-bold text-[13px] px-2.5 py-1 rounded-md min-w-[62px] text-center shadow-sm">
                   ${changeSign}${item.change_rate}%
                 </div>
               </div>
@@ -1487,12 +1592,12 @@
                 <!-- 차트 상단 헤더 & 실시간 인터랙션 정보 표시 영역 -->
                 <div class="flex justify-between items-baseline">
                   <div>
-                    <span class="text-[10px] font-semibold text-[#86868b] tracking-wider uppercase">최근 30일 시세 흐름</span>
+                    <span class="text-[13px] font-semibold text-[#a9aebf] tracking-wider uppercase">최근 30일 시세 흐름</span>
                     <div id="chartTooltipPrice_${idx}" class="text-lg font-black text-white mt-0.5">
                       ${item.current_price.toLocaleString()}원
                     </div>
                   </div>
-                  <div id="chartTooltipDate_${idx}" class="text-xs text-[#86868b] font-medium">
+                  <div id="chartTooltipDate_${idx}" class="text-[13px] text-[#a9aebf] font-medium">
                     터치하여 탐색
                   </div>
                 </div>
@@ -1512,37 +1617,37 @@
                 <!-- 매수 / 목표가 / 손절가 핵심 가이드 (애플 미니멀 그리드) -->
                 <div class="grid grid-cols-2 gap-2 pt-1">
                   <div class="bg-[#1c1c1e] p-2.5 rounded-xl">
-                    <div class="text-[11px] text-[#86868b] flex justify-between">
+                    <div class="text-[13px] text-[#a9aebf] flex justify-between">
                       <span>목표 익절가</span>
-                      <span class="text-[#ff453a] font-bold">+${s.target_return_pct}%</span>
+                      <span class="text-[#ff6a60] font-bold">+${s.target_return_pct}%</span>
                     </div>
                     <div class="text-base font-extrabold text-white mt-0.5">
                       ${s.target_price.toLocaleString()}원
                     </div>
-                    <div class="text-[10px] text-[#86868b]">예상 수익 +${s.expected_gain_krw.toLocaleString()}원</div>
+                    <div class="text-[13px] text-[#a9aebf]">예상 수익 +${s.expected_gain_krw.toLocaleString()}원</div>
                   </div>
 
                   <div class="bg-[#1c1c1e] p-2.5 rounded-xl">
-                    <div class="text-[11px] text-[#86868b] flex justify-between">
+                    <div class="text-[13px] text-[#a9aebf] flex justify-between">
                       <span>손절 기준가</span>
-                      <span class="text-[#0a84ff] font-bold">${s.stop_loss_pct}%</span>
+                      <span class="text-[#5aa9ff] font-bold">${s.stop_loss_pct}%</span>
                     </div>
                     <div class="text-base font-extrabold text-white mt-0.5">
                       ${s.stop_loss_price.toLocaleString()}원
                     </div>
-                    <div class="text-[10px] text-[#86868b]">예상 손실 -${s.expected_loss_krw.toLocaleString()}원</div>
+                    <div class="text-[13px] text-[#a9aebf]">예상 손실 -${s.expected_loss_krw.toLocaleString()}원</div>
                   </div>
                 </div>
 
-                <div class="flex items-center justify-between text-[11px] text-[#86868b] px-1">
-                  <span>⏱️ 권장 보유: <strong class="text-white">최대 ${s.max_hold_days}영업일 (스윙)</strong></span>
+                <div class="flex items-center justify-between text-[13px] text-[#a9aebf] px-1">
+                  <span class="flex items-center gap-1"><i data-icon="timer"></i> 권장 보유: <strong class="text-white">최대 ${s.max_hold_days}영업일 (스윙)</strong></span>
                   <span>손익비: <strong class="text-[#30d158]">${s.risk_reward_ratio}:1</strong></span>
                   <span>예산 비중: <strong class="text-white">${s.budget_ratio_pct}%</strong></span>
                 </div>
 
                 <!-- 매수 버튼 -->
-                <button onclick="openBuyModal(${idx})" class="w-full py-3 rounded-xl bg-white hover:bg-neutral-200 text-black font-extrabold text-xs shadow-md tap-press flex items-center justify-center gap-1.5 transition">
-                  <i class="fa-solid fa-bolt text-xs"></i> 이 종목 ${s.recommended_quantity}주 모의 매수하기
+                <button onclick="openBuyModal(${idx})" class="w-full py-3 rounded-xl bg-white hover:bg-neutral-200 text-black font-extrabold text-[13px] shadow-md tap-press flex items-center justify-center gap-1.5 transition">
+                  <i data-icon="zap" class="text-[13px]"></i> 이 종목 ${s.recommended_quantity}주 모의 매수하기
                 </button>
               </div>
             ` : ''}
@@ -1656,8 +1761,8 @@
         ctx.restore();
 
         // 최고/최저 라벨 텍스트
-        ctx.font = '10px -apple-system, sans-serif';
-        ctx.fillStyle = '#636366';
+        ctx.font = '13px -apple-system, sans-serif';
+        ctx.fillStyle = '#a9aebf';
         ctx.fillText(`최고 ${max.toLocaleString()}원`, paddingLeft + 2, points[maxIdx].y - 4);
         ctx.fillText(`최저 ${min.toLocaleString()}원`, paddingLeft + 2, points[minIdx].y + 12);
 
@@ -1806,24 +1911,25 @@
       // 1. 헤더 종 아이콘 UI
       if (btn) {
         if (isEnabled) {
-          btn.innerHTML = '<i class="fa-solid fa-bell text-xs text-[#30d158]"></i><span id="notifBadge" class="w-1.5 h-1.5 rounded-full bg-[#30d158] absolute top-1.5 right-1.5"></span>';
+          btn.innerHTML = '<i data-icon="bell" class="text-[20px] text-[#30d158]"></i><span id="notifBadge" class="w-1.5 h-1.5 rounded-full bg-[#30d158] absolute top-1.5 right-1.5"></span>';
         } else {
-          btn.innerHTML = '<i class="fa-regular fa-bell-slash text-xs text-[#86868b]"></i>';
+          btn.innerHTML = '<i data-icon="bell-off" class="text-[20px] text-[#a9aebf]"></i>';
         }
       }
 
       // 2. 모달 내 iOS 스타일 토글 스위치 UI
       if (toggleSwitch && toggleKnob && statusText) {
+        toggleSwitch.setAttribute('aria-checked', isEnabled ? 'true' : 'false');
         if (isEnabled) {
           toggleSwitch.className = 'w-12 h-7 rounded-full bg-[#30d158] p-1 transition-colors duration-200 ease-in-out relative tap-press';
           toggleKnob.className = 'w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ease-in-out translate-x-5';
           statusText.textContent = '익절/손절/기한만료 신호 수신 중';
-          statusText.className = 'text-[11px] text-[#30d158] font-medium';
+          statusText.className = 'text-[13px] text-[#30d158] font-medium';
         } else {
           toggleSwitch.className = 'w-12 h-7 rounded-full bg-[#2c2c2e] p-1 transition-colors duration-200 ease-in-out relative tap-press';
           toggleKnob.className = 'w-5 h-5 rounded-full bg-[#86868b] shadow-md transform transition-transform duration-200 ease-in-out translate-x-0';
           statusText.textContent = '알림이 꺼져 있습니다 (무음)';
-          statusText.className = 'text-[11px] text-[#86868b]';
+          statusText.className = 'text-[13px] text-[#a9aebf]';
         }
       }
     }
@@ -1855,8 +1961,8 @@
         isNotifActive = true;
         localStorage.setItem('alpha_notif_enabled', 'true');
         updateNotifBtnUI();
-        alert('🎉 알림 권한이 정상 허용되었습니다!');
-        sendNativeNotification('Alpha Stock 알림 켜짐', '🎉 알림이 정상 활성화되었습니다!');
+        alert('알림 권한이 정상 허용되었습니다!');
+        sendNativeNotification('Alpha Stock 알림 켜짐', '알림이 정상 활성화되었습니다!');
       } else if (permission === 'denied') {
         alert('아이폰 [설정] 앱 > Safari 또는 홈 화면 앱에서 알림을 [허용]으로 변경해주세요.');
       } else {
@@ -1915,7 +2021,7 @@
       if (!isNotifActive) {
         await toggleNotificationSwitch();
       }
-      sendNativeNotification('🎯 [익절 도달 테스트]', '🎉 보유 종목이 목표가에 도달했습니다! (+6.5% 익절 권고)');
+      sendNativeNotification('[익절 도달 테스트]', '보유 종목이 목표가에 도달했습니다! (+6.5% 익절 권고)');
     }
 
     function checkPortfolioAlerts(portfolio) {
@@ -1930,7 +2036,7 @@
           if (!notifiedCache.has(alertKey)) {
             notifiedCache.add(alertKey);
             sendNativeNotification(
-              `🎉 [익절 도달] ${h.name}`,
+              `[익절 도달] ${h.name}`,
               `목표가 ${h.target_price.toLocaleString()}원에 도달했습니다! (현재 수익률 +${h.pnl_pct}%) 전량 익절을 권고합니다.`
             );
           }
@@ -1942,7 +2048,7 @@
           if (!notifiedCache.has(alertKey)) {
             notifiedCache.add(alertKey);
             sendNativeNotification(
-              `⚠️ [손절 경보] ${h.name}`,
+              `[손절 경보] ${h.name}`,
               `손절선 ${h.stop_loss_price.toLocaleString()}원을 터치했습니다. (${h.pnl_pct}%) 리스크 관리를 위해 매도를 권고합니다.`
             );
           }
@@ -1954,13 +2060,17 @@
           if (!notifiedCache.has(alertKey)) {
             notifiedCache.add(alertKey);
             sendNativeNotification(
-              `⏳ [스윙 기한 만료] ${h.name}`,
+              `[스윙 기한 만료] ${h.name}`,
               `권장 스윙 보유 기한(${h.max_hold_days}영업일)이 경과했습니다. 포트폴리오 정리를 권고합니다.`
             );
           }
         }
       });
     }
+
+    // 아이콘 자리표시(<i data-icon>)를 SVG 로: 처음 한 번 + 이후 동적으로 그려지는 화면도 자동 처리
+    hydrateIcons(document);
+    new MutationObserver(() => hydrateIcons(document)).observe(document.body, { childList: true, subtree: true });
 
     // 초기 실행: 세션 확인 후 로그인 여부에 따라 화면 결정
     updateUserUI();
