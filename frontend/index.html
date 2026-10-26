@@ -105,53 +105,64 @@
     }
   </style>
 </head>
-<body class="min-h-screen flex flex-col justify-between bg-black text-[#f5f5f7] pb-24">
+<body class="min-h-screen flex flex-col justify-between bg-black text-[#f5f5f7] pb-40">
 
-  <!-- 상단 애플 스타일 미니멀 헤더 -->
-  <header class="sticky top-0 z-30 glass-bar px-4 pt-3 pb-3 flex items-center justify-between">
-    <div class="flex items-center gap-2.5">
-      <!-- 구글 프로필 아바타 -->
-      <div id="userProfileWrap" onclick="openAuthModal()" role="button" tabindex="0" aria-label="내 계정 열기" class="cursor-pointer flex items-center gap-2 tap-press">
-        <div class="w-8 h-8 rounded-full bg-[#1c1c1e] border border-[#2c2c2e] overflow-hidden flex items-center justify-center text-[13px]">
-          <img id="userAvatar" src="" class="w-full h-full object-cover hidden">
-          <i id="userDefaultIcon" data-icon="circle-user-round" class="text-[#a9aebf]"></i>
-        </div>
-        <div>
-          <div class="text-[13px] font-semibold text-[#a9aebf] tracking-wider uppercase flex items-center gap-1">
-            <span id="userName">로그인 필요</span>
-            <i data-icon="chevron-down" class="text-[13px]"></i>
-          </div>
-          <h1 class="text-base font-bold tracking-tight text-white leading-none">Alpha Stock</h1>
-          <!-- 증권사 알약 (표시 전용). 색은 BROKER_THEMES 에서 적용 -->
-          <div id="brokerPill" class="inline-flex items-center gap-1.5 h-[22px] pl-2 pr-2.5 mt-2 rounded-full text-[13px] font-semibold text-[#f5f5f7] select-none" title="연결된 증권사 (표시 전용)">
-            <span id="brokerPillDot" class="w-1.5 h-1.5 rounded-full"></span>
-            <span id="brokerPillLabel"></span>
-          </div>
-        </div>
+  <!-- 상단 헤더: 앱 이름 + 증권사 알약 / 검색 · 새로고침 · 내 메뉴 (명세 2항) -->
+  <header class="sticky top-0 z-30 glass-bar px-4 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-2 min-w-0">
+      <h1 class="text-[17px] font-bold tracking-tight text-white leading-none whitespace-nowrap">Alpha Stock</h1>
+      <!-- 증권사 알약 (표시 전용). 색은 BROKER_THEMES 에서 적용 -->
+      <div id="brokerPill" class="inline-flex items-center gap-1.5 h-6 pl-2 pr-2.5 rounded-full text-[13px] font-semibold text-[#f5f5f7] select-none whitespace-nowrap" title="연결된 증권사 (표시 전용)">
+        <span id="brokerPillDot" class="w-1.5 h-1.5 rounded-full"></span>
+        <span id="brokerPillLabel"></span>
       </div>
     </div>
 
-    <div class="flex items-center gap-1.5">
-      <!-- 알림 설정 토글 버튼 -->
-      <button onclick="toggleNotificationSetting()" id="notifBtn" aria-label="알림 설정" class="m-ring w-11 h-11 rounded-full bg-[#1c1c1e] text-[#a9aebf] hover:text-white flex items-center justify-center tap-press transition relative" title="실시간 알림">
-        <i data-icon="bell" class="text-[20px]"></i>
-        <span id="notifBadge" class="w-1.5 h-1.5 rounded-full bg-[#30d158] absolute top-1.5 right-1.5 hidden"></span>
+    <div class="flex items-center -mr-2">
+      <button onclick="toggleSearch()" id="searchToggleBtn" aria-label="종목 검색" aria-expanded="false" class="w-11 h-11 rounded-full text-[#f5f5f7] flex items-center justify-center tap-press transition">
+        <i data-icon="search" class="text-[20px]"></i>
       </button>
-      <button onclick="refreshData(true)" id="refreshBtn" aria-label="추천 새로고침" class="m-spin w-11 h-11 rounded-full bg-[#1c1c1e] text-[#a9aebf] hover:text-white flex items-center justify-center tap-press transition">
+      <button onclick="refreshData(true)" id="refreshBtn" aria-label="추천 새로고침" class="m-spin w-11 h-11 rounded-full text-[#f5f5f7] flex items-center justify-center tap-press transition">
         <i data-icon="refresh-cw" class="text-[20px]"></i>
       </button>
-      <button onclick="resetAccount()" class="text-[13px] px-3 min-h-[44px] rounded-full bg-[#1c1c1e] text-[#a9aebf] hover:text-[#ff6a60] font-medium tap-press transition">
-        초기화
+      <button onclick="toggleMenu()" id="menuBtn" aria-label="내 메뉴" aria-haspopup="menu" aria-expanded="false" class="w-11 h-11 rounded-full flex items-center justify-center tap-press transition">
+        <img id="userAvatar" src="" alt="" class="w-7 h-7 rounded-full object-cover hidden">
+        <i id="userDefaultIcon" data-icon="circle-user-round" class="text-[24px] text-[#a9aebf]"></i>
       </button>
     </div>
   </header>
 
+  <!-- 내 메뉴 (아바타 버튼으로 열림). 계좌 초기화는 헤더가 아니라 여기에 둔다 -->
+  <div id="menuBackdrop" onclick="closeMenu()" class="fixed inset-0 z-[35] hidden"></div>
+  <div id="userMenu" role="menu" aria-label="내 메뉴" class="fixed right-2 top-[60px] z-40 w-[300px] max-w-[calc(100vw-16px)] glass-modal rounded-2xl p-2 shadow-2xl hidden">
+    <div class="px-3 pt-2.5 pb-3 mb-1 border-b border-white/15">
+      <div class="text-sm font-bold text-white">내 계정</div>
+      <div id="userName" class="text-[13px] text-[#a9aebf] mt-0.5">로그인 필요</div>
+    </div>
+    <button role="menuitem" id="notifBtn" onclick="closeMenu(); toggleNotificationSetting()" class="w-full min-h-[44px] px-3 rounded-xl flex items-center gap-3 text-sm font-semibold text-white hover:bg-white/10 tap-press text-left">
+      <span id="notifMenuIcon" class="flex text-[18px]"><i data-icon="bell-off"></i></span>
+      <span class="flex-1">알림 설정</span>
+      <span id="notifMenuState" class="text-[13px] font-normal text-[#a9aebf]">꺼짐</span>
+    </button>
+    <button role="menuitem" id="authMenuBtn" onclick="closeMenu(); currentUser ? logout() : openAuthModal()" class="w-full min-h-[44px] px-3 rounded-xl flex items-center gap-3 text-sm font-semibold text-white hover:bg-white/10 tap-press text-left">
+      <i data-icon="log-out" class="text-[18px]"></i>
+      <span id="authMenuLabel" class="flex-1">로그인</span>
+    </button>
+    <div class="border-t border-white/15 my-1.5"></div>
+    <button role="menuitem" onclick="closeMenu(); resetAccount()" class="w-full min-h-[44px] px-3 rounded-xl flex items-center gap-3 text-sm font-semibold text-[#ff6a60] hover:bg-white/10 tap-press text-left">
+      <i data-icon="rotate-ccw" class="text-[18px]"></i>
+      <span class="flex-1">계좌 초기화</span>
+      <span class="text-[13px] font-normal text-[#a9aebf]">시드로 되돌리기</span>
+    </button>
+  </div>
+  <!-- /userMenu -->
+
   <!-- 메인 스크롤 콘텐츠 -->
   <main class="flex-1 px-4 py-3 max-w-md mx-auto w-full space-y-4">
 
-    <!-- 🔍 상단 미니멀 검색바 (애플 주식 스타일) -->
-    <div class="relative z-20">
-      <div class="flex items-center bg-[#1c1c1e] rounded-xl px-3 py-2 border border-[#2c2c2e] focus-within:border-[#30d158] transition">
+    <!-- 종목 검색바: 헤더의 검색 버튼으로 펼치고 접는다 -->
+    <div id="searchWrap" class="relative z-20 hidden">
+      <div class="flex items-center bg-[#1c1c1e] rounded-xl px-3 min-h-[44px] border border-[#2c2c2e] focus-within:border-[#30d158] transition">
         <i data-icon="search" class="text-[13px] text-[#a9aebf] mr-2"></i>
         <input type="text" id="searchInput" oninput="onSearchInput(event)" onfocus="onSearchFocus()" aria-label="종목명 또는 코드 검색"
                placeholder="종목명 또는 코드 검색 (예: 카카오, 삼전우...)" 
@@ -201,10 +212,10 @@
 
     <!-- 세그먼트 컨트롤 탭 (애플 iOS Segmented Control) -->
     <div class="flex p-1 bg-[#1c1c1e] rounded-xl text-[13px] font-semibold">
-      <button onclick="switchTab('recs')" id="tabRecs" class="flex-1 py-3 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center">
+      <button onclick="switchTab('recs')" id="tabRecs" aria-selected="true" class="flex-1 py-3 rounded-lg bg-[#f5f5f7] text-[#0b0d12] shadow-sm tap-press transition text-center">
         스윙 추천
       </button>
-      <button onclick="switchTab('holdings')" id="tabHoldings" class="flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center">
+      <button onclick="switchTab('holdings')" id="tabHoldings" aria-selected="false" class="flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center">
         보유 종목 (<span id="holdingsCount">0</span>)
       </button>
     </div>
@@ -247,11 +258,21 @@
     <span id="toastMessage">알림</span>
   </div>
 
-  <!-- 하단 팁 바 -->
-  <footer class="fixed bottom-0 left-0 right-0 z-20 glass-bar-bottom px-4 py-2.5 text-center">
-    <div class="max-w-md mx-auto flex flex-col items-center gap-0.5 text-[13px] text-[#a9aebf]">
+  <!-- 하단 고정 바: 추천 종목을 펼치면 매수 바, 아니면 사용 팁 (명세 2항) -->
+  <footer id="bottomBar" class="fixed bottom-0 left-0 right-0 z-20 glass-bar-bottom px-4 pt-3 pb-5">
+    <div id="bottomBarBuy" class="max-w-md mx-auto flex flex-col gap-2 hidden">
+      <div class="flex justify-between text-[13px] text-[#a9aebf]">
+        <span>총 결제 예상 (수수료 포함)</span>
+        <b id="bottomBarTotal" class="text-white font-semibold">0원</b>
+      </div>
+      <button id="bottomBarBuyBtn" class="m-pulse w-full min-h-[48px] rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
+        <i data-icon="zap" class="text-[18px]"></i>
+        <span id="bottomBarBuyText">모의 매수</span>
+      </button>
+    </div>
+    <div id="bottomBarTip" class="max-w-md mx-auto flex flex-col items-center gap-0.5 text-[13px] text-[#a9aebf]">
       <span class="flex items-center gap-1.5"><i data-icon="lightbulb"></i> 사파리 [공유] → [홈 화면에 추가]</span>
-      <span class="text-[#a9aebf]">보유 기한 3~5영업일 룰</span>
+      <span>보유 기한 3~5영업일 룰</span>
     </div>
   </footer>
 
@@ -621,6 +642,8 @@
     // ===== 아이콘 (Lucide 원본 인라인 SVG, ISC 라이선스. 명세 8항. tests/test_frontend_foundation.py 가 이 구간을 검증) =====
     // <icons>
     const ICONS = {
+      'log-out': '<path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>',
+      'rotate-ccw': '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
       'search': '<path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/>',
       'refresh-cw': '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
       'bell': '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
@@ -753,8 +776,31 @@
       pill.style.webkitBackdropFilter = pill.style.backdropFilter = 'blur(14px) saturate(1.4)';
       document.getElementById('brokerPillDot').style.background = theme.dot;
     }
-    let expandedCardIndex = 0;
+    let expandedCardIndex = 0;   // 추천 목록에서 펼친 행 (-1 = 모두 접힘)
+    let expandedHoldingIndex = 0; // 보유 종목에서 펼친 행
+    let activeTab = 'recs';
 
+    // ===== 홈 화면 로직 (DOM 을 쓰지 않는 순수 함수. tests/test_frontend_mobile_home.py 가 이 구간을 그대로 실행해 검증) =====
+    // <home-logic>
+    const BUY_FEE_RATE = 0.00015; // 매수 수수료 0.015%. 매수 모달(updateBuyModalCalcs)과 같은 계산
+
+    // 아코디언: 한 번에 하나만 펼치고, 펼쳐진 행을 다시 누르면 접는다
+    function nextExpandedIndex(current, clicked) {
+      return current === clicked ? -1 : clicked;
+    }
+
+    // 하단 고정 매수 바에 보일 내용. 추천 탭에서 펼친 종목이 있을 때만 값을 돌려준다.
+    // 총 결제 = 가격×수량 + 수수료(내림). 서버의 sizing.total_cost 는 수수료를 뺀 금액이라 쓰지 않는다.
+    function bottomBarState(tab, expandedIdx, recs) {
+      if (tab !== 'recs' || !Array.isArray(recs)) return null;
+      const item = recs[expandedIdx];
+      if (!item || !item.sizing || !(item.current_price > 0)) return null;
+      const qty = item.sizing.recommended_quantity;
+      if (!(qty > 0)) return null;
+      const cost = Math.floor(item.current_price * qty);
+      return { idx: expandedIdx, qty: qty, total: cost + Math.floor(cost * BUY_FEE_RATE) };
+    }
+    // </home-logic>
     // ===== 🔍 종목 검색 및 자동완성 로직 =====
     function onSearchFocus() {
       const input = document.getElementById('searchInput');
@@ -990,7 +1036,9 @@
       'N/A': { bg: 'bg-[#2c2c2e]', text: 'text-[#a9aebf]', border: 'border-[#2c2c2e]', label: '분석 불가' }
     };
 
-    function openCustomBuyModal(stockItem) {
+    // presetQty > 0 이면 수량 방식으로 그 수량을 채워 연다 (하단 바의 'N주 모의 매수'와 같은 수량).
+    // 0 이면 기존처럼 금액 방식으로 연다 (검색 결과에서 고른 종목 등).
+    function openCustomBuyModal(stockItem, presetQty = 0) {
       const isFractional = stockItem.is_fractional === true; // 서버 판별값만 신뢰 (없으면 정수만)
       selectedRecForBuy = {
         code: stockItem.code,
@@ -1074,8 +1122,15 @@
       // 포커스가 남아 있어도 이전 종목의 수량이 보이지 않도록 입력칸을 새 값으로 맞춘다
       writeBuyQtyInput();
 
-      // 기본 탭은 금액 기준으로 설정
-      setBuyMode('amount');
+      if (presetQty > 0) {
+        const r = normalizeBuyQty(presetQty, isFractional, maxPossibleBuyQty, maxPossibleBuyQtyFrac);
+        currentBuyQty = r.qty;
+        buyQtyMsg = { kind: r.kind, message: r.message };
+        setBuyMode('qty');
+      } else {
+        // 기본 탭은 금액 기준으로 설정
+        setBuyMode('amount');
+      }
       document.getElementById('buyModal').classList.remove('hidden');
 
       if (stockItem.chart_data && stockItem.chart_data.prices && stockItem.chart_data.prices.length > 0) {
@@ -1183,7 +1238,7 @@
       document.getElementById('buyCalcQtyResult').textContent = `${qtyDisplayStr}주`;
 
       document.getElementById('buyBudgetRatio').textContent = `내 자산의 ${ratio}%`;
-      document.getElementById('buyTotalCost').textContent = totalCost.toLocaleString() + '원';
+      document.getElementById('buyTotalCost').textContent = totalRequired.toLocaleString() + '원';
       document.getElementById('buyRemainingCash').textContent = remaining.toLocaleString() + '원';
 
       const confirmBtn = document.getElementById('confirmBuyBtn');
@@ -1214,7 +1269,7 @@
     function openBuyModal(idx) {
       const item = currentRecs[idx];
       if (item) {
-        openCustomBuyModal(item);
+        openCustomBuyModal(item, item.sizing ? item.sizing.recommended_quantity : 0);
       }
     }
 
@@ -1280,6 +1335,8 @@
       }
 
       if (logoutBtn) logoutBtn.classList.toggle('hidden', !loggedIn);
+      const authLabel = document.getElementById('authMenuLabel');
+      if (authLabel) authLabel.textContent = loggedIn ? '로그아웃' : '로그인';
       const closeBtn = document.getElementById('authCloseBtn');
       if (closeBtn) closeBtn.classList.toggle('hidden', !loggedIn);
     }
@@ -1334,34 +1391,81 @@
       currentUser = null;
       currentPortfolio = null;
       currentRecs = [];
+      renderBottomBar();
       updateUserUI();
       openAuthModal();
     }
 
     function switchTab(tab) {
+      activeTab = tab;
       const recsBtn = document.getElementById('tabRecs');
       const holdingsBtn = document.getElementById('tabHoldings');
       const secRecs = document.getElementById('sectionRecs');
       const secHoldings = document.getElementById('sectionHoldings');
+      const on = 'flex-1 py-3 rounded-lg bg-[#f5f5f7] text-[#0b0d12] shadow-sm tap-press transition text-center';
+      const off = 'flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center';
 
-      if (tab === 'recs') {
-        recsBtn.className = 'flex-1 py-3 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
-        holdingsBtn.className = 'flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center';
-        secRecs.classList.remove('hidden');
-        secHoldings.classList.add('hidden');
-      } else {
-        recsBtn.className = 'flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center';
-        holdingsBtn.className = 'flex-1 py-3 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
-        secRecs.classList.add('hidden');
-        secHoldings.classList.remove('hidden');
-      }
+      recsBtn.className = tab === 'recs' ? on : off;
+      holdingsBtn.className = tab === 'recs' ? off : on;
+      recsBtn.setAttribute('aria-selected', tab === 'recs' ? 'true' : 'false');
+      holdingsBtn.setAttribute('aria-selected', tab === 'recs' ? 'false' : 'true');
+      secRecs.classList.toggle('hidden', tab !== 'recs');
+      secHoldings.classList.toggle('hidden', tab === 'recs');
+      renderBottomBar();
     }
 
     function toggleAccordion(index) {
-      expandedCardIndex = (expandedCardIndex === index) ? -1 : index;
+      expandedCardIndex = nextExpandedIndex(expandedCardIndex, index);
       renderRecommendations(currentRecs);
     }
 
+    // 하단 고정 바: 추천 종목을 펼치면 총 결제 예상액과 매수 버튼, 아니면 사용 팁
+    function renderBottomBar() {
+      const st = bottomBarState(activeTab, expandedCardIndex, currentRecs);
+      const buy = document.getElementById('bottomBarBuy');
+      const tip = document.getElementById('bottomBarTip');
+      if (!buy || !tip) return;
+      if (!st) {
+        buy.classList.add('hidden');
+        tip.classList.remove('hidden');
+        return;
+      }
+      document.getElementById('bottomBarTotal').textContent = st.total.toLocaleString() + '원';
+      document.getElementById('bottomBarBuyText').textContent = `${st.qty}주 모의 매수`;
+      document.getElementById('bottomBarBuyBtn').onclick = () => openBuyModal(st.idx); // 기존 매수 모달을 연다 (주문 로직은 그대로)
+      buy.classList.remove('hidden');
+      tip.classList.add('hidden');
+    }
+
+    // 종목 검색바 펼치기/접기 (헤더의 검색 버튼)
+    function toggleSearch() {
+      const wrap = document.getElementById('searchWrap');
+      const btn = document.getElementById('searchToggleBtn');
+      const open = wrap.classList.contains('hidden');
+      wrap.classList.toggle('hidden', !open);
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) document.getElementById('searchInput').focus();
+      else clearSearch();
+    }
+
+    // 내 메뉴 (아바타 버튼)
+    function toggleMenu() {
+      const open = document.getElementById('userMenu').classList.contains('hidden');
+      if (open) {
+        document.getElementById('userMenu').classList.remove('hidden');
+        document.getElementById('menuBackdrop').classList.remove('hidden');
+        document.getElementById('menuBtn').setAttribute('aria-expanded', 'true');
+      } else {
+        closeMenu();
+      }
+    }
+
+    function closeMenu() {
+      document.getElementById('userMenu').classList.add('hidden');
+      document.getElementById('menuBackdrop').classList.add('hidden');
+      document.getElementById('menuBtn').setAttribute('aria-expanded', 'false');
+    }
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
     let recsLoaded = false;   // 추천을 한 번이라도 받았는지 (빈 목록 문구 구분용)
     let recsUpdatedAt = '';   // 서버가 계산에 성공한 시각. 비어 있으면 시세를 못 받은 것
 
@@ -1449,6 +1553,31 @@
       document.getElementById('cashBar').style.width = cashPct + '%';
       document.getElementById('stockBar').style.width = stockPct + '%';
 
+      renderHoldings(data);
+    }
+
+    // 값 칸(라벨 + 값 + 선택적 보조 줄). 아코디언 펼침 영역의 2×2 수치에 쓴다
+    function statCell(label, value, valueClass = 'text-white', sub = '') {
+      return `
+        <div class="bg-black/35 p-2.5 rounded-xl">
+          <div class="text-[13px] text-[#a9aebf]">${label}</div>
+          <div class="text-base font-extrabold ${valueClass} mt-0.5">${value}</div>
+          ${sub ? `<div class="text-[13px] text-[#a9aebf]">${sub}</div>` : ''}
+        </div>`;
+    }
+
+    // 행을 키보드(Enter·Space)로도 펼치게 하는 속성
+    function rowKeyAttr(fn) {
+      return `onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${fn}}"`;
+    }
+
+    function toggleHolding(index) {
+      expandedHoldingIndex = nextExpandedIndex(expandedHoldingIndex, index);
+      if (currentPortfolio) renderHoldings(currentPortfolio);
+    }
+
+    // 보유 종목 목록 (아코디언: 한 번에 하나만 펼침)
+    function renderHoldings(data) {
       const holdings = data.holdings || [];
       document.getElementById('holdingsCount').textContent = holdings.length;
       const container = document.getElementById('holdingsCards');
@@ -1468,6 +1597,8 @@
         const isGain = h.pnl_pct >= 0;
         const pillBg = isGain ? 'bg-[#ff453a]' : 'bg-[#0a84ff]';
         const pnlSign = isGain ? '+' : '';
+        const pnlText = isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]';
+        const isExpanded = (expandedHoldingIndex === idx);
         const qtyFormatted = (typeof h.quantity === 'number') ? `${h.quantity}` : h.quantity;
 
         let statusBadge = '';
@@ -1480,54 +1611,55 @@
         }
 
         return `
-          <div class="py-3 space-y-2">
-            <div class="flex justify-between items-center">
-              <div>
-                <div class="flex items-center gap-1.5">
-                  <h4 class="font-bold text-sm text-white">${h.name}</h4>
+          <div class="py-1">
+            <div role="button" tabindex="0" aria-expanded="${isExpanded}" onclick="toggleHolding(${idx})" ${rowKeyAttr(`toggleHolding(${idx})`)}
+                 class="min-h-[64px] py-2.5 flex items-center justify-between gap-3 cursor-pointer tap-press">
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <h4 class="font-bold text-[15px] text-white">${h.name}</h4>
                   <span class="text-[13px] text-[#a9aebf]">${h.code}</span>
                 </div>
-                <div class="text-[13px] text-[#a9aebf] mt-0.5">
-                  ${qtyFormatted}주 · 평단 ${h.avg_price.toLocaleString()}원
-                </div>
+                <div class="text-[13px] text-[#a9aebf] mt-0.5">${qtyFormatted}주 · 평단 ${h.avg_price.toLocaleString()}원</div>
               </div>
-              <div class="flex items-center gap-2">
-                <div class="text-right">
+              <div class="flex items-center gap-2 shrink-0">
+                <div class="flex flex-col items-end gap-1">
                   <div class="text-sm font-extrabold text-white whitespace-nowrap">${h.current_price.toLocaleString()}원</div>
-                  <div class="text-[13px] text-[#a9aebf]">${pnlSign}${h.unrealized_pnl.toLocaleString()}원</div>
+                  <div class="${pillBg} text-white font-bold text-[13px] px-2 rounded-md min-w-[62px] text-center">${pnlSign}${h.pnl_pct}%</div>
                 </div>
-                <div class="${pillBg} text-white font-bold text-[13px] px-2.5 py-1 rounded-md min-w-[58px] text-center">
-                  ${pnlSign}${h.pnl_pct}%
-                </div>
+                <i data-icon="chevron-down" class="text-xl text-[#a9aebf] transition-transform ${isExpanded ? 'rotate-180' : ''}"></i>
               </div>
             </div>
 
-            ${statusBadge ? `<div class="pt-0.5">${statusBadge}</div>` : ''}
-
-            <!-- 보유 종목 인터랙티브 캔버스 차트 -->
-            <div class="w-full h-24 bg-[#0a0a0c] rounded-xl border border-[#1c1c1e] p-2 relative">
-              <canvas id="holdingChart_${idx}" class="w-full h-full"></canvas>
-            </div>
-
-            <div class="flex items-center justify-between text-[13px] text-[#a9aebf] pt-1">
-              <span>보유 ${h.hold_days}일차 / 목표 ${h.target_price.toLocaleString()}원 / 손절 ${h.stop_loss_price.toLocaleString()}원</span>
-              <button onclick="executeSell('${h.code}')" class="px-4 min-h-[44px] rounded-lg bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white text-[13px] font-semibold tap-press transition">
-                전량 매도
-              </button>
-            </div>
+            ${isExpanded ? `
+              <div class="mb-2 p-3.5 rounded-2xl bg-black/35 border border-white/10 space-y-3">
+                ${statusBadge ? `<div>${statusBadge}</div>` : ''}
+                <div class="w-full h-36 bg-black/35 rounded-xl border border-white/10 p-2 relative">
+                  <canvas id="holdingChart_${idx}" class="w-full h-full"></canvas>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  ${statCell('보유 수량', `${qtyFormatted}주`)}
+                  ${statCell('평균 매입가', `${h.avg_price.toLocaleString()}원`)}
+                  ${statCell('평가 금액', `${h.eval_amount.toLocaleString()}원`)}
+                  ${statCell('평가 손익', `${pnlSign}${h.unrealized_pnl.toLocaleString()}원`, pnlText)}
+                </div>
+                <div class="text-[13px] text-[#a9aebf]">보유 ${h.hold_days}일차 · 목표 ${h.target_price.toLocaleString()}원 · 손절 ${h.stop_loss_price.toLocaleString()}원</div>
+                <button onclick="executeSell('${h.code}')" class="w-full min-h-[48px] rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
+                  <i data-icon="zap" class="text-[18px]"></i> ${qtyFormatted}주 전량 모의 매도
+                </button>
+              </div>
+            ` : ''}
           </div>
         `;
       }).join('');
 
-      // 보유 종목 차트 렌더링
-      holdings.forEach((h, idx) => {
-        if (h.chart_data && h.chart_data.prices && h.chart_data.prices.length > 0) {
-          setTimeout(() => drawInteractiveChart(`holdingChart_${idx}`, h.chart_data.prices, h.chart_data.dates, h.pnl_pct >= 0), 50);
-        }
-      });
+      // 펼쳐진 보유 종목 차트
+      const cur = holdings[expandedHoldingIndex];
+      if (cur && cur.chart_data && cur.chart_data.prices && cur.chart_data.prices.length > 0) {
+        setTimeout(() => drawInteractiveChart(`holdingChart_${expandedHoldingIndex}`, cur.chart_data.prices, cur.chart_data.dates, cur.pnl_pct >= 0), 50);
+      }
     }
 
-    // 추천 종목 렌더링 (애플 주식 리스트 + 카카오페이식 인터랙티브 차트)
+    // 추천 종목 렌더링 (아코디언: 한 번에 하나만 펼침)
     function renderRecommendations(list) {
       const container = document.getElementById('recommendationCards');
       if (!list || list.length === 0) {
@@ -1541,6 +1673,7 @@
             ${emptyMsg}
           </div>
         `;
+        renderBottomBar();
         return;
       }
 
@@ -1548,26 +1681,32 @@
         const s = item.sizing;
         const isGain = item.change_rate >= 0;
         const changeSign = isGain ? '+' : '';
-        // 애플 주식 특유의 캡슐 뱃지 스타일
         const pillBg = isGain ? 'bg-[#ff453a]' : 'bg-[#0a84ff]';
         const isExpanded = (expandedCardIndex === idx);
         const gradeStyle = GRADE_STYLES[item.grade] || GRADE_STYLES['N/A'];
         const gradeLabel = GRADE_STYLES[item.grade] ? item.grade : '-';
+        const gradeText = item.grade === 'N/A' || !GRADE_STYLES[item.grade]
+          ? gradeStyle.label
+          : `${item.grade_score || 0}점 · ${gradeStyle.label}`;
+        const reasons = (item.grade_reasons || []).map(r =>
+          `<div class="text-[13px] text-[#ebebf5] leading-snug">· ${r}</div>`
+        ).join('') || '<div class="text-[13px] text-[#a9aebf]">근거 없음</div>';
 
         return `
-          <div class="py-3 transition-all duration-150">
-            <!-- 1. 애플 주식 행(Row) 헤더 -->
-            <div onclick="toggleAccordion(${idx})" class="flex items-center justify-between cursor-pointer tap-press">
-              <div class="flex items-center gap-3">
-                <div class="w-6 h-6 rounded-full bg-[#1c1c1e] text-[#a9aebf] text-[13px] font-bold flex items-center justify-center">
+          <div class="py-1 transition-all duration-150">
+            <!-- 1. 행(Row) 헤더: 누르면 펼침/접힘 -->
+            <div role="button" tabindex="0" aria-expanded="${isExpanded}" onclick="toggleAccordion(${idx})" ${rowKeyAttr(`toggleAccordion(${idx})`)}
+                 class="min-h-[64px] py-2.5 flex items-center justify-between gap-3 cursor-pointer tap-press">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="w-6 h-6 shrink-0 rounded-full bg-[#1c1c1e] text-[#a9aebf] text-[13px] font-bold flex items-center justify-center">
                   ${idx + 1}
                 </div>
-                <div>
+                <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-1.5">
-                    <h3 class="font-bold text-sm text-white tracking-tight">${item.name}</h3>
+                    <h3 class="font-bold text-[15px] text-white tracking-tight">${item.name}</h3>
                     <span class="text-[13px] text-[#a9aebf]">${item.market}</span>
-                    <span class="text-[13px] font-black px-1.5 py-0.5 rounded ${gradeStyle.bg} ${gradeStyle.text}" title="${gradeStyle.label}">${gradeLabel}</span>
-                    ${item.is_fractional === true ? '<span class="text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>' : ''}
+                    <span class="text-[13px] font-black px-1.5 rounded ${gradeStyle.bg} ${gradeStyle.text}" title="${gradeStyle.label}">${gradeLabel}</span>
+                    ${item.is_fractional === true ? '<span class="text-[13px] px-1.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>' : ''}
                   </div>
                   <div class="text-[13px] text-[#a9aebf] mt-0.5">
                     <span class="text-white font-medium">${s.recommended_quantity}주 매수 추천</span> · 약 ${s.total_cost.toLocaleString()}원
@@ -1575,24 +1714,21 @@
                 </div>
               </div>
 
-              <div class="flex items-center gap-2">
-                <div class="text-right">
+              <div class="flex items-center gap-2 shrink-0">
+                <div class="flex flex-col items-end gap-1">
                   <div class="text-sm font-extrabold text-white whitespace-nowrap">${item.current_price.toLocaleString()}원</div>
+                  <div class="${pillBg} text-white font-bold text-[13px] px-2 rounded-md min-w-[62px] text-center">${changeSign}${item.change_rate}%</div>
                 </div>
-                <div class="${pillBg} text-white font-bold text-[13px] px-2.5 py-1 rounded-md min-w-[62px] text-center shadow-sm">
-                  ${changeSign}${item.change_rate}%
-                </div>
+                <i data-icon="chevron-down" class="text-xl text-[#a9aebf] transition-transform ${isExpanded ? 'rotate-180' : ''}"></i>
               </div>
             </div>
 
-            <!-- 2. 펼쳐지는 카카오페이 스타일 인터랙티브 차트 & 분석 영역 -->
+            <!-- 2. 펼침 영역: 차트 → 핵심 수치 2×2 → AI 진단 (매수는 화면 아래 고정 바) -->
             ${isExpanded ? `
-              <div class="mt-3 pt-3 space-y-3 bg-[#0a0a0c] rounded-2xl border border-[#1c1c1e] p-3.5 animate-in fade-in duration-150">
-                
-                <!-- 차트 상단 헤더 & 실시간 인터랙션 정보 표시 영역 -->
+              <div class="mb-2 p-3.5 space-y-3 rounded-2xl bg-black/35 border border-white/10">
                 <div class="flex justify-between items-baseline">
                   <div>
-                    <span class="text-[13px] font-semibold text-[#a9aebf] tracking-wider uppercase">최근 30일 시세 흐름</span>
+                    <span class="text-[13px] font-semibold text-[#a9aebf]">최근 30일 시세 흐름</span>
                     <div id="chartTooltipPrice_${idx}" class="text-lg font-black text-white mt-0.5">
                       ${item.current_price.toLocaleString()}원
                     </div>
@@ -1602,8 +1738,7 @@
                   </div>
                 </div>
 
-                <!-- 📈 전문 트레이딩 꺾은선형 인터랙티브 차트 (높이 200px로 시원하게 확대) -->
-                <div class="w-full h-52 relative touch-none select-none bg-[#0c0c0e] rounded-xl p-2 border border-[#1c1c1e]">
+                <div class="w-full h-52 relative touch-none select-none bg-black/35 rounded-xl p-2 border border-white/10">
                   <canvas id="stockChart_${idx}" class="w-full h-full block"></canvas>
                   <!-- 실시간 끝점 펄스 인디케이터 (JS에서 위치 동적 계산) -->
                   <div id="livePulse_${idx}" class="absolute pointer-events-none hidden" style="transform: translate(-50%, -50%);">
@@ -1614,48 +1749,30 @@
                   </div>
                 </div>
 
-                <!-- 매수 / 목표가 / 손절가 핵심 가이드 (애플 미니멀 그리드) -->
-                <div class="grid grid-cols-2 gap-2 pt-1">
-                  <div class="bg-[#1c1c1e] p-2.5 rounded-xl">
-                    <div class="text-[13px] text-[#a9aebf] flex justify-between">
-                      <span>목표 익절가</span>
-                      <span class="text-[#ff6a60] font-bold">+${s.target_return_pct}%</span>
-                    </div>
-                    <div class="text-base font-extrabold text-white mt-0.5">
-                      ${s.target_price.toLocaleString()}원
-                    </div>
-                    <div class="text-[13px] text-[#a9aebf]">예상 수익 +${s.expected_gain_krw.toLocaleString()}원</div>
-                  </div>
-
-                  <div class="bg-[#1c1c1e] p-2.5 rounded-xl">
-                    <div class="text-[13px] text-[#a9aebf] flex justify-between">
-                      <span>손절 기준가</span>
-                      <span class="text-[#5aa9ff] font-bold">${s.stop_loss_pct}%</span>
-                    </div>
-                    <div class="text-base font-extrabold text-white mt-0.5">
-                      ${s.stop_loss_price.toLocaleString()}원
-                    </div>
-                    <div class="text-[13px] text-[#a9aebf]">예상 손실 -${s.expected_loss_krw.toLocaleString()}원</div>
-                  </div>
+                <div class="grid grid-cols-2 gap-2">
+                  ${statCell(`목표 익절가 <b class="text-[#ff6a60]">+${s.target_return_pct}%</b>`, `${s.target_price.toLocaleString()}원`, 'text-white', `예상 수익 +${s.expected_gain_krw.toLocaleString()}원`)}
+                  ${statCell(`손절 기준가 <b class="text-[#5aa9ff]">${s.stop_loss_pct}%</b>`, `${s.stop_loss_price.toLocaleString()}원`, 'text-white', `예상 손실 -${s.expected_loss_krw.toLocaleString()}원`)}
+                  ${statCell('손익비', `${s.risk_reward_ratio} : 1`)}
+                  ${statCell('예산 비중 / 권장 보유', `${s.budget_ratio_pct}% / ${s.max_hold_days}영업일`)}
                 </div>
 
-                <div class="flex items-center justify-between text-[13px] text-[#a9aebf] px-1">
-                  <span class="flex items-center gap-1"><i data-icon="timer"></i> 권장 보유: <strong class="text-white">최대 ${s.max_hold_days}영업일 (스윙)</strong></span>
-                  <span>손익비: <strong class="text-[#30d158]">${s.risk_reward_ratio}:1</strong></span>
-                  <span>예산 비중: <strong class="text-white">${s.budget_ratio_pct}%</strong></span>
+                <div class="flex items-start gap-3">
+                  <div class="w-10 h-10 shrink-0 rounded-full ${gradeStyle.bg} ${gradeStyle.text} flex items-center justify-center text-lg font-black">${gradeLabel}</div>
+                  <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-1.5 text-[13px] text-[#a9aebf]">
+                      <i data-icon="brain"></i> AI 스윙 진단
+                      <span class="px-1.5 rounded bg-[#2c2c2e]">${gradeText}</span>
+                    </div>
+                    <div class="mt-1 space-y-0.5">${reasons}</div>
+                  </div>
                 </div>
-
-                <!-- 매수 버튼 -->
-                <button onclick="openBuyModal(${idx})" class="w-full py-3 rounded-xl bg-white hover:bg-neutral-200 text-black font-extrabold text-[13px] shadow-md tap-press flex items-center justify-center gap-1.5 transition">
-                  <i data-icon="zap" class="text-[13px]"></i> 이 종목 ${s.recommended_quantity}주 모의 매수하기
-                </button>
               </div>
             ` : ''}
           </div>
         `;
       }).join('');
 
-      // 펼쳐진 카드에 카카오페이식 인터랙티브 차트 그리기
+      // 펼쳐진 카드에 인터랙티브 차트 그리기
       if (expandedCardIndex >= 0 && list[expandedCardIndex]) {
         const cur = list[expandedCardIndex];
         if (cur.chart_data && cur.chart_data.prices && cur.chart_data.prices.length > 0) {
@@ -1672,8 +1789,9 @@
           }, 50);
         }
       }
-    }
 
+      renderBottomBar();
+    }
     /**
      * 카카오페이 / 토스 주식 스타일의 네이티브 벡터 Canvas 인터랙티브 차트
      * - 부드러운 스플라인 곡선 (Smooth Bezier Curve)
@@ -1899,8 +2017,6 @@
     let isNotifActive = (localStorage.getItem('alpha_notif_enabled') === 'true');
 
     function updateNotifBtnUI() {
-      const btn = document.getElementById('notifBtn');
-      const badge = document.getElementById('notifBadge');
       const toggleSwitch = document.getElementById('notifToggleSwitch');
       const toggleKnob = document.getElementById('notifToggleKnob');
       const statusText = document.getElementById('notifStatusText');
@@ -1908,15 +2024,14 @@
       const isPermitted = ('Notification' in window) && (Notification.permission === 'granted');
       const isEnabled = isPermitted && isNotifActive;
 
-      // 1. 헤더 종 아이콘 UI
-      if (btn) {
-        if (isEnabled) {
-          btn.innerHTML = '<i data-icon="bell" class="text-[20px] text-[#30d158]"></i><span id="notifBadge" class="w-1.5 h-1.5 rounded-full bg-[#30d158] absolute top-1.5 right-1.5"></span>';
-        } else {
-          btn.innerHTML = '<i data-icon="bell-off" class="text-[20px] text-[#a9aebf]"></i>';
-        }
+      // 1. 내 메뉴의 알림 항목 (아이콘 + 켜짐/꺼짐)
+      const menuIcon = document.getElementById('notifMenuIcon');
+      const menuState = document.getElementById('notifMenuState');
+      if (menuIcon) menuIcon.innerHTML = '<i data-icon="' + (isEnabled ? 'bell' : 'bell-off') + '"></i>';
+      if (menuState) {
+        menuState.textContent = isEnabled ? '켜짐' : '꺼짐';
+        menuState.className = 'text-[13px] font-normal ' + (isEnabled ? 'text-[#30d158]' : 'text-[#a9aebf]');
       }
-
       // 2. 모달 내 iOS 스타일 토글 스위치 UI
       if (toggleSwitch && toggleKnob && statusText) {
         toggleSwitch.setAttribute('aria-checked', isEnabled ? 'true' : 'false');
