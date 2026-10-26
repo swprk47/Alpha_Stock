@@ -201,46 +201,10 @@ def search_stocks(query: str):
         print(f"Search error: {e}")
         return []
 
-def is_stock_fractional_tradable(code: str) -> tuple[bool, str]:
-    """
-    한국예탁결제원 신탁 방식 기준, 증권사 소수점 거래 가능 종목 여부를 판별합니다.
-    - 대상: KOSPI/KOSDAQ 상장 주식 중 시가총액 약 3,000억 원 이상 우량주
-    - 제외: ETF/ETN, 관리종목, 정리매매, 동전주(1,000원 미만)
-    """
-    try:
-        url = f"https://m.stock.naver.com/api/stock/{code}/integration"
-        res = requests.get(url, headers=HEADERS, timeout=3)
-        if res.status_code != 200:
-            return False, "정보 조회 실패"
-        data = res.json()
-        end_type = data.get("stockEndType", "stock")
-        if end_type != "stock":
-            return False, "ETF/ETN 파생상품은 소수점 거래 미지원"
-
-        market_cap_str = ""
-        for item in data.get("totalInfos", []):
-            if item.get("key") == "시총":
-                market_cap_str = item.get("value", "")
-                break
-
-        # '조' 단위는 무조건 가능
-        if "조" in market_cap_str:
-            return True, f"소수점 매수 가능 (시총 {market_cap_str})"
-
-        # '억' 단위는 3,000억 이상 판별
-        if "억" in market_cap_str:
-            import re
-            m = re.search(r"([\d,]+)억", market_cap_str)
-            if m:
-                val = int(m.group(1).replace(",", ""))
-                if val >= 3000:
-                    return True, f"소수점 매수 가능 (시총 {market_cap_str})"
-                else:
-                    return False, f"소수점 미지원 (시총 3,000억 미만: {market_cap_str})"
-
-        return False, "소수점 거래 미지원 종목"
-    except Exception as e:
-        return False, f"판별 오류: {e}"
+def is_stock_fractional_tradable(code: str, broker: str = None) -> tuple[bool, str]:
+    """증권사 소수점 거래 가능 종목 목록 기준 판별 (목록에 없으면 정수만). 네트워크 호출 없음."""
+    import fractional
+    return fractional.is_fractional_tradable(code, broker or fractional.DEFAULT_BROKER)
 
 def get_stock_detail_with_chart(code: str, budget: int = 100000):
     """
@@ -287,6 +251,37 @@ def get_stock_detail_with_chart(code: str, budget: int = 100000):
         "grade_score": grade_result["score"],
         "grade_reasons": grade_result["grade_reasons"]
     }
+
+def attach_diagnosis(recs, candles_provider, budget: int = 100000):
+    """
+    추천 목록의 각 항목에 AI 진단 등급(grade, grade_score, grade_reasons)과
+    소수점 판별(is_fractional, fractional_desc)을 덧붙인 새 목록을 반환합니다.
+    상세 조회(get_stock_detail_with_chart)와 같은 get_stock_grade 기준을 사용하며 strategy.py는 바꾸지 않습니다.
+    일봉 조회가 실패하거나 25일 미만이면 등급은 N/A, 소수점 판별(네트워크 없음)은 그대로 유지합니다.
+    """
+    from strategy import get_stock_grade
+
+    result = []
+    for rec in recs:
+        is_fractional, fractional_desc = is_stock_fractional_tradable(rec["code"])
+        grade_result = {"grade": "N/A", "score": 0, "grade_reasons": ["데이터 부족"]}
+        try:
+            candles = candles_provider(rec["code"], count=60)
+            if candles is not None and len(candles) >= 25:
+                grade_result = get_stock_grade(
+                    {"current_price": rec["current_price"]}, candles,
+                    budget=budget, is_fractional=is_fractional)
+        except Exception as e:
+            print(f"Diagnosis error for {rec.get('code')}: {e}")
+        result.append({
+            **rec,
+            "grade": grade_result["grade"],
+            "grade_score": grade_result["score"],
+            "grade_reasons": grade_result["grade_reasons"],
+            "is_fractional": is_fractional,
+            "fractional_desc": fractional_desc,
+        })
+    return result
 
 
 if __name__ == "__main__":
