@@ -26,7 +26,7 @@ cd backend && uvicorn server:app --reload --port 8000
 | `SESSION_SECRET` | 세션 JWT 서명 키. **필수, 32자 이상** | - |
 | `COOKIE_SECURE` | 로컬 http 개발은 `false`, 운영(HTTPS)은 `true` | `true` |
 | `ALLOW_DEV_LOGIN` | 개발용 닉네임 로그인 허용. **운영은 반드시 `false`** | `false` |
-| `GOOGLE_CLIENT_ID` | Google 로그인용 (연동 예정) | 빈 값 |
+| `GOOGLE_CLIENT_ID` | Google 로그인용 (배포 직전 연동 예정, 지금은 사용 안 함) | 빈 값 |
 | `ALLOWED_ORIGINS` | 프론트를 다른 출처에서 띄울 때만 (쉼표 구분) | 빈 값 |
 | `DATA_DIR` | 사용자 계좌 JSON 저장 위치 | `./data` |
 | `BUY_FEE_RATE` / `SELL_FEE_RATE` / `SELL_TAX_RATE` | 수수료·세율 | 0.015% / 0.015% / 0.20% |
@@ -55,7 +55,7 @@ pytest -q          # 저장소 루트에서
 |---|---|
 | `POST /api/auth/dev-login {nickname}` | 신규(개발 전용) |
 | `POST /api/auth/logout` · `GET /api/me` · `GET /api/health` | 신규 |
-| `POST /api/auth/google` | 501 스텁 (Google 연동은 PR-A 마지막 단계) |
+| `POST /api/auth/google` | 501 스텁 (Google 연동은 배포 직전 별도 PR) |
 | `POST /api/buy {code, quantity, target_price?, stop_loss_price?, max_hold_days?}` | `user_id`·`price`·`name`·`logo_url` 제거. 목표/손절 미지정 시 +6.5% / -3% |
 | `POST /api/sell {code, quantity?}` | `quantity` 생략 시 전량. `price` 제거 |
 | `POST /api/portfolio/budget {budget}` | query → JSON body |
@@ -65,6 +65,6 @@ pytest -q          # 저장소 루트에서
 
 ## 로드맵
 
-- PR-A 마무리: Google ID 토큰 서버 검증, `/api/config`
+- 배포 직전(맨 마지막) `feat/google-login`: Google ID 토큰 서버 검증, `/api/config`
 - PR-B `feat/cash-ledger`: 입출금 원장
 - PR-C `chore/deploy`: Dockerfile·배포 문서(HTTPS, 영구 디스크)
