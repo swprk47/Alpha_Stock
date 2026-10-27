@@ -49,10 +49,24 @@ def place_buy(mgr: MultiUserPortfolioManager, user_id: str, req: BuyRequest) -> 
         raise HTTPException(status_code=400, detail=str(e))
 
 
+def _check_sell_quantity(mgr: MultiUserPortfolioManager, user_id: str, code: str, quantity) -> None:
+    """소수점 거래가 안 되는 종목은 정수 수량만 매도할 수 있다. 보유 전량을 매도하는 것은 예외."""
+    if quantity is None:
+        return
+    q = round(float(quantity), 4)
+    if abs(q - round(q)) <= 1e-6:
+        return
+    if abs(q - round(mgr.get_holding_quantity(user_id, code), 4)) <= 1e-6:
+        return
+    if not _is_fractional(code):
+        raise HTTPException(status_code=400, detail="소수점 거래가 지원되지 않는 종목입니다. 정수 수량만 가능합니다. (전량 매도는 가능합니다)")
+
+
 def place_sell(mgr: MultiUserPortfolioManager, user_id: str, req: SellRequest) -> dict:
     if mgr.get_holding_quantity(user_id, req.code) <= 0:
         raise HTTPException(status_code=400, detail="보유하고 있지 않은 종목입니다.")
     quote = fetch_live_quote(req.code)
+    _check_sell_quantity(mgr, user_id, req.code, req.quantity)
     try:
         return mgr.sell(user_id=user_id, code=req.code, price=quote["current_price"], quantity=req.quantity)
     except OrderError as e:
