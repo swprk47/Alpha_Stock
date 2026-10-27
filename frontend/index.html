@@ -43,6 +43,9 @@
     #buyQtyInput::-webkit-outer-spin-button,
     #buyQtyInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     #buyQtyInput { -moz-appearance: textfield; appearance: textfield; }
+    input[id^="sellQtyInput_"]::-webkit-outer-spin-button,
+    input[id^="sellQtyInput_"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[id^="sellQtyInput_"] { -moz-appearance: textfield; appearance: textfield; }
     /* 애플 주식 스타일 슬릭 스크롤 */
     ::-webkit-scrollbar {
       display: none;
@@ -857,6 +860,55 @@
     }
     // </qty-logic>
 
+    // <sell-logic>
+    // 보유 종목 부분 매도의 수량 로직(DOM 을 쓰지 않는 순수 함수. tests/test_frontend_partial_sell.py 가 이 구간을 그대로 실행한다).
+    // 선택이 없으면 전량이다. −/+ 는 1주 단위(소수 수량은 가까운 정수로), 직접 입력은 normalizeSellQty 가 보정한다.
+    const SELL_EPS = 1e-6;
+
+    function isFullSell(qty, held) { return Math.abs(qty - held) < SELL_EPS; }
+
+    function clampSellQty(qty, held) {
+      const q = Number(qty);
+      if (!(q > 0) || q > held) return held;
+      return q;
+    }
+
+    function stepSellQty(qty, dir, held) {
+      if (dir > 0) {
+        const next = Math.floor(qty + 1e-9) + 1;
+        return next >= held ? held : next;
+      }
+      const next = Math.ceil(qty - 1e-9) - 1;
+      return next < 1 ? Math.min(1, held) : next;
+    }
+
+    // 직접 입력 보정(매수의 normalizeBuyQty 와 같은 규칙). 보유 전량과 같은 값은 항상 그대로 허용한다
+    // (소수점 불가 종목이어도 서버가 전량 매도는 받는다). qty 0 = 매도할 수 없는 입력
+    function normalizeSellQty(raw, isFractional, held) {
+      const text = String(raw === null || raw === undefined ? '' : raw).trim();
+      let n = parseFloat(text);
+      if (text === '' || !isFinite(n) || n <= 0) return { qty: 0, kind: 'error', message: '수량을 입력하세요.' };
+      if (isFullSell(n, held)) return { qty: held, kind: '', message: '' };
+      let kind = '', message = '';
+      if (isFractional) {
+        n = Math.floor(n * 10000 + 1e-9) / 10000;
+        if (n <= 0) return { qty: 0, kind: 'error', message: '0.0001주 이상 입력하세요.' };
+      } else if (n !== Math.floor(n)) {
+        n = Math.floor(n);
+        if (n <= 0) return { qty: 0, kind: 'error', message: '이 종목은 1주 단위로만 팔 수 있어요.' };
+        kind = 'notice';
+        message = `이 종목은 1주 단위라 ${n}주로 적용돼요.`;
+      }
+      if (n > held) return { qty: held, kind: 'notice', message: `보유 ${held}주까지만 적용돼요.` };
+      return { qty: n, kind, message };
+    }
+
+    // 전량이면 quantity 를 넣지 않는다(기존 전량 매도 요청과 같다)
+    function sellRequestBody(code, qty, held) {
+      return isFullSell(qty, held) ? { code } : { code, quantity: qty };
+    }
+    // </sell-logic>
+
     // ===== 증권사 알약 (표시 전용. 전환 기능은 증권사가 더 추가될 때) =====
     const CURRENT_BROKER = 'miraeasset'; // backend/fractional.py 의 DEFAULT_BROKER 키와 같다
     const BROKER_LABELS = { miraeasset: '미래에셋' };
@@ -877,6 +929,13 @@
     }
     let expandedCardIndex = 0;   // 추천 목록에서 펼친 행 (-1 = 모두 접힘)
     let expandedHoldingIndex = 0; // 보유 종목에서 펼친 행
+    // 보유 종목 매도 패널 상태(렌더 함수보다 먼저 선언해 둔다)
+    const SELL_PREVIEW_DELAY_MS = 250;
+    let sellSel = {};       // 종목 코드 → 선택한 매도 수량 (없으면 전량, 0 은 빈칸·잘못된 입력)
+    let sellPreview = {};   // 종목 코드 → { qty, status: 'loading'|'ok'|'error', data }
+    let sellPreviewSeq = 0; // 늦게 온 응답을 버리기 위한 순번
+    let sellMsg = {};       // 종목 코드 → 입력 안내 { kind: 'notice'|'error', message }
+    const sellPreviewTimers = {};
     let activeTab = 'recs';
     let summarySeg = 'pnl';  // 요약의 내 계좌 패널 보기: 'pnl'(거래별 손익) | 'trades'(거래 내역)
 
@@ -2138,10 +2197,7 @@
                   ${statCell('평가 손익', `${pnlSign}${h.unrealized_pnl.toLocaleString()}원`, pnlText, '(매도 비용 반영)')}
                 </div>
                 <div class="text-[13px] text-[#a9aebf]">보유 ${h.hold_days}일차 · 목표 ${h.target_price.toLocaleString()}원 · 손절 ${h.stop_loss_price.toLocaleString()}원</div>
-                ${estimateRowsHtml(h, true)}
-                <button onclick="executeSell('${h.code}')" class="w-full min-h-[48px] rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
-                  <i data-icon="zap" class="text-[18px]"></i> ${qtyFormatted}주 전량 모의 매도
-                </button>
+                ${sellBoxHtml(h, true)}
               </div>
             ` : ''}
           </div>
@@ -2693,11 +2749,7 @@
             </div>`)}
           <div class="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4">
             ${holdingTradesHtml(h)}
-            ${pcPanel(`
-              ${estimateRowsHtml(h, false)}
-              <button onclick="executeSell('${h.code}')" class="m-pulse w-full min-h-[48px] rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
-                <i data-icon="zap" class="text-[18px]"></i> ${qty}주 전량 모의 매도
-              </button>`, 'flex flex-col gap-3')}
+            ${pcPanel(sellBoxHtml(h, false), 'flex flex-col gap-3')}
           </div>
         </div>`;
     }
@@ -2986,11 +3038,183 @@
       render();
     }
 
-    // executeSell (보유 종목 전량 매도)
-    async function executeSell(code) {
-      if (!confirm('이 종목을 전량 매도하시겠습니까? (체결가는 서버 실시간 시세)')) return;
+    // ===== 보유 종목 매도 패널(시안 B): − [수량 입력] + · 예상 금액 · 매도 버튼 =====
+    // 선택이 없으면 전량이다. 일부 수량의 예상 금액은 서버 미리보기가 준 값만 보인다(화면은 수수료·세금을 계산하지 않는다).
+    // 소수점 가능 여부는 서버가 보유 종목에 준 is_fractional 만 믿는다(없으면 정수만).
+    function currentHolding(code) {
+      return ((currentPortfolio && currentPortfolio.holdings) || []).find(x => x.code === code) || null;
+    }
+
+    // 선택한 수량. 0 은 빈칸·잘못된 입력(매도할 수 없음)
+    function sellQtyOf(h) {
+      const q = sellSel[h.code];
+      if (q === undefined) return h.quantity;
+      return q === 0 ? 0 : clampSellQty(q, h.quantity);
+    }
+
+    function sellEstimateHtml(h, qty, mobile) {
+      if (isFullSell(qty, h.quantity)) return estimateRowsHtml(h, mobile);
+      const pv = sellPreview[h.code];
+      if (!pv || pv.qty !== qty || pv.status === 'loading') {
+        return '<div aria-live="polite" class="text-[13px] leading-relaxed text-[#a9aebf] break-keep">예상 금액 계산 중…</div>';
+      }
+      if (pv.status === 'error') return estimateRowsHtml({ est_proceeds: null }, mobile);
+      return estimateRowsHtml({ est_proceeds: pv.data.net, est_realized_pnl: pv.data.est_realized_pnl }, mobile);
+    }
+
+    // 입력칸 아래(안내·예상 금액·매도 버튼). 타이핑 중에는 입력칸은 두고 이 영역만 다시 그린다
+    function sellDynHtml(h, mobile) {
+      const qty = sellQtyOf(h);
+      const ok = qty > 0;
+      const full = isFullSell(qty, h.quantity);
+      const msg = sellMsg[h.code];
+      const msgHtml = msg && msg.message
+        ? `<div role="${msg.kind === 'error' ? 'alert' : 'status'}" class="text-[13px] leading-relaxed break-keep ${msg.kind === 'error' ? 'text-[#ff9f0a]' : 'text-[#a9aebf]'}">${msg.message}</div>`
+        : '';
+      return `
+        <div id="sellDyn_${h.code}" class="flex flex-col gap-3">
+          ${msgHtml}
+          ${ok ? sellEstimateHtml(h, qty, mobile) : ''}
+          <button type="button" onclick="executeSell('${h.code}')" ${ok ? '' : 'disabled aria-disabled="true"'} class="${mobile || !ok ? '' : 'm-pulse '}w-full min-h-[48px] rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition ${ok ? '' : 'opacity-40 cursor-not-allowed'}">
+            <i data-icon="zap" class="text-[18px]"></i> ${ok ? `${qty}주 ${full ? '전량 ' : ''}모의 매도` : '모의 매도'}
+          </button>
+        </div>`;
+    }
+
+    function sellBoxHtml(h, mobile) {
+      const qty = sellQtyOf(h);
+      const text = qty > 0 ? String(qty) : '';
+      const stepBtn = (dir, label, ic) =>
+        `<button type="button" onclick="sellStep('${h.code}', ${dir})" aria-label="${label}" class="w-11 h-11 rounded-[12px] border border-white/20 bg-white/10 text-white flex items-center justify-center tap-press transition"><i data-icon="${ic}"></i></button>`;
+      return `
+        <div id="sellBox_${h.code}" class="flex flex-col gap-3">
+          <div class="text-sm font-semibold text-white">매도 수량</div>
+          <div class="grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2">
+            ${stepBtn(-1, '수량 줄이기', 'minus')}
+            <label class="flex items-baseline justify-center gap-1 rounded-[14px] border border-transparent py-1 transition focus-within:border-[#30d158]/60">
+              <input type="number" id="sellQtyInput_${h.code}" inputmode="decimal" step="any" min="0" value="${text}" oninput="onSellQtyInput('${h.code}', this.value)" onblur="onSellQtyBlur('${h.code}')" aria-label="매도 수량"
+                     class="min-w-0 max-w-full bg-transparent text-center text-[28px] font-bold text-white focus:outline-none" style="width:${buyQtyInputWidthCh(text)}ch">
+              <span class="text-sm text-[#d3d6e2] shrink-0">주</span>
+            </label>
+            ${stepBtn(1, '수량 늘리기', 'plus')}
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-[13px] text-[#a9aebf]">보유 ${h.quantity}주</span>
+            <button type="button" onclick="sellMax('${h.code}')" class="min-h-[44px] px-2 -mr-2 text-[13px] font-bold text-[#30d158] tap-press">최대로 채우기</button>
+          </div>
+          ${sellDynHtml(h, mobile)}
+        </div>`;
+    }
+
+    // 입력칸 아래 영역만 다시 그린다(입력칸·차트·목록은 건드리지 않는다)
+    function refreshSellBox(code) {
+      const el = document.getElementById('sellDyn_' + code);
+      const h = currentHolding(code);
+      if (!el || !h) return;
+      el.outerHTML = sellDynHtml(h, !isPcLayout());
+    }
+
+    // 입력칸을 현재 수량으로 맞춘다(−/+ 와 칸을 벗어날 때처럼 코드가 값을 바꾸는 경우). 타이핑 중에는 부르지 않는다
+    function syncSellInput(code) {
+      const h = currentHolding(code);
+      const input = document.getElementById('sellQtyInput_' + code);
+      if (!h || !input) return;
+      const qty = sellQtyOf(h);
+      input.value = qty > 0 ? String(qty) : '';
+      input.style.width = buyQtyInputWidthCh(input.value) + 'ch';
+    }
+
+    async function fetchSellPreview(code, qty) {
+      const seq = ++sellPreviewSeq;
+      sellPreview[code] = { qty, status: 'loading' };
       try {
-        const data = await api('/api/sell', { method: 'POST', body: { code: code } });
+        const res = await api('/api/sell/preview?code=' + encodeURIComponent(code) + '&quantity=' + encodeURIComponent(qty));
+        if (seq !== sellPreviewSeq) return null; // 그 사이 다른 수량을 골랐다
+        sellPreview[code] = { qty, status: 'ok', data: res.preview };
+      } catch (err) {
+        if (seq !== sellPreviewSeq) return null;
+        sellPreview[code] = { qty, status: 'error' };
+      }
+      refreshSellBox(code);
+      return sellPreview[code];
+    }
+
+    // 수량과 안내를 정하고 예상 금액 조회를 예약한다. 0 이하는 매도할 수 없는 상태다
+    function applySellQty(code, qty, msg) {
+      const h = currentHolding(code);
+      if (!h) return;
+      clearTimeout(sellPreviewTimers[code]);
+      if (msg && msg.message) sellMsg[code] = msg; else delete sellMsg[code];
+      if (!(qty > 0)) {
+        sellSel[code] = 0;
+        delete sellPreview[code];
+        sellPreviewSeq++; // 진행 중이던 조회는 버린다
+      } else if (isFullSell(qty, h.quantity)) {
+        delete sellSel[code];
+        delete sellPreview[code];
+        sellPreviewSeq++;
+      } else {
+        sellSel[code] = qty;
+        sellPreview[code] = { qty, status: 'loading' };
+        sellPreviewTimers[code] = setTimeout(() => fetchSellPreview(code, qty), SELL_PREVIEW_DELAY_MS);
+      }
+      refreshSellBox(code);
+    }
+
+    function sellStep(code, dir) {
+      const h = currentHolding(code);
+      if (!h) return;
+      applySellQty(code, stepSellQty(sellQtyOf(h), dir, h.quantity), null);
+      syncSellInput(code);
+    }
+
+    // 최대로 채우기: 보유 전량(소수 포함)
+    function sellMax(code) {
+      const h = currentHolding(code);
+      if (!h) return;
+      applySellQty(code, h.quantity, null);
+      syncSellInput(code);
+    }
+
+    // 직접 입력: 입력 도중에는 칸의 글자를 건드리지 않고 적용 수량·안내만 갱신한다(보정값은 칸을 벗어날 때 반영)
+    function onSellQtyInput(code, raw) {
+      const h = currentHolding(code);
+      if (!h) return;
+      const r = normalizeSellQty(raw, h.is_fractional === true, h.quantity);
+      applySellQty(code, r.qty, { kind: r.kind, message: r.message });
+      const input = document.getElementById('sellQtyInput_' + code);
+      if (input) input.style.width = buyQtyInputWidthCh(raw) + 'ch';
+    }
+
+    function onSellQtyBlur(code) {
+      syncSellInput(code);
+    }
+
+    // 확인창에 보일 예상 수령액(서버 값). 전량은 포트폴리오의 값, 일부는 지금 시세로 미리보기를 다시 받는다. 못 받으면 null
+    async function sellConfirmNet(h, qty) {
+      if (isFullSell(qty, h.quantity)) return h.est_proceeds;
+      clearTimeout(sellPreviewTimers[h.code]);
+      const pv = await fetchSellPreview(h.code, qty);
+      return pv && pv.status === 'ok' ? pv.data.net : null;
+    }
+
+    // executeSell (보유 종목 매도: 선택한 수량, 기본은 전량)
+    async function executeSell(code) {
+      const h = currentHolding(code);
+      if (!h) return;
+      const qty = sellQtyOf(h);
+      if (!(qty > 0)) return;
+      const full = isFullSell(qty, h.quantity);
+      const net = await sellConfirmNet(h, qty);
+      const msg = `${h.name} ${qty}주를 ${full ? '전량 ' : ''}매도하시겠습니까?`
+        + (net !== null && net !== undefined ? `\n예상 수령액 ${net.toLocaleString()}원 (세금·수수료 반영)` : '')
+        + '\n체결가는 서버 실시간 시세입니다.';
+      if (!confirm(msg)) return;
+      try {
+        const data = await api('/api/sell', { method: 'POST', body: sellRequestBody(code, qty, h.quantity) });
+        delete sellSel[code];
+        delete sellPreview[code];
+        delete sellMsg[code];
         showToast(data.message || '매도가 체결되었습니다.', 'success');
         await refreshData();
       } catch (err) {

@@ -175,4 +175,4 @@ def test_rows_are_accessible_accordion_headers():
     assert s.count('aria-expanded="${') >= 2, "추천·보유 행에 aria-expanded 가 필요합니다"
     assert "function toggleHolding" in s
     assert "eval_amount" in s
-    assert "전량 모의 매도" in s
+    assert "전량 " in s and "모의 매도" in s  # sellBoxHtml 의 매도 버튼 문구

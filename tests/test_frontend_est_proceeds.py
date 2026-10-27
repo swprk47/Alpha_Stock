@@ -98,16 +98,16 @@ def test_missing_fields_from_an_older_server_show_nothing(run):
 
 # ---- 배치 ----
 def test_pc_sell_panel_shows_the_estimate_above_the_button():
-    body = _func("holdingDetailHtml")
-    assert "estimateRowsHtml(h, false)" in body
-    assert body.index("estimateRowsHtml(") < body.index("executeSell('${h.code}')")
-    assert "전량 모의 매도" in body  # 매도 버튼은 그대로
+    # 매도 패널(수량 조절 + 예상 금액 + 매도 버튼)은 sellBoxHtml 로 옮겨졌다. PC 상세는 그것을 쓴다
+    assert "sellBoxHtml(h, false)" in _func("holdingDetailHtml")
+    box = _func("sellDynHtml")  # 입력칸 아래 영역: 안내 · 예상 금액 · 매도 버튼
+    assert "sellEstimateHtml(" in box and box.index("sellEstimateHtml(") < box.index("executeSell(")
+    assert "estimateRowsHtml(h, mobile)" in _func("sellEstimateHtml")
+    assert "전량 " in box and "모의 매도" in box  # 전량이면 '전량 모의 매도' 문구
 
 
 def test_mobile_accordion_shows_the_estimate_above_the_sell_button():
-    body = _func("renderHoldings")
-    assert "estimateRowsHtml(h, true)" in body
-    assert body.index("estimateRowsHtml(") < body.index("executeSell(")
+    assert "sellBoxHtml(h, true)" in _func("renderHoldings")  # 모바일도 같은 패널(예상 금액이 매도 버튼 위)
 
 
 # ---- 화면은 계산하지 않는다 ----
