@@ -46,6 +46,12 @@
     input[id^="sellQtyInput_"]::-webkit-outer-spin-button,
     input[id^="sellQtyInput_"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     input[id^="sellQtyInput_"] { -moz-appearance: textfield; appearance: textfield; }
+    input[id^="ibQtyInput_"]::-webkit-outer-spin-button,
+    input[id^="ibQtyInput_"]::-webkit-inner-spin-button,
+    input[id^="ibAmtInput_"]::-webkit-outer-spin-button,
+    input[id^="ibAmtInput_"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[id^="ibQtyInput_"] { -moz-appearance: textfield; appearance: textfield; }
+    input[id^="ibAmtInput_"] { -moz-appearance: textfield; appearance: textfield; }
     /* 애플 주식 스타일 슬릭 스크롤 */
     ::-webkit-scrollbar {
       display: none;
@@ -479,6 +485,23 @@
     </div>
   </div>
 
+  <!-- 매수·매도 확인창 (시안 확인창 1~5): 확인 → 체결 중 → 성공하면 닫힘 / 실패하면 창 안에 오류와 '닫기 · 다시 시도'. 매수·매도가 같이 쓴다 -->
+  <div id="tradeModal" onclick="if (event.target === this) closeTradeModal()" class="dlg-backdrop fixed inset-0 z-[60] flex items-center justify-center p-4 hidden">
+    <div role="alertdialog" aria-modal="true" aria-labelledby="tradeTitle" aria-describedby="tradeDesc" class="dlg-panel glass-modal w-full max-w-[420px] rounded-[18px] p-6 flex flex-col gap-4">
+      <div class="flex items-center gap-3">
+        <div id="tradeIcon" class="w-10 h-10 shrink-0 rounded-full bg-white/[0.12] text-[#f5f5f7] flex items-center justify-center text-[22px]"></div>
+        <h3 id="tradeTitle" class="text-[18px] font-bold leading-snug text-white"></h3>
+      </div>
+      <p id="tradeDesc" class="text-sm leading-relaxed text-[#d3d6e2]"></p>
+      <div id="tradeSummary" class="flex flex-col gap-2.5 px-3.5 py-3 rounded-xl bg-black/35 text-sm text-[#d3d6e2]"></div>
+      <p id="tradeNote" class="text-[13px] leading-relaxed text-[#a9aebf] break-keep"></p>
+      <div class="grid grid-cols-2 gap-2">
+        <button id="tradeCancelBtn" onclick="closeTradeModal()" class="min-h-[48px] w-full rounded-xl bg-white/[0.08] border border-white/20 text-[15px] font-semibold text-[#f5f5f7] hover:bg-white/15 tap-press transition">취소</button>
+        <button id="tradeConfirmBtn" onclick="tradeConfirm()" class="min-h-[48px] w-full rounded-xl bg-[#f5f5f7] text-[#0b0d12] text-[15px] font-bold tap-press transition flex items-center justify-center gap-2">확인</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 💰 시드머니 예산 설정 모달 -->
   <div id="budgetModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
     <div class="glass-modal w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4">
@@ -789,23 +812,52 @@
       });
     }
     // </icons>
-    // ===== 수량 입력 로직 (DOM 을 쓰지 않는 순수 함수. tests/test_frontend_qty.py 가 이 구간을 그대로 실행해 검증) =====
-    // <qty-logic>
-    const BUY_FEE_MULTIPLIER = 1.00015; // 매수 수수료 0.015% 포함 단가 배수
+    // <buy-calc>
+    // 매수 결제 계산: 모달·하단 바·PC 인라인 매수 패널이 모두 이 구간을 쓴다.
+    // 서버(backend/fees.py calc_buy_cost)와 정확히 같다: 총액 = 원 미만 내림(가격×수량), 수수료 = 총액×요율을 부동소수 보정 후 내림.
+    // 요율은 backend/config.py 의 BUY_FEE_RATE 기본값이다. tests/test_frontend_buy_calc.py 가 서버와 1원 단위로 대조한다.
+    const BUY_FEE_RATE = 0.00015;
 
-    function floorQty4(x) { return Math.floor(x * 10000 + 1e-9) / 10000; }
+    function buyFee(gross) {
+      return Math.floor(Math.round(gross * BUY_FEE_RATE * 1e6) / 1e6);
+    }
+
+    function buyTotals(price, qty, cash) {
+      const gross = Math.floor(price * qty);
+      const fee = buyFee(gross);
+      const total = gross + fee;
+      const have = cash > 0 ? cash : 0;
+      return { gross: gross, fee: fee, total: total, remaining: Math.max(0, have - total), short: total > have };
+    }
+
+    // 금액으로 살 수 있는 최대 수량(총 결제가 금액을 넘지 않는 가장 큰 수량). 소수점 가능 종목은 소수 4자리, 아니면 정수.
+    // 총 결제는 수량에 대해 줄지 않으므로 단위(1주 또는 0.0001주) 개수를 이분 탐색한다.
+    function qtyForAmount(price, amount, fractional) {
+      if (!(price > 0) || !(amount > 0)) return 0;
+      const scale = fractional ? 10000 : 1;
+      let lo = 0;
+      let hi = Math.ceil((amount + 1) / price * scale) + 1;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        if (buyTotals(price, mid / scale, 0).total <= amount) lo = mid; else hi = mid - 1;
+      }
+      return lo / scale;
+    }
 
     // 현금으로 살 수 있는 정수 단위 최대 수량 (표시·"최대로 채우기"·입력 상한 모두 이 값)
     function buyQtyMax(cash, price) {
-      if (!(price > 0) || !(cash > 0)) return 0;
-      return Math.floor(cash / (price * BUY_FEE_MULTIPLIER));
+      return qtyForAmount(price, cash, false);
     }
 
     // 소수점 가능 종목이 직접 입력으로 살 수 있는 최대 수량 (소수 4자리 내림). 화면의 "최대"(정수)와 별개 상한.
     function buyQtyMaxFractional(cash, price) {
-      if (!(price > 0) || !(cash > 0)) return 0;
-      return floorQty4(cash / (price * BUY_FEE_MULTIPLIER));
+      return qtyForAmount(price, cash, true);
     }
+    // </buy-calc>
+
+    // ===== 수량 입력 로직 (DOM 을 쓰지 않는 순수 함수. tests/test_frontend_qty.py 가 이 구간을 그대로 실행해 검증) =====
+    // <qty-logic>
+    function floorQty4(x) { return Math.floor(x * 10000 + 1e-9) / 10000; }
 
     // 직접 입력값 보정. 소수점 가능 종목만 소수 4자리까지(상한 = maxFracQty), 그 외는 내림(상한 = maxQty).
     // maxFracQty 를 생략하면 maxQty 를 상한으로 쓴다.
@@ -909,6 +961,85 @@
     }
     // </sell-logic>
 
+    // <trade-dialog>
+    // 매수·매도 확인창의 내용·상태(DOM 을 쓰지 않는 순수 함수. tests/test_frontend_trade_dialog.py 가 이 구간을 그대로 실행한다).
+    // 금액은 서버가 계산한 값(buyTotals·서버 미리보기·포트폴리오의 예상 값)을 받아 보이기만 하고, 여기서 수수료·세금을 계산하지 않는다.
+    const TRADE_NOTE = '체결가는 서버 실시간 시세로 정해져서 위 금액과 조금 다를 수 있어요.';
+    const TRADE_GENERIC_ERROR = '서버 통신 오류가 발생했습니다.';
+
+    function tradeWon(n) { return n.toLocaleString() + '원'; }
+
+    function buyConfirmCfg(name, qty, totals) {
+      return {
+        label: name + ' 매수 확인',
+        title: `${name} ${qty}주를 매수할까요?`,
+        lead: '모의 매수예요. 실제 돈은 쓰이지 않아요.',
+        rows: [
+          { label: '매수 수량', value: `${qty}주`, tone: '' },
+          { label: '총 결제 예상 (수수료 포함)', value: tradeWon(totals.total), tone: '' },
+          { label: '매수 후 남는 현금', value: tradeWon(totals.remaining), tone: '' },
+        ],
+        note: TRADE_NOTE,
+        confirmText: `${qty}주 매수`,
+        errorRows: [
+          { label: '주문', value: `${name} ${qty}주 매수`, tone: '' },
+          { label: '총 결제 예상', value: tradeWon(totals.total), tone: '' },
+        ],
+      };
+    }
+
+    // est = { net, pnl }: 서버가 준 예상 수령액·예상 실현 손익. 없으면(시세 실패·옛 서버) 숫자를 만들지 않고 알린다
+    function sellConfirmCfg(name, qty, full, est) {
+      const has = v => v !== null && v !== undefined;
+      const net = est && has(est.net) ? est.net : null;
+      const pnl = est && has(est.pnl) ? est.pnl : null;
+      const word = full ? '전량 ' : '';
+      const rows = [{ label: '매도 수량', value: full ? `${qty}주 (전량)` : `${qty}주`, tone: '' }];
+      const errorRows = [{ label: '주문', value: `${name} ${qty}주 ${word}매도`, tone: '' }];
+      if (net === null) {
+        rows.push({ label: '예상 수령액', value: '예상 금액을 표시할 수 없어요', tone: '' });
+      } else {
+        rows.push({ label: '예상 수령액 (세금·수수료 반영)', value: tradeWon(net), tone: '' });
+        if (pnl !== null) rows.push({ label: '예상 실현 손익', value: (pnl > 0 ? '+' : '') + tradeWon(pnl), tone: pnl > 0 ? 'up' : (pnl < 0 ? 'dn' : '') });
+        errorRows.push({ label: '예상 수령액', value: tradeWon(net), tone: '' });
+      }
+      return {
+        label: name + ' 매도 확인',
+        title: `${name} ${qty}주를 ${word}매도할까요?`,
+        lead: '모의 매도예요. 실제 돈은 오가지 않아요.',
+        rows: rows,
+        note: TRADE_NOTE,
+        confirmText: `${qty}주 ${word}매도`,
+        errorRows: errorRows,
+      };
+    }
+
+    // 확인창의 한 순간의 모양. phase: 'confirm'(확인) | 'busy'(체결 중) | 'error'(주문 실패)
+    function tradeView(cfg, phase, errMsg) {
+      if (phase === 'error') {
+        return { phase: phase, iconName: 'triangle-alert', iconTone: 'warn', label: cfg.label.replace('확인', '주문 실패'),
+                 title: '주문하지 못했어요', lead: errMsg || TRADE_GENERIC_ERROR, rows: cfg.errorRows, note: '',
+                 cancelLabel: '닫기', confirmLabel: '다시 시도', busy: false };
+      }
+      const busy = phase === 'busy';
+      return { phase: phase, iconName: 'zap', iconTone: 'neutral', label: cfg.label, title: cfg.title,
+               lead: busy ? '' : cfg.lead, rows: cfg.rows, note: busy ? '' : cfg.note,
+               cancelLabel: '취소', confirmLabel: busy ? '체결 중…' : cfg.confirmText, busy: busy };
+    }
+
+    // 주문 실행: 체결 중으로 바꾸고 run 을 기다린다. 성공하면 done, 로그인 만료(401)는 closed(로그인 창이 뜬다), 그 밖의 실패는 error
+    async function runTrade(run, onPhase) {
+      onPhase('busy');
+      try {
+        await run();
+        onPhase('done');
+      } catch (err) {
+        if (err && err.status === 401) onPhase('closed');
+        else onPhase('error', err && err.status && err.message ? err.message : TRADE_GENERIC_ERROR);
+      }
+    }
+    // </trade-dialog>
+
     // ===== 증권사 알약 (표시 전용. 전환 기능은 증권사가 더 추가될 때) =====
     const CURRENT_BROKER = 'miraeasset'; // backend/fractional.py 의 DEFAULT_BROKER 키와 같다
     const BROKER_LABELS = { miraeasset: '미래에셋' };
@@ -936,28 +1067,26 @@
     let sellPreviewSeq = 0; // 늦게 온 응답을 버리기 위한 순번
     let sellMsg = {};       // 종목 코드 → 입력 안내 { kind: 'notice'|'error', message }
     const sellPreviewTimers = {};
+    let ibSel = {};         // 종목 코드 → PC 인라인 매수 패널 상태 { mode: 'amount'|'qty', qty, amount, msg }
     let activeTab = 'recs';
     let summarySeg = 'pnl';  // 요약의 내 계좌 패널 보기: 'pnl'(거래별 손익) | 'trades'(거래 내역)
 
     // ===== 홈 화면 로직 (DOM 을 쓰지 않는 순수 함수. tests/test_frontend_mobile_home.py 가 이 구간을 그대로 실행해 검증) =====
     // <home-logic>
-    const BUY_FEE_RATE = 0.00015; // 매수 수수료 0.015%. 매수 모달(updateBuyModalCalcs)과 같은 계산
-
     // 아코디언: 한 번에 하나만 펼치고, 펼쳐진 행을 다시 누르면 접는다
     function nextExpandedIndex(current, clicked) {
       return current === clicked ? -1 : clicked;
     }
 
     // 하단 고정 매수 바에 보일 내용. 추천 탭에서 펼친 종목이 있을 때만 값을 돌려준다.
-    // 총 결제 = 가격×수량 + 수수료(내림). 서버의 sizing.total_cost 는 수수료를 뺀 금액이라 쓰지 않는다.
+    // 총 결제 = buyTotals(가격×수량 + 수수료, 서버와 같은 계산). 서버의 sizing.total_cost 는 수수료를 뺀 금액이라 쓰지 않는다.
     function bottomBarState(tab, expandedIdx, recs) {
       if (tab !== 'recs' || !Array.isArray(recs)) return null;
       const item = recs[expandedIdx];
       if (!item || !item.sizing || !(item.current_price > 0)) return null;
       const qty = item.sizing.recommended_quantity;
       if (!(qty > 0)) return null;
-      const cost = Math.floor(item.current_price * qty);
-      return { idx: expandedIdx, qty: qty, total: cost + Math.floor(cost * BUY_FEE_RATE) };
+      return { idx: expandedIdx, qty: qty, total: buyTotals(item.current_price, qty, 0).total };
     }
     // </home-logic>
 
@@ -1292,13 +1421,18 @@
       renderDetailPane();
     }
 
-    // 패널의 매수 버튼: 기존 매수 모달을 연다(주문 계산은 모달 그대로). 아직 못 받은 종목으로는 열지 않는다
-    function buySearchStock() {
-      if (!searchStock || searchStock.loading) return;
-      openCustomBuyModal(searchStock);
-    }
-
     // ===== 💡 수량 조절 매수 모달 로직 =====
+    // <toast-logic>
+    // 상단 알림이 떠 있는 시간(ms): 종류별 기본 시간에 글자가 길면 조금 더 얹는다(상한 12초). 체결 알림을 읽을 시간이 필요하다
+    const TOAST_BASE_MS = { success: 5000, info: 4000, error: 7000 };
+    function toastDuration(type, message) {
+      const base = TOAST_BASE_MS[type] || TOAST_BASE_MS.info;
+      const len = message ? String(message).length : 0;
+      return Math.min(12000, base + Math.max(0, len - 20) * 60);
+    }
+    // </toast-logic>
+    let toastTimer = null; // 새 알림이 뜨면 이전 알림의 타이머를 지워서 일찍 사라지지 않게 한다
+
     function showToast(message, type = 'success') {
       const toast = document.getElementById('toastNotification');
       const toastMsg = document.getElementById('toastMessage');
@@ -1316,10 +1450,11 @@
       toast.classList.remove('opacity-0', '-translate-y-4', 'pointer-events-none');
       toast.classList.add('opacity-100', 'translate-y-0');
 
-      setTimeout(() => {
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
         toast.classList.remove('opacity-100', 'translate-y-0');
         toast.classList.add('opacity-0', '-translate-y-4', 'pointer-events-none');
-      }, 2500);
+      }, toastDuration(type, message));
     }
 
     let buyMode = 'amount'; // 'amount' (금액 기준) or 'qty' (수량 기준)
@@ -1405,17 +1540,8 @@
 
     function calculateQtyFromAmount() {
       if (!selectedRecForBuy || selectedRecForBuy.current_price <= 0) return;
-      const price = selectedRecForBuy.current_price;
-      const unitCost = price * 1.00015; // 수수료 포함
-
-      if (selectedRecForBuy.is_fractional) {
-        // 소수점 거래 가능 종목: 소수점 4자리까지 정확히 분할 매수
-        const rawQty = currentBuyAmount / unitCost;
-        currentBuyQty = Math.max(0, Math.floor(rawQty * 10000) / 10000);
-      } else {
-        // 소수점 미지원 종목: 정수 단위로만 매수
-        currentBuyQty = Math.floor(currentBuyAmount / unitCost);
-      }
+      // 소수점 거래 가능 종목은 소수 4자리까지, 아니면 정수 단위. 총 결제(수수료 포함)가 금액을 넘지 않는 최대 수량
+      currentBuyQty = qtyForAmount(selectedRecForBuy.current_price, currentBuyAmount, selectedRecForBuy.is_fractional === true);
     }
 
     // AI 등급별 색상·문구 (구매 모달과 추천 카드가 공유)
@@ -1617,11 +1743,11 @@
 
     function updateBuyModalCalcs() {
       const price = selectedRecForBuy ? selectedRecForBuy.current_price : 0;
-      const totalCost = Math.floor(price * currentBuyQty);
-      const fee = Math.floor(totalCost * 0.00015);
-      const totalRequired = totalCost + fee;
       const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
-      const remaining = Math.max(0, cash - totalRequired);
+      const t = buyTotals(price, currentBuyQty, cash);
+      const totalCost = t.gross;
+      const totalRequired = t.total;
+      const remaining = t.remaining;
       const ratio = currentPortfolio && currentPortfolio.total_asset > 0 ? ((totalCost / currentPortfolio.total_asset) * 100).toFixed(1) : 0;
 
       const qtyDisplayStr = (currentBuyQty > 0) ? `${currentBuyQty}` : '0';
@@ -1865,8 +1991,8 @@
       document.getElementById('menuBtn').setAttribute('aria-expanded', 'false');
     }
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { closeMenu(); closeResetModal(); }
-      if (e.key === 'Tab') trapResetFocus(e);
+      if (e.key === 'Escape') { closeMenu(); closeResetModal(); closeTradeModal(); }
+      if (e.key === 'Tab') { trapResetFocus(e); trapTradeFocus(e); }
     });
     let recsLoaded = false;   // 추천을 한 번이라도 받았는지 (빈 목록 문구 구분용)
     let recsFailed = false;   // 마지막 추천 요청이 실패했는지 (받아 둔 목록이 없을 때 오류 화면의 기준)
@@ -2640,17 +2766,8 @@
     function recDetailHtml(item, idx) {
       const s = item.sizing;
       const isGain = item.change_rate >= 0;
-      const bar = bottomBarState('recs', idx, currentRecs); // 하단 바와 같은 N주·총 결제(수수료 포함) 계산
-      const buy = bar ? pcPanel(`
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <div class="text-[13px] text-[#a9aebf]">총 결제 예상 (수수료 포함)</div>
-            <b class="text-xl font-extrabold text-white">${bar.total.toLocaleString()}원</b>
-          </div>
-          <button onclick="openBuyModal(${idx})" class="m-pulse min-w-[220px] min-h-[48px] px-6 rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
-            <i data-icon="zap" class="text-[18px]"></i> ${bar.qty}주 모의 매수
-          </button>
-        </div>`) : '';
+      // 매수 패널(PC): 금액/수량 전환·수량 −/+·총 결제·'N주 모의 매수'. 하단 바·모달은 모바일에서 그대로 쓴다
+      const buy = item.current_price > 0 ? pcPanel(ibBoxHtml(item), 'flex flex-col gap-3') : '';
       return `
         <div class="space-y-4 pb-4">
           <div class="flex items-start justify-between gap-4">
@@ -2668,8 +2785,10 @@
           </div>
           ${pcChartPanel(`${item.current_price.toLocaleString()}원`)}
           <div class="grid grid-cols-4 gap-3">${recStatCellsHtml(s)}</div>
-          ${pcPanel(recAiHtml(item))}
-          ${buy}
+          <div class="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4">
+            ${pcPanel(recAiHtml(item))}
+            ${buy}
+          </div>
         </div>`;
     }
 
@@ -2775,17 +2894,7 @@
       }
       const isGain = stock.change_rate >= 0;
       const t = swingTargets(stock.current_price);
-      const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
-      const buy = pcPanel(`
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <div class="text-[13px] text-[#a9aebf]">내 현금</div>
-            <b class="text-xl font-extrabold text-white">${cash.toLocaleString()}원</b>
-          </div>
-          <button onclick="buySearchStock()" class="m-pulse min-w-[220px] min-h-[48px] px-6 rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
-            <i data-icon="zap" class="text-[18px]"></i> 모의 매수
-          </button>
-        </div>`);
+      const buy = pcPanel(ibBoxHtml(stock), 'flex flex-col gap-3');
       return `
         <div class="space-y-4 pb-4">
           <div class="flex items-start justify-between gap-4">
@@ -2812,8 +2921,10 @@
             ${statCell('손익비', `${t.ratio} : 1`)}
             ${statCell('권장 보유', `${t.holdDays}영업일`)}
           </div>
-          ${pcPanel(recAiHtml(stock))}
-          ${buy}
+          <div class="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4">
+            ${pcPanel(recAiHtml(stock))}
+            ${buy}
+          </div>
         </div>`;
     }
 
@@ -3190,36 +3301,371 @@
       syncSellInput(code);
     }
 
-    // 확인창에 보일 예상 수령액(서버 값). 전량은 포트폴리오의 값, 일부는 지금 시세로 미리보기를 다시 받는다. 못 받으면 null
-    async function sellConfirmNet(h, qty) {
-      if (isFullSell(qty, h.quantity)) return h.est_proceeds;
+    // 확인창에 보일 예상 수령액·손익(서버 값). 전량은 포트폴리오의 값, 일부는 지금 시세로 미리보기를 다시 받는다. 못 받으면 null
+    async function sellConfirmEst(h, qty) {
+      if (isFullSell(qty, h.quantity)) return { net: h.est_proceeds, pnl: h.est_realized_pnl };
       clearTimeout(sellPreviewTimers[h.code]);
       const pv = await fetchSellPreview(h.code, qty);
-      return pv && pv.status === 'ok' ? pv.data.net : null;
+      return pv && pv.status === 'ok' ? { net: pv.data.net, pnl: pv.data.est_realized_pnl } : null;
     }
 
-    // executeSell (보유 종목 매도: 선택한 수량, 기본은 전량)
+    // executeSell (보유 종목 매도: 선택한 수량, 기본은 전량). 확인창에서 확인해야 주문이 나간다
     async function executeSell(code) {
       const h = currentHolding(code);
       if (!h) return;
       const qty = sellQtyOf(h);
       if (!(qty > 0)) return;
       const full = isFullSell(qty, h.quantity);
-      const net = await sellConfirmNet(h, qty);
-      const msg = `${h.name} ${qty}주를 ${full ? '전량 ' : ''}매도하시겠습니까?`
-        + (net !== null && net !== undefined ? `\n예상 수령액 ${net.toLocaleString()}원 (세금·수수료 반영)` : '')
-        + '\n체결가는 서버 실시간 시세입니다.';
-      if (!confirm(msg)) return;
-      try {
+      const est = await sellConfirmEst(h, qty);
+      openTradeConfirm(sellConfirmCfg(h.name, qty, full, est), async () => {
         const data = await api('/api/sell', { method: 'POST', body: sellRequestBody(code, qty, h.quantity) });
         delete sellSel[code];
         delete sellPreview[code];
         delete sellMsg[code];
         showToast(data.message || '매도가 체결되었습니다.', 'success');
         await refreshData();
-      } catch (err) {
-        if (err.status !== 401) showToast(err.status ? err.message : '서버 통신 오류가 발생했습니다.', 'error');
+      });
+    }
+
+    // ===== PC 인라인 매수 패널(시안 S1): 금액/수량 전환 · 수량 − [입력] + · 총 결제 · "N주 모의 매수" =====
+    // 추천 상세와 검색 종목 상세 안에서 쓴다(PC). 모바일은 하단 바와 매수 모달을 그대로 쓴다.
+    // 결제 금액은 buyTotals(서버와 같은 계산)만 쓰고, 입력 규칙은 매수 모달과 같다(normalizeBuyQty·stepBuyQty·buyQtyMax 계열).
+    // 함수 이름의 ib = inline buy (매수 모달의 함수와 이름이 겹치지 않게 한다)
+    function ibCash() { return currentPortfolio ? currentPortfolio.cash_balance : 100000; }
+
+    function ibItemOf(code) {
+      return (currentRecs || []).find(r => r.code === code)
+        || (searchStock && !searchStock.loading && searchStock.code === code ? searchStock : null);
+    }
+
+    // 종목별 상태. 추천 권장 수량이 있으면 수량 방식으로, 아니면 모달처럼 금액 방식(기본 금액 = min(현금, max(가격, 3만)))으로 시작한다
+    function ibStateOf(item) {
+      let st = ibSel[item.code];
+      if (st) return st;
+      const rec = item.sizing && item.sizing.recommended_quantity > 0 ? item.sizing.recommended_quantity : 0;
+      if (rec > 0) {
+        st = { mode: 'qty', qty: rec, amount: 0, msg: null };
+      } else {
+        const amount = Math.min(ibCash(), Math.max(item.current_price, 30000));
+        st = { mode: 'amount', qty: qtyForAmount(item.current_price, amount, item.is_fractional === true), amount: amount, msg: null };
       }
+      ibSel[item.code] = st;
+      return st;
+    }
+
+    // 지금 살 수량. 금액 모드는 금액에서만 계산하고(수량 모드에서 바꾼 값의 영향을 받지 않는다), 수량 모드는 수량 그대로
+    function ibQtyOf(item, st) {
+      return st.mode === 'amount' ? qtyForAmount(item.current_price, st.amount, item.is_fractional === true) : st.qty;
+    }
+
+    // 입력칸 아래(안내·총 결제·남는 현금·매수 버튼). 타이핑 중에는 입력칸은 두고 이 영역만 다시 그린다
+    function ibDynHtml(item) {
+      const st = ibStateOf(item);
+      const qty = ibQtyOf(item, st);
+      const t = buyTotals(item.current_price, qty, ibCash());
+      const frac = item.is_fractional === true;
+      const help = frac
+        ? '소수점 거래가 가능한 종목이에요. 0.0001주 단위까지 입력돼요.'
+        : '소수점 거래가 안 되는 종목이라 1주 단위로만 살 수 있어요.';
+      const msg = st.msg && st.msg.message ? st.msg : { kind: '', message: help };
+      const tone = msg.kind === 'error' ? 'text-[#ff9f0a]' : (msg.kind === 'notice' ? 'text-[#30d158]' : 'text-[#a9aebf]');
+      const row = (label, value) =>
+        `<div class="flex items-center justify-between gap-3 text-[13px] text-[#d3d6e2]"><span>${label}</span><b class="num font-semibold text-[#f5f5f7]">${value}</b></div>`;
+      let label = `${qty}주 모의 매수`;
+      let off = false;
+      let cls = 'm-pulse bg-white text-black';
+      if (!(qty > 0)) { label = '매수 수량 0'; off = true; }
+      else if (t.short) { label = '잔여 현금 부족'; off = true; }
+      else if (item.grade === 'C') { label = `비추천 종목 ${qty}주 매수`; cls = 'bg-[#48484a] text-white'; }
+      if (off) cls = 'bg-white/20 text-[#a9aebf] opacity-60 cursor-not-allowed';
+      return `
+        <div id="ibDyn_${item.code}" class="flex flex-col gap-3">
+          ${st.mode === 'amount' ? `<div class="text-[13px] text-[#a9aebf]">이 금액으로 <b class="num text-white">${qty}주</b>를 살 수 있어요</div>` : ''}
+          <div role="${msg.kind === 'error' ? 'alert' : 'status'}" class="text-[13px] leading-relaxed break-keep ${tone}">${msg.message}</div>
+          <div class="flex flex-col gap-2">
+            ${row('총 결제 예상 (수수료 포함)', `${t.total.toLocaleString()}원`)}
+            ${row('매수 후 남는 현금', `${t.remaining.toLocaleString()}원`)}
+          </div>
+          <button type="button" onclick="executeInlineBuy('${item.code}')" ${off ? 'disabled aria-disabled="true"' : ''} class="${cls} w-full min-h-[48px] rounded-xl font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
+            <i data-icon="zap" class="text-[18px]"></i> ${label}
+          </button>
+        </div>`;
+    }
+
+    function ibBoxHtml(item) {
+      const st = ibStateOf(item);
+      const code = item.code;
+      const price = item.current_price;
+      const maxInt = buyQtyMax(ibCash(), price);
+      const modeBtn = (m, text) => {
+        const on = st.mode === m;
+        return `<button type="button" onclick="ibMode('${code}', '${m}')" aria-pressed="${on}" class="flex-1 min-h-[44px] rounded-lg text-sm font-semibold tap-press transition ${on ? 'bg-[#2c2c2e] text-white' : 'text-[#a9aebf] hover:text-white'}">${text}</button>`;
+      };
+      const stepBtn = (dir, label, ic) =>
+        `<button type="button" onclick="ibStep('${code}', ${dir})" aria-label="${label}" class="w-11 h-11 rounded-[12px] border border-white/20 bg-white/10 text-white flex items-center justify-center tap-press transition"><i data-icon="${ic}"></i></button>`;
+      const qtyText = st.qty > 0 ? String(st.qty) : '';
+      const quick = (v, text, extra = '') =>
+        `<button type="button" onclick="ibQuick('${code}', ${typeof v === 'number' ? v : `'${v}'`})" class="min-h-[44px] rounded-lg bg-white/10 hover:bg-white/20 text-[13px] font-semibold tap-press transition ${extra || 'text-white'}">${text}</button>`;
+      const inputs = st.mode === 'amount'
+        ? `
+          <label class="flex items-center gap-2 rounded-[14px] border border-white/20 bg-black/35 px-3 min-h-[48px] focus-within:border-[#30d158]/60 transition">
+            <input type="number" id="ibAmtInput_${code}" inputmode="numeric" min="0" value="${st.amount > 0 ? st.amount : ''}" placeholder="매수할 금액 입력" oninput="onIbAmtInput('${code}', this.value)" onblur="onIbBlur('${code}')" aria-label="매수 금액"
+                   class="min-w-0 flex-1 bg-transparent text-right text-xl font-bold text-white focus:outline-none">
+            <span class="text-sm text-[#d3d6e2] shrink-0">원</span>
+          </label>
+          <div class="grid grid-cols-4 gap-2">${quick(10000, '+1만')}${quick(30000, '+3만')}${quick(50000, '+5만')}${quick('max', '전액(최대)', 'text-[#30d158] font-bold')}</div>`
+        : `
+          <div class="grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2">
+            ${stepBtn(-1, '수량 줄이기', 'minus')}
+            <label class="flex items-baseline justify-center gap-1 rounded-[14px] border border-transparent py-1 transition focus-within:border-[#30d158]/60">
+              <input type="number" id="ibQtyInput_${code}" inputmode="decimal" step="any" min="0" value="${qtyText}" oninput="onIbQtyInput('${code}', this.value)" onblur="onIbBlur('${code}')" aria-label="매수 수량"
+                     class="min-w-0 max-w-full bg-transparent text-center text-[28px] font-bold text-white focus:outline-none" style="width:${buyQtyInputWidthCh(qtyText)}ch">
+              <span class="text-sm text-[#d3d6e2] shrink-0">주</span>
+            </label>
+            ${stepBtn(1, '수량 늘리기', 'plus')}
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-[13px] text-[#a9aebf]">최대 ${maxInt}주 가능</span>
+            <button type="button" onclick="ibMax('${code}')" class="min-h-[44px] px-2 -mr-2 text-[13px] font-bold text-[#30d158] tap-press">최대로 채우기</button>
+          </div>`;
+      return `
+        <div id="ibBox_${code}" class="flex flex-col gap-3">
+          <div class="flex gap-1 p-1 rounded-xl bg-black/35 border border-white/10">${modeBtn('amount', '금액으로 매수')}${modeBtn('qty', '수량으로 매수')}</div>
+          ${inputs}
+          ${ibDynHtml(item)}
+        </div>`;
+    }
+
+    // 입력칸 아래 영역만 다시 그린다(입력칸·차트는 건드리지 않는다)
+    function ibRefresh(code) {
+      const el = document.getElementById('ibDyn_' + code);
+      const item = ibItemOf(code);
+      if (!el || !item) return;
+      el.outerHTML = ibDynHtml(item);
+    }
+
+    // 방식을 바꿀 때는 입력칸이 달라지므로 패널 전체를 다시 그린다
+    function ibRerender(code) {
+      const el = document.getElementById('ibBox_' + code);
+      const item = ibItemOf(code);
+      if (!el || !item) return;
+      el.outerHTML = ibBoxHtml(item);
+    }
+
+    // 입력칸을 현재 값으로 맞춘다(−/+·최대·빠른 금액과 칸을 벗어날 때처럼 코드가 값을 바꾸는 경우). 타이핑 중에는 부르지 않는다
+    function ibSyncInput(code) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      const input = document.getElementById('ibQtyInput_' + code);
+      if (input) {
+        input.value = st.qty > 0 ? String(st.qty) : '';
+        input.style.width = buyQtyInputWidthCh(input.value) + 'ch';
+      }
+      const amt = document.getElementById('ibAmtInput_' + code);
+      if (amt) amt.value = st.amount > 0 ? String(st.amount) : '';
+    }
+
+    function ibMode(code, mode) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      if (mode !== st.mode) {
+        // 두 방식이 서로의 값을 이어받는다: 수량 → 금액은 그 수량의 총 결제, 금액 → 수량은 그 금액으로 살 수 있는 수량
+        if (mode === 'amount') st.amount = st.qty > 0 ? buyTotals(item.current_price, st.qty, 0).total : 0;
+        else st.qty = ibQtyOf(item, st);
+        st.mode = mode;
+        if (mode === 'amount') st.qty = ibQtyOf(item, st);
+      }
+      st.msg = null;
+      ibRerender(code);
+    }
+
+    function ibStep(code, dir) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      const r = stepBuyQty(st.qty, dir, buyQtyMax(ibCash(), item.current_price));
+      st.qty = r.qty;
+      st.msg = r.message ? { kind: r.kind, message: r.message } : null;
+      ibSyncInput(code);
+      ibRefresh(code);
+    }
+
+    function ibMax(code) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      const maxInt = buyQtyMax(ibCash(), item.current_price);
+      if (maxInt > 0) {
+        st.qty = maxInt;
+        st.msg = { kind: 'notice', message: `현금으로 살 수 있는 최대 ${maxInt}주예요.` };
+      } else {
+        st.qty = 0;
+        st.msg = { kind: 'error', message: '잔여 현금이 부족해요.' };
+      }
+      ibSyncInput(code);
+      ibRefresh(code);
+    }
+
+    // 직접 입력(수량): 입력 도중에는 칸의 글자를 건드리지 않고 적용 수량·안내만 갱신한다(보정값은 칸을 벗어날 때 반영)
+    function onIbQtyInput(code, raw) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      const cash = ibCash();
+      const r = normalizeBuyQty(raw, item.is_fractional === true, buyQtyMax(cash, item.current_price), buyQtyMaxFractional(cash, item.current_price));
+      st.qty = r.qty;
+      st.msg = r.message ? { kind: r.kind, message: r.message } : null;
+      const input = document.getElementById('ibQtyInput_' + code);
+      if (input) input.style.width = buyQtyInputWidthCh(raw) + 'ch';
+      ibRefresh(code);
+    }
+
+    // 직접 입력(금액): 총 결제(수수료 포함)가 금액을 넘지 않는 최대 수량으로 바꾼다
+    function onIbAmtInput(code, raw) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      st.amount = parseInt(raw) || 0;
+      st.qty = qtyForAmount(item.current_price, st.amount, item.is_fractional === true);
+      st.msg = null;
+      ibRefresh(code);
+    }
+
+    function ibQuick(code, v) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      const cash = ibCash();
+      st.amount = v === 'max' ? cash : Math.min(cash, (st.amount || 0) + v);
+      st.qty = qtyForAmount(item.current_price, st.amount, item.is_fractional === true);
+      st.msg = null;
+      ibSyncInput(code);
+      ibRefresh(code);
+    }
+
+    function onIbBlur(code) {
+      ibSyncInput(code);
+    }
+
+    // 매수 실행: 확인창 → 모달과 같은 주문. 체결가는 서버 실시간 시세
+    async function executeInlineBuy(code) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      const qty = ibQtyOf(item, st); // 화면에 보이는 수량과 같다
+      const t = buyTotals(item.current_price, qty, ibCash());
+      if (!(qty > 0) || t.short) return;
+      openTradeConfirm(buyConfirmCfg(item.name, qty, t), async () => {
+        const tg = swingTargets(item.current_price); // 목표가·손절가는 매수 모달이 저장하는 값과 같은 식
+        const data = await api('/api/buy', {
+          method: 'POST',
+          body: { code: item.code, quantity: qty, target_price: tg.target, stop_loss_price: tg.stop, max_hold_days: tg.holdDays }
+        });
+        delete ibSel[code];
+        showToast(data.message || '매수가 체결되었습니다!', 'success');
+        await refreshData();
+        switchTab('holdings');
+      });
+    }
+
+    // ===== 매수·매도 확인창 (시안 확인창 1~5) =====
+    // 확인 → 체결 중(두 버튼 잠금, 중복 클릭 방지) → 성공하면 닫힘 / 실패하면 창 안에 오류와 '닫기 · 다시 시도'
+    let tradeCfg = null;         // 지금 확인창이 묻는 주문의 내용(buyConfirmCfg / sellConfirmCfg)
+    let tradeRunFn = null;       // 확인을 누르면 실행할 주문 함수(실패하면 throw)
+    let tradeBusy = false;       // 체결 중에는 닫히지 않고 다시 눌러도 주문이 한 번만 나간다
+    let tradeReturnFocus = null;
+
+    function renderTradeDialog(phase, errMsg) {
+      const v = tradeView(tradeCfg, phase, errMsg);
+      const panel = document.querySelector('#tradeModal [role="alertdialog"]');
+      panel.setAttribute('aria-label', v.label);
+      if (v.busy) panel.setAttribute('aria-busy', 'true'); else panel.removeAttribute('aria-busy');
+      const icon = document.getElementById('tradeIcon');
+      icon.className = 'w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-[22px] '
+        + (v.iconTone === 'warn' ? 'bg-[#ff9f0a]/15 text-[#ff9f0a]' : 'bg-white/[0.12] text-[#f5f5f7]');
+      icon.innerHTML = `<i data-icon="${v.iconName}"></i>`;
+      document.getElementById('tradeTitle').textContent = v.title;
+      const desc = document.getElementById('tradeDesc');
+      desc.textContent = v.lead;
+      desc.classList.toggle('hidden', !v.lead);
+      const tone = { up: 'text-[#ff6a60]', dn: 'text-[#5aa9ff]', '': 'text-[#f5f5f7]' };
+      const summary = document.getElementById('tradeSummary');
+      summary.replaceChildren(...v.rows.map(r => {
+        const line = document.createElement('div');
+        line.className = 'flex justify-between gap-3';
+        const label = document.createElement('span');
+        label.textContent = r.label;
+        const value = document.createElement('b');
+        value.className = 'font-semibold tabular-nums text-right ' + (tone[r.tone] || tone['']);
+        value.textContent = r.value;
+        line.append(label, value);
+        return line;
+      }));
+      const note = document.getElementById('tradeNote');
+      note.textContent = v.note;
+      note.classList.toggle('hidden', !v.note);
+      const cancel = document.getElementById('tradeCancelBtn');
+      cancel.textContent = v.cancelLabel;
+      cancel.disabled = v.busy;
+      cancel.classList.toggle('opacity-40', v.busy);
+      const confirmBtn = document.getElementById('tradeConfirmBtn');
+      confirmBtn.innerHTML = (v.busy ? '<i data-icon="loader-circle" class="animate-spin motion-reduce:animate-none"></i>' : '');
+      confirmBtn.append(v.confirmLabel);
+      confirmBtn.disabled = v.busy;
+      confirmBtn.classList.toggle('opacity-70', v.busy);
+    }
+
+    // cfg: buyConfirmCfg / sellConfirmCfg, run: 확인을 눌렀을 때 실행할 주문(실패하면 throw). 초점은 안전한 쪽(취소)에 둔다
+    function openTradeConfirm(cfg, run) {
+      tradeCfg = cfg;
+      tradeRunFn = run;
+      tradeBusy = false;
+      const active = document.activeElement;
+      tradeReturnFocus = (active && active !== document.body && active.offsetParent !== null) ? active : null;
+      renderTradeDialog('confirm');
+      document.getElementById('tradeModal').classList.remove('hidden');
+      document.getElementById('tradeCancelBtn').focus();
+    }
+
+    function closeTradeModal() {
+      const modal = document.getElementById('tradeModal');
+      if (!modal || modal.classList.contains('hidden') || tradeBusy) return;
+      modal.classList.add('hidden');
+      if (tradeReturnFocus && tradeReturnFocus.focus) tradeReturnFocus.focus();
+      tradeReturnFocus = null;
+      tradeCfg = tradeRunFn = null;
+    }
+
+    // Tab 이 확인창 밖으로 나가지 않게 두 버튼 안에서 돈다
+    function trapTradeFocus(e) {
+      const modal = document.getElementById('tradeModal');
+      if (!modal || modal.classList.contains('hidden')) return;
+      const btns = [document.getElementById('tradeCancelBtn'), document.getElementById('tradeConfirmBtn')].filter(b => !b.disabled);
+      e.preventDefault();
+      if (btns.length === 0) return;
+      const i = btns.indexOf(document.activeElement);
+      const next = e.shiftKey ? (i <= 0 ? btns.length - 1 : i - 1) : (i === btns.length - 1 ? 0 : i + 1);
+      btns[next].focus();
+    }
+
+    async function tradeConfirm() {
+      if (tradeBusy || !tradeRunFn) return; // 두 번 눌러도 주문은 한 번
+      tradeBusy = true;
+      await runTrade(tradeRunFn, (phase, msg) => {
+        if (phase === 'busy') {
+          renderTradeDialog('busy');
+        } else if (phase === 'error') {
+          tradeBusy = false;
+          renderTradeDialog('error', msg);
+          document.getElementById('tradeCancelBtn').focus();
+        } else { // done · closed(로그인 만료)
+          tradeBusy = false;
+          closeTradeModal();
+        }
+      });
+      tradeBusy = false;
     }
 
     // 계좌 초기화: 내 메뉴 항목이 부른다. 확인창(openResetModal)에서 '초기화'를 눌러야 confirmReset 이 서버를 부른다

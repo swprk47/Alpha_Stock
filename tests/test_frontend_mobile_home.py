@@ -29,7 +29,9 @@ def _between(s, start, end):
 def _logic_source():
     m = re.search(r"// <home-logic>\r?\n(.*?)// </home-logic>", _html(), re.S)
     assert m, "index.html 에 home-logic 구간이 없습니다"
-    return m.group(1)
+    calc = re.search(r"// <buy-calc>\r?\n(.*?)// </buy-calc>", _html(), re.S)
+    assert calc, "index.html 에 buy-calc 구간이 없습니다"  # 하단 바 총 결제는 buyTotals 를 쓴다
+    return calc.group(1) + m.group(1)
 
 
 @pytest.fixture(scope="module")
