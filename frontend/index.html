@@ -291,6 +291,10 @@
       <button onclick="switchTab('holdings')" id="tabHoldings" aria-selected="false" class="flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center">
         보유 종목 (<span id="holdingsCount">0</span>)
       </button>
+      <!-- 모바일 전용 3번째 탭. PC 는 종목 미선택일 때 오른쪽 패널이 요약이라 탭이 없다 -->
+      <button onclick="switchTab('summary')" id="tabSummary" aria-selected="false" class="lg:hidden flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center">
+        요약
+      </button>
     </div>
 
     <!-- TAB 1: 추천 종목 섹션 (애플 주식 리스트 + 카카오페이 인터랙티브 차트) -->
@@ -309,6 +313,9 @@
       <!-- 내용은 renderHoldings 가 채운다(처음에는 로딩 스켈레톤) -->
       <div id="holdingsCards" class="divide-y divide-[#1c1c1e] border-y border-[#1c1c1e]"></div>
     </div>
+
+    <!-- TAB 3: 요약 섹션 (모바일 전용. renderSummarySection 이 채운다) -->
+    <div id="sectionSummary" class="hidden lg:hidden"></div>
 
     </div>
     <!-- /listColumn -->
@@ -756,6 +763,9 @@
       'chart-column': '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
       'chart-line': '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/>',
       'search-x': '<path d="m13.5 8.5-5 5"/><path d="m8.5 8.5 5 5"/><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+      'chart-pie': '<path d="M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>',
+      'award': '<path d="m15.477 12.89 1.515 8.526a.5.5 0 0 1-.81.47l-3.58-2.687a1 1 0 0 0-1.197 0l-3.586 2.686a.5.5 0 0 1-.81-.469l1.514-8.526"/><circle cx="12" cy="8" r="6"/>',
+      'list-ordered': '<path d="M11 5h10"/><path d="M11 12h10"/><path d="M11 19h10"/><path d="M4 4h1v5"/><path d="M4 9h2"/><path d="M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02"/>',
     };
 
     function icon(name, cls = '') {
@@ -868,6 +878,7 @@
     let expandedCardIndex = 0;   // 추천 목록에서 펼친 행 (-1 = 모두 접힘)
     let expandedHoldingIndex = 0; // 보유 종목에서 펼친 행
     let activeTab = 'recs';
+    let summarySeg = 'pnl';  // 요약의 내 계좌 패널 보기: 'pnl'(거래별 손익) | 'trades'(거래 내역)
 
     // ===== 홈 화면 로직 (DOM 을 쓰지 않는 순수 함수. tests/test_frontend_mobile_home.py 가 이 구간을 그대로 실행해 검증) =====
     // <home-logic>
@@ -935,6 +946,11 @@
     function isPcLayout() { return pcMql.matches; }
     // 창 크기를 바꿔 PC/모바일 경계를 넘으면 목록과 오른쪽 패널을 다시 그린다
     pcMql.addEventListener('change', () => {
+      if (isPcLayout() && activeTab === 'summary') {
+        // PC 에는 요약 탭이 없다. 요약을 보던 중이었으니 PC 에서도 요약이 보이게 선택을 풀고 추천 탭으로
+        expandedCardIndex = expandedHoldingIndex = -1;
+        switchTab('recs');
+      }
       renderRecommendations(currentRecs);
       if (currentPortfolio) renderHoldings(currentPortfolio);
       renderDetailPane();
@@ -968,6 +984,92 @@
       };
     }
     // </state-logic>
+
+    // ===== 요약 패널 계산 (DOM 을 쓰지 않는 순수 함수. tests/test_frontend_summary.py 가 이 구간을 그대로 실행해 검증) =====
+    // 승률·거래별 손익은 서버가 주는 history(SELL 항목의 pnl·date)에서 계산한다. 서버 변경은 없다.
+    // <summary-logic>
+    function tradeStats(history) {
+      const sells = (Array.isArray(history) ? history : []).filter(h => h && h.type === 'SELL');
+      const wins = sells.filter(h => h.pnl > 0).length;
+      return {
+        sells: sells.length,
+        wins: wins,
+        // 매도가 없으면 승률을 지어내지 않는다(0% 가 아니라 null → 화면은 "–")
+        winRate: sells.length ? Math.round(wins / sells.length * 100) : null,
+        recent: sells.slice(-6).map(h => ({ date: String(h.date || '').slice(5, 10).replace('-', '/'), name: h.name || '', pnl: h.pnl || 0 })),
+      };
+    }
+
+    // 거래 내역(최신순). 손익은 매도에만 있다
+    function recentTrades(history, n) {
+      const list = Array.isArray(history) ? history : [];
+      return list.slice().reverse().slice(0, n).map(h => ({
+        date: String(h.date || '').slice(5, 10).replace('-', '/'),
+        type: h.type,
+        name: h.name || '',
+        qty: h.quantity,
+        price: h.price,
+        pnl: h.type === 'SELL' ? (h.pnl || 0) : null,
+      }));
+    }
+
+    // 거래별 손익 막대: 가장 큰 값이 한쪽 절반 높이(half px)를 채운다. 너무 작아도 보이게 최소 3px, 0 은 평평하게
+    function barSpecs(pnls, half) {
+      const max = Math.max(1, ...pnls.map(v => Math.abs(v)));
+      return pnls.map(v => ({ value: v, up: v >= 0, h: v === 0 ? 0 : Math.max(3, Math.round(Math.abs(v) / max * half)) }));
+    }
+
+    // 좁은 막대 아래 라벨용: 1만 이상은 "1.2만". 부호는 부르는 쪽이 붙인다
+    function compactWon(n) {
+      const a = Math.abs(n);
+      return a < 10000 ? a.toLocaleString() : (a / 10000).toFixed(1).replace(/\.0$/, '') + '만';
+    }
+
+    // 도넛 조각: 원둘레(2πr)를 값 비율로 나눈다. offset 은 stroke-dashoffset 용(앞 조각들만큼 음수)
+    function donutSegments(values, r) {
+      const total = values.reduce((a, b) => a + b, 0);
+      if (!(total > 0)) return [];
+      const c = 2 * Math.PI * r;
+      let acc = 0;
+      return values.map(v => {
+        const len = c * v / total;
+        const seg = { len: len, offset: -acc };
+        acc += len;
+        return seg;
+      });
+    }
+
+    function assetSplit(p) {
+      const cash = p.cash_balance || 0;
+      const stock = p.total_evaluation || 0;
+      const total = cash + stock;
+      const cashPct = total > 0 ? Math.round(cash / total * 1000) / 10 : 100;
+      return { cash: cash, stock: stock, total: total, cashPct: cashPct, stockPct: Math.round((100 - cashPct) * 10) / 10 };
+    }
+
+    function gradeDistribution(recs) {
+      const list = Array.isArray(recs) ? recs : [];
+      const counts = { S: 0, A: 0, B: 0, C: 0 };
+      list.forEach(r => { if (r && Object.prototype.hasOwnProperty.call(counts, r.grade)) counts[r.grade] += 1; });
+      return { total: list.length, counts: counts };
+    }
+
+    function holdingsByPnl(holdings) {
+      return (Array.isArray(holdings) ? holdings : []).slice()
+        .sort((a, b) => b.pnl_pct - a.pnl_pct)
+        .map(h => ({ name: h.name, pnlPct: h.pnl_pct }));
+    }
+
+    // 추천 점수 순위. 목록은 score 순으로 정렬돼 있으므로 순위도 score 기준이다
+    // (AI 진단의 grade_score 와는 숫자가 다를 수 있다. PROGRESS.md 의 PR-E 항목)
+    function scoreRanking(recs, n) {
+      const list = Array.isArray(recs) ? recs : [];
+      return list.map((r, i) => ({ r: r, i: i }))
+        .sort((a, b) => ((b.r.score || 0) - (a.r.score || 0)) || (a.i - b.i))
+        .slice(0, n)
+        .map((x, k) => ({ rank: k + 1, name: x.r.name, score: x.r.score || 0, grade: x.r.grade }));
+    }
+    // </summary-logic>
     // ===== 🔍 종목 검색 및 자동완성 로직 =====
     function onSearchFocus() {
       const input = document.getElementById('searchInput');
@@ -1597,17 +1699,22 @@
       activeTab = tab;
       const recsBtn = document.getElementById('tabRecs');
       const holdingsBtn = document.getElementById('tabHoldings');
+      const summaryBtn = document.getElementById('tabSummary');
       const secRecs = document.getElementById('sectionRecs');
       const secHoldings = document.getElementById('sectionHoldings');
+      const secSummary = document.getElementById('sectionSummary');
       const on = 'flex-1 py-3 rounded-lg bg-[#f5f5f7] text-[#0b0d12] shadow-sm tap-press transition text-center';
       const off = 'flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center';
 
       recsBtn.className = tab === 'recs' ? on : off;
-      holdingsBtn.className = tab === 'recs' ? off : on;
+      holdingsBtn.className = tab === 'holdings' ? on : off;
+      summaryBtn.className = (tab === 'summary' ? on : off) + ' lg:hidden'; // 요약 탭은 모바일에만 보인다
       recsBtn.setAttribute('aria-selected', tab === 'recs' ? 'true' : 'false');
-      holdingsBtn.setAttribute('aria-selected', tab === 'recs' ? 'false' : 'true');
+      holdingsBtn.setAttribute('aria-selected', tab === 'holdings' ? 'true' : 'false');
+      summaryBtn.setAttribute('aria-selected', tab === 'summary' ? 'true' : 'false');
       secRecs.classList.toggle('hidden', tab !== 'recs');
-      secHoldings.classList.toggle('hidden', tab === 'recs');
+      secHoldings.classList.toggle('hidden', tab !== 'holdings');
+      secSummary.classList.toggle('hidden', tab !== 'summary');
       renderBottomBar();
       renderDetailPane();
     }
@@ -2188,27 +2295,214 @@
       return n > 0 ? 'text-[#ff6a60]' : n < 0 ? 'text-[#5aa9ff]' : 'text-white';
     }
 
-    // 요약 모드: 내 계좌 숫자 + 안내. 추천 탭의 상태(로딩·빈 상태·오류)에 따라 아래 카드가 달라진다.
-    // (거래별 손익 막대·자산 구성 등 차트는 다음 PR)
-    function summaryPaneHtml() {
+    // ===== 요약 패널 (단계 5): PC 는 종목 미선택일 때 오른쪽 패널, 모바일은 "요약" 탭 =====
+    // 등급 색은 목록 행의 배지(GRADE_STYLES)와 같게 맞춘다. (명세 3항은 B 를 회색으로 적었지만 현재 앱의 B 배지는 주황이다)
+    const GRADE_FILL = { 'S': '#ffd60a', 'A': '#30d158', 'B': '#ff9f0a', 'C': '#48484a' };
+
+    function sumPanel(inner, mobile, cls = '') {
+      return `<div class="glass-card ${mobile ? 'rounded-2xl p-4' : 'rounded-[14px] p-[18px]'} flex flex-col gap-3 min-w-0 ${cls}">${inner}</div>`;
+    }
+
+    function sumTitle(icon, text) {
+      return `<div class="flex items-center gap-2 text-sm font-semibold text-white"><i data-icon="${icon}" class="text-[18px] text-[#a9aebf]"></i> ${text}</div>`;
+    }
+
+    function sumEmpty(text) {
+      return `<div class="py-6 text-center text-sm text-[#d3d6e2] break-keep">${text}</div>`;
+    }
+
+    // 추천 목록 상태(로딩이면 스켈레톤)에 따라 추천에서 만드는 패널의 몸통을 고른다
+    function recsPanelBody(render) {
+      const view = recsViewState(recsLoaded, recsFailed, recsUpdatedAt, (currentRecs || []).length);
+      if (view === 'loading') return '<div aria-busy="true" class="space-y-2"><div class="sk h-4 w-2/3"></div><div class="sk h-16"></div></div>';
+      if (!(currentRecs || []).length) return sumEmpty('추천 종목이 없어요');
+      return render();
+    }
+
+    // 내 계좌 패널의 보기 전환(거래별 손익 / 거래 내역). 모바일은 터치 영역 44px, PC 는 36px
+    function segHtml(active, mobile) {
+      const h = mobile ? 'min-h-[44px]' : 'min-h-[36px]';
+      const btn = (key, label) =>
+        `<button onclick="setSummarySeg('${key}')" aria-pressed="${active === key}" class="${h} px-3 rounded-md text-[13px] tap-press transition ${active === key ? 'bg-[#2a2e3b] text-[#f5f5f7] font-semibold' : 'text-[#a9aebf] hover:text-white'}">${label}</button>`;
+      return `<div role="group" aria-label="내 계좌 보기" class="inline-grid grid-flow-col gap-0.5 p-0.5 rounded-lg bg-[#0b0d12]">${btn('pnl', '거래별 손익')}${btn('trades', '거래 내역')}</div>`;
+    }
+
+    function setSummarySeg(key) {
+      summarySeg = key;
+      renderDetailPane();
+    }
+
+    // 거래별 실현 손익 막대(이익 빨강·손실 파랑). 막대마다 부호·금액을 적어 색에만 의존하지 않는다
+    function pnlBarsHtml(recent, mobile) {
+      const half = mobile ? 34 : 44;
+      const bars = barSpecs(recent.map(r => r.pnl), half);
+      const pad = 6 - recent.length; // 항상 6칸, 적으면 최근 쪽(오른쪽)으로 모은다
+      const label = `최근 매도 ${recent.length}건의 실현 손익: ` + recent.map(r => `${r.date} ${signedWon(r.pnl)}`).join(', ');
+      const cells = bars.map((b, i) => {
+        const r = recent[i];
+        const bar = b.h === 0 ? ''
+          : `<div class="absolute inset-x-0 ${b.up ? 'rounded-t' : 'rounded-b'}" style="${b.up ? 'bottom' : 'top'}: ${half}px; height: ${b.h}px; background: ${b.up ? '#ff453a' : '#0a84ff'}"></div>`;
+        return `
+          <div class="flex flex-col items-center min-w-0">
+            <div class="relative w-full" style="height: ${half * 2}px">${bar}</div>
+            <div class="num text-[13px] font-semibold ${pnlTextClass(r.pnl)}">${r.pnl > 0 ? '+' : r.pnl < 0 ? '-' : ''}${compactWon(r.pnl)}</div>
+            <div class="num text-[13px] text-[#a9aebf]">${r.date}</div>
+          </div>`;
+      }).join('');
+      return `
+        <div role="img" aria-label="${label}" class="relative">
+          <div class="absolute inset-x-0 border-t border-dashed border-white/15" style="top: ${half}px"></div>
+          <div class="relative grid grid-cols-6 gap-2">${'<div></div>'.repeat(pad)}${cells}</div>
+        </div>`;
+    }
+
+    // 거래 내역(최신순). 매수·매도는 글자로 구분하고, 손익은 매도에만 부호와 함께 보인다
+    function tradeListHtml(history, mobile) {
+      const rows = recentTrades(history, 8);
+      if (rows.length === 0) return sumEmpty('아직 거래가 없어요');
+      return `<div class="flex flex-col divide-y divide-white/10">${rows.map(r => `
+        <div class="flex items-center gap-2 py-2 text-[13px]">
+          <span class="num w-11 shrink-0 text-[#a9aebf]">${r.date}</span>
+          <span class="shrink-0 rounded bg-white/10 px-1.5 font-semibold text-[#f5f5f7]">${r.type === 'SELL' ? '매도' : '매수'}</span>
+          <span class="min-w-0 flex-1 truncate text-white">${r.name}</span>
+          <span class="num shrink-0 text-[#d3d6e2]">${r.qty}주${mobile ? '' : ' · ' + Number(r.price).toLocaleString() + '원'}</span>
+          ${r.pnl === null ? '' : `<span class="num w-20 shrink-0 text-right font-semibold ${pnlTextClass(r.pnl)}">${signedWon(r.pnl)}</span>`}
+        </div>`).join('')}</div>`;
+    }
+
+    // 내 계좌: PC 는 수치 4칸 + 오른쪽 내용, 모바일은 위의 자산 카드에 있는 총 자산·수익률을 뺀 2칸 + 아래 내용
+    function accountPanelHtml(p, mobile) {
+      const ts = tradeStats(p.history);
+      const cells = [
+        !mobile ? statCell('총 자산', `${p.total_asset.toLocaleString()}원`) : '',
+        !mobile ? statCell('수익률', `${p.total_return_pct > 0 ? '+' : ''}${p.total_return_pct}%`, pnlTextClass(p.total_return_pct)) : '',
+        statCell('실현 손익', signedWon(p.realized_pnl), pnlTextClass(p.realized_pnl)),
+        statCell(`승률 (${ts.sells}건)`, ts.winRate === null ? '–' : `${ts.winRate}%`),
+      ].join('');
+      let content;
+      if (summarySeg === 'trades') {
+        content = tradeListHtml(p.history, mobile);
+      } else if (ts.sells === 0) {
+        content = sumEmpty('매도 거래가 쌓이면 여기에 보여요');
+      } else {
+        content = `<div class="flex justify-between text-[13px] text-[#a9aebf]"><span>최근 매도 거래별 실현 손익</span><span>단위 원</span></div>${pnlBarsHtml(ts.recent, mobile)}`;
+      }
+      return sumPanel(`
+        <div class="flex items-center justify-between gap-2">${sumTitle('chart-column', '내 계좌')}${segHtml(summarySeg, mobile)}</div>
+        <div class="${mobile ? 'space-y-3' : 'grid grid-cols-[240px_minmax(0,1fr)] gap-6'}">
+          <div class="grid grid-cols-2 gap-2 content-start">${cells}</div>
+          <div class="min-w-0 space-y-2">${content}</div>
+        </div>`, mobile);
+    }
+
+    // 도넛(SVG). 값 비율로 원둘레를 나누고, 중앙에 글자를 겹친다
+    function donutSvg(values, colors, size, label, center = '') {
+      const r = 40;
+      const c = 2 * Math.PI * r;
+      const segs = donutSegments(values, r);
+      return `
+        <div class="relative shrink-0" style="width: ${size}px; height: ${size}px">
+          <svg width="${size}" height="${size}" viewBox="0 0 104 104" role="img" aria-label="${label}">
+            <g transform="rotate(-90 52 52)" fill="none" stroke-width="12">
+              <circle cx="52" cy="52" r="${r}" stroke="#20232e"/>
+              ${segs.map((s, i) => `<circle cx="52" cy="52" r="${r}" stroke="${colors[i]}" stroke-dasharray="${s.len.toFixed(1)} ${c.toFixed(1)}" stroke-dashoffset="${s.offset.toFixed(1)}"/>`).join('')}
+            </g>
+          </svg>
+          ${center ? `<div class="absolute inset-0 flex flex-col items-center justify-center text-center leading-tight">${center}</div>` : ''}
+        </div>`;
+    }
+
+    function legendRow(color, label, value) {
+      return `<div class="flex items-center justify-between gap-2 text-[13px] text-[#d3d6e2]"><span class="flex items-center gap-2 min-w-0"><i class="inline-block h-2 w-2 shrink-0 rounded-full" style="background: ${color}"></i>${label}</span><b class="num font-semibold text-[#f5f5f7]">${value}</b></div>`;
+    }
+
+    function assetPanelHtml(p, mobile) {
+      const sp = assetSplit(p);
+      const donut = donutSvg([sp.cash, sp.stock], ['#30d158', '#0a84ff'], mobile ? 84 : 104,
+        `자산 구성: 현금 ${sp.cashPct}%, 주식 평가 ${sp.stockPct}%`,
+        `<span class="text-[13px] text-[#a9aebf]">현금</span><span class="num text-[15px] font-bold text-white">${sp.cashPct}%</span>`);
+      return sumPanel(`
+        ${sumTitle('chart-pie', '자산 구성')}
+        <div class="flex items-center gap-4">
+          ${donut}
+          <div class="flex min-w-0 flex-1 flex-col gap-2">
+            ${legendRow('#30d158', '현금', `${sp.cash.toLocaleString()}원`)}
+            ${legendRow('#0a84ff', '주식 평가', `${sp.stock.toLocaleString()}원`)}
+          </div>
+        </div>`, mobile);
+    }
+
+    // 추천 등급 분포(PC 전용: 명세 2항, 모바일은 길이 때문에 뺌)
+    function gradePanelHtml(mobile) {
+      const body = recsPanelBody(() => {
+        const gd = gradeDistribution(currentRecs);
+        const keys = ['S', 'A', 'B'].concat(gd.counts.C > 0 ? ['C'] : []);
+        const donut = donutSvg(keys.map(k => gd.counts[k]), keys.map(k => GRADE_FILL[k]), 104,
+          `추천 등급 분포: ` + keys.map(k => `${k} 등급 ${gd.counts[k]}종목`).join(', '),
+          `<span class="text-[13px] text-[#a9aebf]">추천</span><span class="num text-[15px] font-bold text-white">${gd.total}종목</span>`);
+        return `<div class="flex items-center gap-4">${donut}<div class="flex min-w-0 flex-1 flex-col gap-2">${keys.map(k => legendRow(GRADE_FILL[k], `${k} 등급`, gd.counts[k])).join('')}</div></div>`;
+      });
+      return sumPanel(`${sumTitle('award', '추천 등급 분포')}${body}`, mobile);
+    }
+
+    function holdingsPanelHtml(p, mobile) {
+      const rows = holdingsByPnl(p.holdings);
+      let body;
+      if (rows.length === 0) {
+        body = sumEmpty('보유 중인 종목이 없어요');
+      } else {
+        body = `<div class="flex flex-col gap-2">${rows.slice(0, 5).map((r, i) => `
+          <div class="flex items-center gap-2 text-[13px]">
+            <span class="num w-4 shrink-0 text-[#a9aebf]">${i + 1}</span>
+            <span class="min-w-0 flex-1 truncate font-semibold text-white">${r.name}</span>
+            <span class="num shrink-0 font-semibold ${pnlTextClass(r.pnlPct)}">${r.pnlPct > 0 ? '+' : ''}${r.pnlPct}%</span>
+          </div>`).join('')}</div>
+          ${rows.length === 1 ? '<div class="text-[13px] text-[#a9aebf]">보유 종목이 늘어나면 손익 순으로 정렬돼요.</div>' : ''}`;
+      }
+      return sumPanel(`${sumTitle('chart-line', '보유 종목 손익')}${body}`, mobile);
+    }
+
+    // 추천 점수 순위(score 기준, 막대 색과 글자는 등급)
+    function rankPanelHtml(mobile) {
+      const body = recsPanelBody(() => `<div class="flex flex-col gap-2">${scoreRanking(currentRecs, 3).map(r => {
+        const fill = GRADE_FILL[r.grade] || '#48484a';
+        return `
+          <div class="flex items-center gap-2 text-[13px]">
+            <span class="num w-4 shrink-0 text-[#a9aebf]">${r.rank}</span>
+            <span class="w-[92px] shrink-0 truncate font-semibold text-white">${r.name}</span>
+            <span class="w-4 shrink-0 text-center font-extrabold" style="color: ${fill}">${r.grade || '-'}</span>
+            <div class="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[#20232e]"><i class="block h-full rounded-full" style="width: ${Math.max(0, Math.min(100, r.score))}%; background: ${fill}"></i></div>
+            <span class="num w-7 shrink-0 text-right font-semibold text-white">${r.score}</span>
+          </div>`;
+      }).join('')}</div>`);
+      return sumPanel(`${sumTitle('list-ordered', '추천 점수 순위')}${body}`, mobile);
+    }
+
+    // 요약 패널 묶음. PC: 내 계좌 / (자산 구성 | 등급 분포) / (보유 손익 | 점수 순위). 모바일: 세로로 쌓고 등급 분포는 뺀다
+    function summaryPanelsHtml(mobile) {
       const p = currentPortfolio;
+      if (!p) {
+        const sk = sumPanel('<div aria-busy="true" class="space-y-3"><div class="sk h-4 w-24"></div><div class="sk h-20"></div></div>', mobile);
+        return `<div class="space-y-4">${sk}${sk}</div>`;
+      }
+      const account = accountPanelHtml(p, mobile);
+      const asset = assetPanelHtml(p, mobile);
+      const grade = !mobile ? gradePanelHtml(mobile) : '';
+      const holdings = holdingsPanelHtml(p, mobile);
+      const rank = rankPanelHtml(mobile);
+      if (mobile) return `<div class="space-y-3">${account}${asset}${holdings}${rank}</div>`;
+      return `<div class="space-y-4">${account}<div class="grid grid-cols-2 gap-4">${asset}${grade}</div><div class="grid grid-cols-2 gap-4">${holdings}${rank}</div></div>`;
+    }
+
+    // PC 요약 모드: 안내 한 줄(시세 실패면 주문이 막히는 이유 카드) + 요약 패널들.
+    // 추천 목록의 로딩·빈 상태는 해당 패널 안에서 보인다
+    function summaryPaneHtml() {
       const view = recsViewState(recsLoaded, recsFailed, recsUpdatedAt, (currentRecs || []).length);
       const onRecs = activeTab === 'recs';
-      const account = p ? `
-        <div class="flex items-center gap-2 text-sm font-semibold text-white"><i data-icon="chart-column" class="text-[18px] text-[#a9aebf]"></i> 내 계좌</div>
-        <div class="grid grid-cols-3 gap-3">
-          ${statCell('총 자산', `${p.total_asset.toLocaleString()}원`)}
-          ${statCell('수익률', `${p.total_return_pct > 0 ? '+' : ''}${p.total_return_pct}%`, pnlTextClass(p.total_return_pct))}
-          ${statCell('실현 손익', signedWon(p.realized_pnl), pnlTextClass(p.realized_pnl))}
-        </div>` : `
-        <div class="sk w-24 h-4"></div>
-        <div class="grid grid-cols-3 gap-3"><div class="sk h-[68px]"></div><div class="sk h-[68px]"></div><div class="sk h-[68px]"></div></div>`;
-      let second;
-      if (onRecs && view === 'loading') {
-        second = pcPanel('<div aria-busy="true" class="space-y-3"><div class="sk w-40 h-5"></div><div class="sk h-24"></div><div class="sk w-2/3 h-4"></div></div>');
-      } else if (onRecs && view === 'error') {
+      let notice;
+      if (onRecs && view === 'error') {
         // 시세 실패: 주문이 막히는 이유와 지금 보이는 숫자가 마지막으로 확인된 값이라는 것
-        second = `<div role="alert" class="glass-card rounded-[14px] p-[18px] flex gap-3" style="border-color: rgba(255,106,96,0.45)">
+        notice = `<div role="alert" class="glass-card rounded-[14px] p-[18px] flex gap-3" style="border-color: rgba(255,106,96,0.45)">
           <div class="w-10 h-10 shrink-0 rounded-full bg-[#ff453a]/15 text-[#ff6a60] flex items-center justify-center text-[22px]"><i data-icon="triangle-alert"></i></div>
           <div class="space-y-1.5">
             <div class="text-base font-bold text-white">시세를 확인할 수 없는 동안에는 매수·매도가 막혀요</div>
@@ -2216,18 +2510,16 @@
             <div class="text-[13px] text-[#a9aebf]">내 계좌 숫자는 마지막으로 확인된 값이에요.</div>
           </div>
         </div>`;
-      } else if (onRecs && view === 'empty') {
-        second = pcPanel('<div class="text-center py-10 space-y-2"><div class="text-base font-bold text-white">추천 목록이 비어 있어요</div><div class="text-sm text-[#d3d6e2]">지금은 계좌 현황만 볼 수 있어요.</div></div>');
       } else {
         const guide = onRecs
           ? '왼쪽 목록에서 종목을 고르면 차트와 AI 진단이 여기에 보여요.'
           : '왼쪽 목록에서 보유 종목을 고르면 손절·익절 기준선과 전량 매도가 여기에 보여요.';
-        second = pcPanel(`<div class="text-center py-10 space-y-2"><div class="text-base font-bold text-white">종목을 선택하세요</div><div class="text-sm text-[#d3d6e2]">${guide}</div></div>`);
+        notice = `<div class="px-1 text-[13px] text-[#a9aebf]"><b class="font-semibold text-[#f5f5f7]">종목을 선택하세요</b> · ${guide}</div>`;
       }
       return `
         <div class="space-y-4 pb-4">
-          ${pcPanel(`<div class="space-y-3">${account}</div>`)}
-          ${second}
+          ${notice}
+          ${summaryPanelsHtml(false)}
         </div>`;
     }
 
@@ -2402,8 +2694,16 @@
         </div>`;
     }
 
-    // 오른쪽 패널을 현재 선택에 맞게 다시 그린다 (PC 에서만)
+    // 모바일 "요약" 탭의 내용(같은 패널을 세로로, 등급 분포 제외). PC 에는 이 탭이 없다
+    function renderSummarySection() {
+      const sec = document.getElementById('sectionSummary');
+      if (!sec || isPcLayout()) return;
+      if (activeTab === 'summary') sec.innerHTML = summaryPanelsHtml(true);
+    }
+
+    // 오른쪽 패널(PC)과 요약 탭(모바일)을 현재 상태에 맞게 다시 그린다
     function renderDetailPane() {
+      renderSummarySection(); // 모바일이면 여기서 끝나므로 PC 용 조기 반환보다 먼저
       const pane = document.getElementById('detailPane');
       if (!pane || !isPcLayout()) return;
       const holdings = currentPortfolio ? (currentPortfolio.holdings || []) : [];
