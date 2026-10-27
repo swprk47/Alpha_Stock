@@ -23,7 +23,7 @@ import config
 import orders
 from auth import (clear_session_cookie, create_session_token, dev_user_id,
                   get_current_user, set_session_cookie)
-from schemas import CODE_PATTERN, BuyRequest, DevLoginRequest, SellRequest, SetBudgetRequest
+from schemas import CODE_PATTERN, BuyRequest, DevLoginRequest, SellPreviewQuery, SellRequest, SetBudgetRequest
 
 config.validate_runtime()
 
@@ -175,6 +175,15 @@ def sell_stock(req: SellRequest, user: dict = Depends(get_current_user)):
     """모의 매도: 서버 실시간 시세로 체결."""
     r = orders.place_sell(portfolio_mgr, user["user_id"], req)
     return {"success": True, "message": r["message"], "order": r}
+
+
+@app.get("/api/sell/preview")
+def sell_preview(request: Request, query: SellPreviewQuery = Depends(), user: dict = Depends(get_current_user)):
+    """매도 미리보기(읽기 전용): 서버 실시간 시세와 실제 매도와 같은 계산."""
+    # 쿼리 모델은 알 수 없는 파라미터를 무시하므로 POST 요청 스키마(extra=forbid)와 같게 직접 거부한다
+    if set(request.query_params) - set(SellPreviewQuery.model_fields):
+        raise HTTPException(status_code=422, detail="허용되지 않는 파라미터입니다.")
+    return {"success": True, "preview": orders.place_sell_preview(portfolio_mgr, user["user_id"], query)}
 
 
 @app.post("/api/reset")

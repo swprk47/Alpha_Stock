@@ -34,5 +34,11 @@ class SellRequest(_Strict):
     quantity: Optional[float] = Field(None, gt=0, le=config.MAX_ORDER_QUANTITY, allow_inf_nan=False)
 
 
+class SellPreviewQuery(_Strict):
+    """GET /api/sell/preview 쿼리. quantity 를 생략하면 보유 전량 기준."""
+    code: str = Field(..., pattern=CODE_PATTERN)
+    quantity: Optional[float] = Field(None, gt=0, le=config.MAX_ORDER_QUANTITY, allow_inf_nan=False)
+
+
 class SetBudgetRequest(_Strict):
     budget: int = Field(..., ge=config.MIN_BUDGET, le=config.MAX_BUDGET)
