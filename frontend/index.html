@@ -2135,7 +2135,7 @@
                   ${statCell('보유 수량', `${qtyFormatted}주`)}
                   ${statCell('평균 매입가', `${h.avg_price.toLocaleString()}원`)}
                   ${statCell('평가 금액', `${h.eval_amount.toLocaleString()}원`)}
-                  ${statCell('평가 손익', `${pnlSign}${h.unrealized_pnl.toLocaleString()}원`, pnlText)}
+                  ${statCell('평가 손익', `${pnlSign}${h.unrealized_pnl.toLocaleString()}원`, pnlText, '(매도 비용 반영)')}
                 </div>
                 <div class="text-[13px] text-[#a9aebf]">보유 ${h.hold_days}일차 · 목표 ${h.target_price.toLocaleString()}원 · 손절 ${h.stop_loss_price.toLocaleString()}원</div>
                 ${estimateRowsHtml(h, true)}
@@ -2492,6 +2492,7 @@
             <span class="min-w-0 flex-1 truncate font-semibold text-white">${r.name}</span>
             <span class="num shrink-0 font-semibold ${pnlTextClass(r.pnlPct)}">${r.pnlPct > 0 ? '+' : ''}${r.pnlPct}%</span>
           </div>`).join('')}</div>
+          <div class="text-[13px] text-[#a9aebf]">손익은 예상 매도 수수료·세금을 뺀 값이에요.</div>
           ${rows.length === 1 ? '<div class="text-[13px] text-[#a9aebf]">보유 종목이 늘어나면 손익 순으로 정렬돼요.</div>' : ''}`;
       }
       return sumPanel(`${sumTitle('chart-line', '보유 종목 손익')}${body}`, mobile);
@@ -2677,7 +2678,7 @@
             ${statCell('보유 수량', `${qty}주`)}
             ${statCell('평균 매입가', `${h.avg_price.toLocaleString()}원`)}
             ${statCell('평가 금액', `${h.eval_amount.toLocaleString()}원`)}
-            ${statCell('평가 손익', signedWon(h.unrealized_pnl), pnlTextClass(h.unrealized_pnl))}
+            ${statCell('평가 손익', signedWon(h.unrealized_pnl), pnlTextClass(h.unrealized_pnl), '(매도 비용 반영)')}
           </div>
           ${pcChartPanel(`${h.current_price.toLocaleString()}원`)}
           ${pcPanel(`
