@@ -234,7 +234,7 @@
       </div>
 
       <!-- 실시간 검색 결과 드롭다운 팝업 -->
-      <div id="searchDropdown" class="absolute top-full left-0 right-0 mt-1.5 bg-[#1c1c1e] border border-[#2c2c2e] rounded-2xl shadow-2xl overflow-hidden hidden divide-y divide-[#2c2c2e] max-h-80 overflow-y-auto">
+      <div id="searchDropdown" class="absolute top-full left-0 right-0 lg:left-auto lg:w-[400px] mt-1.5 bg-[#1c1c1e] border border-[#2c2c2e] rounded-2xl shadow-2xl overflow-hidden hidden divide-y divide-[#2c2c2e] max-h-80 overflow-y-auto">
         <!-- 동적 삽입 -->
       </div>
     </div>
@@ -722,6 +722,8 @@
     let maxPossibleBuyQtyFrac = 1; // 소수점 종목의 직접 입력 상한 (소수 4자리까지 살 수 있는 최대)
     let buyQtyMsg = { kind: '', message: '' }; // 수량 입력 안내: kind = '' | 'notice' | 'error'
     let searchDebounceTimer = null;
+    let searchStock = null;  // PC 오른쪽 패널에 띄운 검색 종목 ({loading: true, code} 또는 /api/stock 응답). 없으면 null
+    let searchReq = 0;       // 검색 결과를 연달아 누를 때 마지막 요청만 반영하기 위한 번호
 
     // ===== 아이콘 (Lucide 원본 인라인 SVG, ISC 라이선스. 명세 8항. tests/test_frontend_foundation.py 가 이 구간을 검증) =====
     // <icons>
@@ -898,13 +900,27 @@
     // 첫 화면: PC 는 종목 미선택(요약 모드), 모바일은 첫 행을 펼친다
     function initialSelectedIndex(w) { return isPcWidth(w) ? -1 : 0; }
 
-    // 오른쪽 패널에 보일 내용: 활성 탭에서 고른 행이 있으면 상세, 없으면 요약
-    function detailPaneState(tab, recIdx, holdIdx, recs, holdings) {
+    // 오른쪽 패널에 보일 내용: 검색으로 고른 종목이 있으면 그것, 아니면 활성 탭에서 고른 행의 상세, 없으면 요약
+    function detailPaneState(tab, recIdx, holdIdx, recs, holdings, searchStock) {
+      if (searchStock) return { mode: 'search', item: searchStock };
       const isRecs = tab === 'recs';
       const list = isRecs ? recs : holdings;
       const idx = isRecs ? recIdx : holdIdx;
       if (!Array.isArray(list) || !list[idx]) return { mode: 'summary' };
       return { mode: isRecs ? 'rec' : 'holding', idx: idx, item: list[idx] };
+    }
+
+    // 스윙 목표가·손절가. 매수 모달이 보유 종목에 저장하는 값과 같은 식(반올림)이라야 화면과 저장값이 같다.
+    // (서버 추천의 sizing 은 내림이라 같은 종목이 1원 달라 보일 수 있다)
+    function swingTargets(price) {
+      return {
+        target: Math.round(price * 1.065),
+        stop: Math.round(price * 0.97),
+        targetPct: 6.5,
+        stopPct: -3.0,
+        ratio: 2.17,
+        holdDays: 5,
+      };
     }
 
     // PC 목록 행의 모양(명세 3·7항). 선택 여부와 관계없이 테두리 두께가 같아 선택해도 크기가 변하지 않는다
@@ -1020,7 +1036,7 @@
         }
 
         return `
-          <div onclick="selectSearchResult('${item.code}')" class="p-3 flex items-center justify-between hover:bg-[#2c2c2e] cursor-pointer tap-press transition">
+          <div onclick="selectSearchResult('${item.code}', '${String(item.market || '').replace(/[^A-Za-z]/g, '')}')" class="p-3 flex items-center justify-between hover:bg-[#2c2c2e] cursor-pointer tap-press transition">
             <div class="flex items-center gap-2.5">
               <div class="w-7 h-7 rounded-full bg-[#2c2c2e] overflow-hidden flex items-center justify-center p-1">
                 <img src="${item.logo_url}" onerror="this.parentElement.innerHTML='<span class=\\'text-[13px] text-white font-bold\\'>${item.name.charAt(0)}</span>'" class="w-full h-full object-contain">
@@ -1044,18 +1060,47 @@
       }).join('');
     }
 
-    // 검색 결과 선택 시 상세 및 매수 시트 오픈
-    async function selectSearchResult(code) {
+    // 검색 결과 선택: PC 는 오른쪽 패널에 상세를 띄우고(매수는 패널의 버튼이 모달을 연다), 모바일은 매수 시트를 연다.
+    // /api/stock 응답에는 market 이 없어 검색 결과 항목의 값을 넘겨받는다
+    async function selectSearchResult(code, market = '') {
       document.getElementById('searchDropdown').classList.add('hidden');
+      const req = ++searchReq; // 결과를 연달아 누르면 응답이 뒤바뀌어 도착할 수 있다. 마지막 요청만 반영한다
+      if (isPcLayout()) {
+        searchStock = { loading: true, code: code, market: market };
+        expandedCardIndex = expandedHoldingIndex = -1; // 목록 선택은 풀고, 패널은 검색 종목을 보인다
+        renderRecommendations(currentRecs);
+        if (currentPortfolio) renderHoldings(currentPortfolio);
+        renderDetailPane();
+      }
       try {
         const res = await fetch(`/api/stock/${code}`);
         const data = await res.json();
+        if (req !== searchReq) return;
         if (data.success && data.stock) {
-          openCustomBuyModal(data.stock);
+          const stock = { ...data.stock, market: market || data.stock.market || '', fetchedAt: new Date().toTimeString().slice(0, 8) };
+          if (isPcLayout()) { searchStock = stock; renderDetailPane(); }
+          else openCustomBuyModal(stock);
+        } else if (isPcLayout()) {
+          closeSearchStock();
+          showToast('종목 정보를 찾을 수 없어요.', 'error');
         }
       } catch (err) {
+        if (req !== searchReq) return;
+        closeSearchStock();
         alert('종목 상세 정보를 불러오지 못했습니다.');
       }
+    }
+
+    // 패널에서 검색 종목을 닫으면 요약으로 돌아간다
+    function closeSearchStock() {
+      searchStock = null;
+      renderDetailPane();
+    }
+
+    // 패널의 매수 버튼: 기존 매수 모달을 연다(주문 계산은 모달 그대로). 아직 못 받은 종목으로는 열지 않는다
+    function buySearchStock() {
+      if (!searchStock || searchStock.loading) return;
+      openCustomBuyModal(searchStock);
     }
 
     // ===== 💡 수량 조절 매수 모달 로직 =====
@@ -1548,6 +1593,7 @@
     }
 
     function switchTab(tab) {
+      searchStock = null; // 탭을 바꾸면 검색 종목 패널은 닫고 그 탭의 선택을 보인다
       activeTab = tab;
       const recsBtn = document.getElementById('tabRecs');
       const holdingsBtn = document.getElementById('tabHoldings');
@@ -1567,6 +1613,7 @@
     }
 
     function toggleAccordion(index) {
+      searchStock = null; // 목록 행을 누르면 검색 종목 패널은 닫는다
       expandedCardIndex = nextExpandedIndex(expandedCardIndex, index);
       renderRecommendations(currentRecs);
     }
@@ -1885,6 +1932,7 @@
     }
 
     function toggleHolding(index) {
+      searchStock = null; // 목록 행을 누르면 검색 종목 패널은 닫는다
       expandedHoldingIndex = nextExpandedIndex(expandedHoldingIndex, index);
       if (currentPortfolio) renderHoldings(currentPortfolio);
     }
@@ -2291,13 +2339,79 @@
         </div>`;
     }
 
+    // 검색 종목 상세: 헤더 → 차트 → 핵심 수치 4칸 → AI 진단 → 매수(기존 모달). 받는 중에는 같은 모양의 스켈레톤.
+    // /api/stock 응답에는 추천 항목의 권장 수량·예상 수익이 없어서 그에 기대는 칸은 만들지 않는다.
+    // 목표가·손절가는 매수 모달이 저장하는 값과 같은 식(swingTargets)으로 보인다.
+    function searchDetailHtml(stock) {
+      const closeBtn = `
+        <button onclick="closeSearchStock()" aria-label="검색 종목 닫기" class="w-11 h-11 -mr-2 shrink-0 rounded-full text-[20px] text-[#a9aebf] hover:text-white flex items-center justify-center tap-press transition">
+          <i data-icon="x"></i>
+        </button>`;
+      if (stock.loading) {
+        return `
+          <div aria-busy="true" class="space-y-4 pb-4">
+            <div class="flex items-start justify-between gap-4">
+              <div class="space-y-2"><div class="sk w-48 h-7"></div><div class="sk w-32 h-4"></div></div>
+              ${closeBtn}
+            </div>
+            ${pcPanel('<div class="sk h-56"></div>')}
+            <div class="grid grid-cols-4 gap-3"><div class="sk h-[88px]"></div><div class="sk h-[88px]"></div><div class="sk h-[88px]"></div><div class="sk h-[88px]"></div></div>
+          </div>`;
+      }
+      const isGain = stock.change_rate >= 0;
+      const t = swingTargets(stock.current_price);
+      const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
+      const buy = pcPanel(`
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <div class="text-[13px] text-[#a9aebf]">내 현금</div>
+            <b class="text-xl font-extrabold text-white">${cash.toLocaleString()}원</b>
+          </div>
+          <button onclick="buySearchStock()" class="m-pulse min-w-[220px] min-h-[48px] px-6 rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
+            <i data-icon="zap" class="text-[18px]"></i> 모의 매수
+          </button>
+        </div>`);
+      return `
+        <div class="space-y-4 pb-4">
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <h2 class="text-2xl font-bold tracking-tight text-white">${stock.name}</h2>
+              <div class="flex flex-wrap items-center gap-2 mt-1.5 text-[13px] text-[#a9aebf]">
+                <span>${stock.market ? stock.market + ' ' : ''}${stock.code}</span>
+                ${stock.is_fractional === true ? '<span class="px-1.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>' : ''}
+              </div>
+            </div>
+            <div class="flex items-start gap-3">
+              <div class="text-right shrink-0">
+                <div class="text-[28px] font-bold tracking-tight text-white">${stock.current_price.toLocaleString()}원</div>
+                <div class="text-[13px] font-semibold ${isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]'}">${isGain ? '+' : ''}${stock.change_rate}%</div>
+                ${stock.fetchedAt ? `<div class="text-[13px] text-[#a9aebf]">${stock.fetchedAt} 기준</div>` : ''}
+              </div>
+              ${closeBtn}
+            </div>
+          </div>
+          ${pcChartPanel(`${stock.current_price.toLocaleString()}원`)}
+          <div class="grid grid-cols-4 gap-3">
+            ${statCell(`목표 익절가 <b class="text-[#ff6a60]">+${t.targetPct}%</b>`, `${t.target.toLocaleString()}원`)}
+            ${statCell(`손절 기준가 <b class="text-[#5aa9ff]">${t.stopPct}%</b>`, `${t.stop.toLocaleString()}원`)}
+            ${statCell('손익비', `${t.ratio} : 1`)}
+            ${statCell('권장 보유', `${t.holdDays}영업일`)}
+          </div>
+          ${pcPanel(recAiHtml(stock))}
+          ${buy}
+        </div>`;
+    }
+
     // 오른쪽 패널을 현재 선택에 맞게 다시 그린다 (PC 에서만)
     function renderDetailPane() {
       const pane = document.getElementById('detailPane');
       if (!pane || !isPcLayout()) return;
       const holdings = currentPortfolio ? (currentPortfolio.holdings || []) : [];
-      const st = detailPaneState(activeTab, expandedCardIndex, expandedHoldingIndex, currentRecs, holdings);
-      if (st.mode === 'rec') {
+      const st = detailPaneState(activeTab, expandedCardIndex, expandedHoldingIndex, currentRecs, holdings, searchStock);
+      if (st.mode === 'search') {
+        pane.innerHTML = searchDetailHtml(st.item);
+        if (!st.item.loading) drawPcChart(st.item.chart_data, st.item.change_rate >= 0);
+      } else if (st.mode === 'rec') {
         pane.innerHTML = recDetailHtml(st.item, st.idx);
         drawPcChart(st.item.chart_data, st.item.change_rate >= 0);
       } else if (st.mode === 'holding') {
