@@ -227,7 +227,7 @@ def test_reset_no_longer_uses_native_confirm():
 def test_other_native_confirms_are_out_of_scope_and_untouched():
     s = _html()
     assert "confirm('로그아웃하시겠습니까?')" in s
-    assert "confirm(msg)" in _func("executeSell")  # 매도 확인창은 네이티브 confirm 유지(내용만 수량·예상 금액 포함)
+    assert "confirm(" not in _func("executeSell").replace("openTradeConfirm(", "")  # 매수·매도는 앱 디자인의 공용 확인창(tradeModal)
 
 
 def test_reset_modal_is_an_accessible_alertdialog():

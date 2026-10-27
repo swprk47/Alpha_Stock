@@ -166,7 +166,7 @@ def test_typing_does_not_rewrite_the_inputs_or_the_whole_panel():
 
 def test_execute_inline_buy_confirms_and_sends_the_same_order_as_the_modal():
     body = _func("executeInlineBuy")
-    assert "confirm(" in body and "매수하시겠습니까" in body and "총 결제" in body
+    assert "openTradeConfirm(" in body and "buyConfirmCfg(" in body  # 확인창 내용은 tests/test_frontend_trade_dialog.py 가 검증
     assert "/api/buy" in body and "quantity" in body
     assert "swingTargets(" in body          # 목표가·손절가는 모달이 저장하는 값과 같은 식
     assert "target_price" in body and "stop_loss_price" in body and "max_hold_days" in body

@@ -485,6 +485,23 @@
     </div>
   </div>
 
+  <!-- 매수·매도 확인창 (시안 확인창 1~5): 확인 → 체결 중 → 성공하면 닫힘 / 실패하면 창 안에 오류와 '닫기 · 다시 시도'. 매수·매도가 같이 쓴다 -->
+  <div id="tradeModal" onclick="if (event.target === this) closeTradeModal()" class="dlg-backdrop fixed inset-0 z-[60] flex items-center justify-center p-4 hidden">
+    <div role="alertdialog" aria-modal="true" aria-labelledby="tradeTitle" aria-describedby="tradeDesc" class="dlg-panel glass-modal w-full max-w-[420px] rounded-[18px] p-6 flex flex-col gap-4">
+      <div class="flex items-center gap-3">
+        <div id="tradeIcon" class="w-10 h-10 shrink-0 rounded-full bg-white/[0.12] text-[#f5f5f7] flex items-center justify-center text-[22px]"></div>
+        <h3 id="tradeTitle" class="text-[18px] font-bold leading-snug text-white"></h3>
+      </div>
+      <p id="tradeDesc" class="text-sm leading-relaxed text-[#d3d6e2]"></p>
+      <div id="tradeSummary" class="flex flex-col gap-2.5 px-3.5 py-3 rounded-xl bg-black/35 text-sm text-[#d3d6e2]"></div>
+      <p id="tradeNote" class="text-[13px] leading-relaxed text-[#a9aebf] break-keep"></p>
+      <div class="grid grid-cols-2 gap-2">
+        <button id="tradeCancelBtn" onclick="closeTradeModal()" class="min-h-[48px] w-full rounded-xl bg-white/[0.08] border border-white/20 text-[15px] font-semibold text-[#f5f5f7] hover:bg-white/15 tap-press transition">취소</button>
+        <button id="tradeConfirmBtn" onclick="tradeConfirm()" class="min-h-[48px] w-full rounded-xl bg-[#f5f5f7] text-[#0b0d12] text-[15px] font-bold tap-press transition flex items-center justify-center gap-2">확인</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 💰 시드머니 예산 설정 모달 -->
   <div id="budgetModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
     <div class="glass-modal w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4">
@@ -943,6 +960,85 @@
       return isFullSell(qty, held) ? { code } : { code, quantity: qty };
     }
     // </sell-logic>
+
+    // <trade-dialog>
+    // 매수·매도 확인창의 내용·상태(DOM 을 쓰지 않는 순수 함수. tests/test_frontend_trade_dialog.py 가 이 구간을 그대로 실행한다).
+    // 금액은 서버가 계산한 값(buyTotals·서버 미리보기·포트폴리오의 예상 값)을 받아 보이기만 하고, 여기서 수수료·세금을 계산하지 않는다.
+    const TRADE_NOTE = '체결가는 서버 실시간 시세로 정해져서 위 금액과 조금 다를 수 있어요.';
+    const TRADE_GENERIC_ERROR = '서버 통신 오류가 발생했습니다.';
+
+    function tradeWon(n) { return n.toLocaleString() + '원'; }
+
+    function buyConfirmCfg(name, qty, totals) {
+      return {
+        label: name + ' 매수 확인',
+        title: `${name} ${qty}주를 매수할까요?`,
+        lead: '모의 매수예요. 실제 돈은 쓰이지 않아요.',
+        rows: [
+          { label: '매수 수량', value: `${qty}주`, tone: '' },
+          { label: '총 결제 예상 (수수료 포함)', value: tradeWon(totals.total), tone: '' },
+          { label: '매수 후 남는 현금', value: tradeWon(totals.remaining), tone: '' },
+        ],
+        note: TRADE_NOTE,
+        confirmText: `${qty}주 매수`,
+        errorRows: [
+          { label: '주문', value: `${name} ${qty}주 매수`, tone: '' },
+          { label: '총 결제 예상', value: tradeWon(totals.total), tone: '' },
+        ],
+      };
+    }
+
+    // est = { net, pnl }: 서버가 준 예상 수령액·예상 실현 손익. 없으면(시세 실패·옛 서버) 숫자를 만들지 않고 알린다
+    function sellConfirmCfg(name, qty, full, est) {
+      const has = v => v !== null && v !== undefined;
+      const net = est && has(est.net) ? est.net : null;
+      const pnl = est && has(est.pnl) ? est.pnl : null;
+      const word = full ? '전량 ' : '';
+      const rows = [{ label: '매도 수량', value: full ? `${qty}주 (전량)` : `${qty}주`, tone: '' }];
+      const errorRows = [{ label: '주문', value: `${name} ${qty}주 ${word}매도`, tone: '' }];
+      if (net === null) {
+        rows.push({ label: '예상 수령액', value: '예상 금액을 표시할 수 없어요', tone: '' });
+      } else {
+        rows.push({ label: '예상 수령액 (세금·수수료 반영)', value: tradeWon(net), tone: '' });
+        if (pnl !== null) rows.push({ label: '예상 실현 손익', value: (pnl > 0 ? '+' : '') + tradeWon(pnl), tone: pnl > 0 ? 'up' : (pnl < 0 ? 'dn' : '') });
+        errorRows.push({ label: '예상 수령액', value: tradeWon(net), tone: '' });
+      }
+      return {
+        label: name + ' 매도 확인',
+        title: `${name} ${qty}주를 ${word}매도할까요?`,
+        lead: '모의 매도예요. 실제 돈은 오가지 않아요.',
+        rows: rows,
+        note: TRADE_NOTE,
+        confirmText: `${qty}주 ${word}매도`,
+        errorRows: errorRows,
+      };
+    }
+
+    // 확인창의 한 순간의 모양. phase: 'confirm'(확인) | 'busy'(체결 중) | 'error'(주문 실패)
+    function tradeView(cfg, phase, errMsg) {
+      if (phase === 'error') {
+        return { phase: phase, iconName: 'triangle-alert', iconTone: 'warn', label: cfg.label.replace('확인', '주문 실패'),
+                 title: '주문하지 못했어요', lead: errMsg || TRADE_GENERIC_ERROR, rows: cfg.errorRows, note: '',
+                 cancelLabel: '닫기', confirmLabel: '다시 시도', busy: false };
+      }
+      const busy = phase === 'busy';
+      return { phase: phase, iconName: 'zap', iconTone: 'neutral', label: cfg.label, title: cfg.title,
+               lead: busy ? '' : cfg.lead, rows: cfg.rows, note: busy ? '' : cfg.note,
+               cancelLabel: '취소', confirmLabel: busy ? '체결 중…' : cfg.confirmText, busy: busy };
+    }
+
+    // 주문 실행: 체결 중으로 바꾸고 run 을 기다린다. 성공하면 done, 로그인 만료(401)는 closed(로그인 창이 뜬다), 그 밖의 실패는 error
+    async function runTrade(run, onPhase) {
+      onPhase('busy');
+      try {
+        await run();
+        onPhase('done');
+      } catch (err) {
+        if (err && err.status === 401) onPhase('closed');
+        else onPhase('error', err && err.status && err.message ? err.message : TRADE_GENERIC_ERROR);
+      }
+    }
+    // </trade-dialog>
 
     // ===== 증권사 알약 (표시 전용. 전환 기능은 증권사가 더 추가될 때) =====
     const CURRENT_BROKER = 'miraeasset'; // backend/fractional.py 의 DEFAULT_BROKER 키와 같다
@@ -1883,8 +1979,8 @@
       document.getElementById('menuBtn').setAttribute('aria-expanded', 'false');
     }
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { closeMenu(); closeResetModal(); }
-      if (e.key === 'Tab') trapResetFocus(e);
+      if (e.key === 'Escape') { closeMenu(); closeResetModal(); closeTradeModal(); }
+      if (e.key === 'Tab') { trapResetFocus(e); trapTradeFocus(e); }
     });
     let recsLoaded = false;   // 추천을 한 번이라도 받았는지 (빈 목록 문구 구분용)
     let recsFailed = false;   // 마지막 추천 요청이 실패했는지 (받아 둔 목록이 없을 때 오류 화면의 기준)
@@ -3193,36 +3289,30 @@
       syncSellInput(code);
     }
 
-    // 확인창에 보일 예상 수령액(서버 값). 전량은 포트폴리오의 값, 일부는 지금 시세로 미리보기를 다시 받는다. 못 받으면 null
-    async function sellConfirmNet(h, qty) {
-      if (isFullSell(qty, h.quantity)) return h.est_proceeds;
+    // 확인창에 보일 예상 수령액·손익(서버 값). 전량은 포트폴리오의 값, 일부는 지금 시세로 미리보기를 다시 받는다. 못 받으면 null
+    async function sellConfirmEst(h, qty) {
+      if (isFullSell(qty, h.quantity)) return { net: h.est_proceeds, pnl: h.est_realized_pnl };
       clearTimeout(sellPreviewTimers[h.code]);
       const pv = await fetchSellPreview(h.code, qty);
-      return pv && pv.status === 'ok' ? pv.data.net : null;
+      return pv && pv.status === 'ok' ? { net: pv.data.net, pnl: pv.data.est_realized_pnl } : null;
     }
 
-    // executeSell (보유 종목 매도: 선택한 수량, 기본은 전량)
+    // executeSell (보유 종목 매도: 선택한 수량, 기본은 전량). 확인창에서 확인해야 주문이 나간다
     async function executeSell(code) {
       const h = currentHolding(code);
       if (!h) return;
       const qty = sellQtyOf(h);
       if (!(qty > 0)) return;
       const full = isFullSell(qty, h.quantity);
-      const net = await sellConfirmNet(h, qty);
-      const msg = `${h.name} ${qty}주를 ${full ? '전량 ' : ''}매도하시겠습니까?`
-        + (net !== null && net !== undefined ? `\n예상 수령액 ${net.toLocaleString()}원 (세금·수수료 반영)` : '')
-        + '\n체결가는 서버 실시간 시세입니다.';
-      if (!confirm(msg)) return;
-      try {
+      const est = await sellConfirmEst(h, qty);
+      openTradeConfirm(sellConfirmCfg(h.name, qty, full, est), async () => {
         const data = await api('/api/sell', { method: 'POST', body: sellRequestBody(code, qty, h.quantity) });
         delete sellSel[code];
         delete sellPreview[code];
         delete sellMsg[code];
         showToast(data.message || '매도가 체결되었습니다.', 'success');
         await refreshData();
-      } catch (err) {
-        if (err.status !== 401) showToast(err.status ? err.message : '서버 통신 오류가 발생했습니다.', 'error');
-      }
+      });
     }
 
     // ===== PC 인라인 매수 패널(시안 S1): 금액/수량 전환 · 수량 − [입력] + · 총 결제 · "N주 모의 매수" =====
@@ -3447,7 +3537,7 @@
       ibSyncInput(code);
     }
 
-    // 매수 실행: 확인창(네이티브 confirm) → 모달과 같은 주문. 체결가는 서버 실시간 시세
+    // 매수 실행: 확인창 → 모달과 같은 주문. 체결가는 서버 실시간 시세
     async function executeInlineBuy(code) {
       const item = ibItemOf(code);
       if (!item) return;
@@ -3455,12 +3545,8 @@
       const qty = ibQtyOf(item, st); // 화면에 보이는 수량과 같다
       const t = buyTotals(item.current_price, qty, ibCash());
       if (!(qty > 0) || t.short) return;
-      const msg = `${item.name} ${qty}주를 매수하시겠습니까?`
-        + `\n총 결제 예상 ${t.total.toLocaleString()}원 (수수료 포함)`
-        + '\n체결가는 서버 실시간 시세입니다.';
-      if (!confirm(msg)) return;
-      const tg = swingTargets(item.current_price); // 목표가·손절가는 매수 모달이 저장하는 값과 같은 식
-      try {
+      openTradeConfirm(buyConfirmCfg(item.name, qty, t), async () => {
+        const tg = swingTargets(item.current_price); // 목표가·손절가는 매수 모달이 저장하는 값과 같은 식
         const data = await api('/api/buy', {
           method: 'POST',
           body: { code: item.code, quantity: qty, target_price: tg.target, stop_loss_price: tg.stop, max_hold_days: tg.holdDays }
@@ -3469,9 +3555,105 @@
         showToast(data.message || '매수가 체결되었습니다!', 'success');
         await refreshData();
         switchTab('holdings');
-      } catch (err) {
-        if (err.status !== 401) showToast(err.status ? err.message : '서버 통신 오류가 발생했습니다.', 'error');
-      }
+      });
+    }
+
+    // ===== 매수·매도 확인창 (시안 확인창 1~5) =====
+    // 확인 → 체결 중(두 버튼 잠금, 중복 클릭 방지) → 성공하면 닫힘 / 실패하면 창 안에 오류와 '닫기 · 다시 시도'
+    let tradeCfg = null;         // 지금 확인창이 묻는 주문의 내용(buyConfirmCfg / sellConfirmCfg)
+    let tradeRunFn = null;       // 확인을 누르면 실행할 주문 함수(실패하면 throw)
+    let tradeBusy = false;       // 체결 중에는 닫히지 않고 다시 눌러도 주문이 한 번만 나간다
+    let tradeReturnFocus = null;
+
+    function renderTradeDialog(phase, errMsg) {
+      const v = tradeView(tradeCfg, phase, errMsg);
+      const panel = document.querySelector('#tradeModal [role="alertdialog"]');
+      panel.setAttribute('aria-label', v.label);
+      if (v.busy) panel.setAttribute('aria-busy', 'true'); else panel.removeAttribute('aria-busy');
+      const icon = document.getElementById('tradeIcon');
+      icon.className = 'w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-[22px] '
+        + (v.iconTone === 'warn' ? 'bg-[#ff9f0a]/15 text-[#ff9f0a]' : 'bg-white/[0.12] text-[#f5f5f7]');
+      icon.innerHTML = `<i data-icon="${v.iconName}"></i>`;
+      document.getElementById('tradeTitle').textContent = v.title;
+      const desc = document.getElementById('tradeDesc');
+      desc.textContent = v.lead;
+      desc.classList.toggle('hidden', !v.lead);
+      const tone = { up: 'text-[#ff6a60]', dn: 'text-[#5aa9ff]', '': 'text-[#f5f5f7]' };
+      const summary = document.getElementById('tradeSummary');
+      summary.replaceChildren(...v.rows.map(r => {
+        const line = document.createElement('div');
+        line.className = 'flex justify-between gap-3';
+        const label = document.createElement('span');
+        label.textContent = r.label;
+        const value = document.createElement('b');
+        value.className = 'font-semibold tabular-nums text-right ' + (tone[r.tone] || tone['']);
+        value.textContent = r.value;
+        line.append(label, value);
+        return line;
+      }));
+      const note = document.getElementById('tradeNote');
+      note.textContent = v.note;
+      note.classList.toggle('hidden', !v.note);
+      const cancel = document.getElementById('tradeCancelBtn');
+      cancel.textContent = v.cancelLabel;
+      cancel.disabled = v.busy;
+      cancel.classList.toggle('opacity-40', v.busy);
+      const confirmBtn = document.getElementById('tradeConfirmBtn');
+      confirmBtn.innerHTML = (v.busy ? '<i data-icon="loader-circle" class="animate-spin motion-reduce:animate-none"></i>' : '');
+      confirmBtn.append(v.confirmLabel);
+      confirmBtn.disabled = v.busy;
+      confirmBtn.classList.toggle('opacity-70', v.busy);
+    }
+
+    // cfg: buyConfirmCfg / sellConfirmCfg, run: 확인을 눌렀을 때 실행할 주문(실패하면 throw). 초점은 안전한 쪽(취소)에 둔다
+    function openTradeConfirm(cfg, run) {
+      tradeCfg = cfg;
+      tradeRunFn = run;
+      tradeBusy = false;
+      const active = document.activeElement;
+      tradeReturnFocus = (active && active !== document.body && active.offsetParent !== null) ? active : null;
+      renderTradeDialog('confirm');
+      document.getElementById('tradeModal').classList.remove('hidden');
+      document.getElementById('tradeCancelBtn').focus();
+    }
+
+    function closeTradeModal() {
+      const modal = document.getElementById('tradeModal');
+      if (!modal || modal.classList.contains('hidden') || tradeBusy) return;
+      modal.classList.add('hidden');
+      if (tradeReturnFocus && tradeReturnFocus.focus) tradeReturnFocus.focus();
+      tradeReturnFocus = null;
+      tradeCfg = tradeRunFn = null;
+    }
+
+    // Tab 이 확인창 밖으로 나가지 않게 두 버튼 안에서 돈다
+    function trapTradeFocus(e) {
+      const modal = document.getElementById('tradeModal');
+      if (!modal || modal.classList.contains('hidden')) return;
+      const btns = [document.getElementById('tradeCancelBtn'), document.getElementById('tradeConfirmBtn')].filter(b => !b.disabled);
+      e.preventDefault();
+      if (btns.length === 0) return;
+      const i = btns.indexOf(document.activeElement);
+      const next = e.shiftKey ? (i <= 0 ? btns.length - 1 : i - 1) : (i === btns.length - 1 ? 0 : i + 1);
+      btns[next].focus();
+    }
+
+    async function tradeConfirm() {
+      if (tradeBusy || !tradeRunFn) return; // 두 번 눌러도 주문은 한 번
+      tradeBusy = true;
+      await runTrade(tradeRunFn, (phase, msg) => {
+        if (phase === 'busy') {
+          renderTradeDialog('busy');
+        } else if (phase === 'error') {
+          tradeBusy = false;
+          renderTradeDialog('error', msg);
+          document.getElementById('tradeCancelBtn').focus();
+        } else { // done · closed(로그인 만료)
+          tradeBusy = false;
+          closeTradeModal();
+        }
+      });
+      tradeBusy = false;
     }
 
     // 계좌 초기화: 내 메뉴 항목이 부른다. 확인창(openResetModal)에서 '초기화'를 눌러야 confirmReset 이 서버를 부른다
