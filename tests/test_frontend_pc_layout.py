@@ -30,7 +30,7 @@ def _between(s, start, end):
 def _func(name):
     """index.html 안의 `function name` 본문(다음 들여쓰기 4칸 닫는 중괄호까지)."""
     s = _html()
-    i = s.index(f"function {name}")
+    i = s.index(f"function {name}(")  # 괄호까지: renderHoldings 가 renderHoldingsLoading 과 섞이지 않게
     return s[i:s.index("\n    }\n", i)]
 
 

@@ -130,6 +130,33 @@
     @media (min-width: 1024px) and (prefers-reduced-transparency: reduce) {
       #listColumn { background: #12141c; -webkit-backdrop-filter: none; backdrop-filter: none; }
     }
+    /* ===== 상태 화면 (명세 6·7항): 스켈레톤은 1.4초 shimmer(스피너 금지), 확인창은 짧은 ease-out 으로 등장 ===== */
+    :root { --ease-out: cubic-bezier(0.23, 1, 0.32, 1); }
+    @keyframes sk-shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
+    .sk {
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06));
+      background-size: 200% 100%;
+      animation: sk-shimmer 1.4s linear infinite;
+      border-radius: 8px;
+    }
+    .dlg-backdrop {
+      background: rgba(5, 6, 10, 0.6);
+      -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+      opacity: 1; transition: opacity 160ms var(--ease-out);
+    }
+    .dlg-panel {
+      opacity: 1; transform: scale(1);
+      transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
+    }
+    /* display:none 에서 나타날 때의 시작 모양(미지원 브라우저는 애니메이션 없이 바로 나타남) */
+    @starting-style {
+      .dlg-backdrop { opacity: 0; }
+      .dlg-panel { opacity: 0; transform: scale(0.95); }
+    }
+    /* PC 는 목록 카드 안이 이미 글라스 면이라 상태 카드는 평면으로 */
+    @media (min-width: 1024px) {
+      .state-card { background: transparent; box-shadow: none; border: 0 !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
+    }
   </style>
 </head>
 <body class="min-h-screen flex flex-col justify-between bg-black text-[#f5f5f7] pb-40 lg:h-screen lg:overflow-hidden lg:pb-0">
@@ -217,6 +244,14 @@
 
     <!-- 시드 자산 요약 (애플 주식 상단 위젯 느낌 + 시드머니 변경 버튼) -->
     <section id="assetSummary" class="py-2 glass-card p-3.5 rounded-2xl">
+      <!-- 계좌를 받기 전: 같은 모양의 스켈레톤 (renderPortfolio 가 setAssetLoading(false) 로 걷어낸다) -->
+      <div id="assetSkeleton" aria-busy="true" aria-label="내 자산을 불러오는 중이에요" class="space-y-2.5">
+        <div class="sk w-[90px] h-[13px]"></div>
+        <div class="sk w-[200px] h-[30px]"></div>
+        <div class="sk h-1.5 rounded-full"></div>
+        <div class="sk h-[13px]"></div>
+      </div>
+      <div id="assetContent" class="hidden">
       <div class="flex justify-between items-center">
         <span class="text-[13px] font-medium text-[#a9aebf] flex items-center gap-1.5">
           <span>내 시드 자산</span>
@@ -245,6 +280,7 @@
         <div>현금 <span id="cashBalance" class="text-white font-medium ml-1">100,000원</span></div>
         <div>주식 평가 <span id="stockEval" class="text-white font-medium ml-1">0원</span></div>
       </div>
+      </div>
     </section>
 
     <!-- 세그먼트 컨트롤 탭 (애플 iOS Segmented Control) -->
@@ -261,30 +297,17 @@
     <div id="sectionRecs" class="space-y-1">
       <div class="flex justify-between items-center text-[13px] text-[#a9aebf] px-1 pb-1">
         <span id="recsBudgetLabel">예산 맞춤 종목</span>
-        <span id="lastUpdated">방금 갱신됨</span>
+        <span id="lastUpdated"></span>
       </div>
 
-      <div id="recommendationCards" class="divide-y divide-[#1c1c1e] border-y border-[#1c1c1e]">
-        <!-- 스켈레톤 -->
-        <div class="py-4 animate-pulse flex justify-between items-center">
-          <div class="space-y-2">
-            <div class="h-4 bg-[#1c1c1e] rounded w-28"></div>
-            <div class="h-3 bg-[#1c1c1e] rounded w-16"></div>
-          </div>
-          <div class="h-7 bg-[#1c1c1e] rounded-md w-20"></div>
-        </div>
-      </div>
+      <!-- 내용은 renderRecommendations 가 채운다(처음에는 로딩 스켈레톤) -->
+      <div id="recommendationCards" class="divide-y divide-[#1c1c1e] border-y border-[#1c1c1e]"></div>
     </div>
 
     <!-- TAB 2: 보유 종목 섹션 -->
     <div id="sectionHoldings" class="space-y-1 hidden">
-      <div id="holdingsCards" class="divide-y divide-[#1c1c1e] border-y border-[#1c1c1e]">
-        <div class="text-center py-14 px-4">
-          <i data-icon="wallet" class="text-3xl text-[#a9aebf] mb-2.5"></i>
-          <p class="text-sm font-medium text-[#a9aebf]">보유 중인 주식이 없습니다.</p>
-          <p class="text-[13px] text-[#a9aebf] mt-1">[스윙 추천] 탭에서 원하는 종목을 모의 매수해보세요.</p>
-        </div>
-      </div>
+      <!-- 내용은 renderHoldings 가 채운다(처음에는 로딩 스켈레톤) -->
+      <div id="holdingsCards" class="divide-y divide-[#1c1c1e] border-y border-[#1c1c1e]"></div>
     </div>
 
     </div>
@@ -424,6 +447,24 @@
         <button onclick="sendTestNotification()" class="w-full min-h-[44px] rounded-xl bg-[#1c1c1e] hover:bg-[#2c2c2e] text-[#a9aebf] hover:text-white font-medium text-[13px] tap-press transition border border-[#2c2c2e] flex items-center justify-center gap-2">
           <i data-icon="bell"></i> 테스트 알림 보내보기
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 계좌 초기화 확인창 (명세 6항): 지워지는 것을 보여 주고, 취소와 초기화를 같은 크기로 나란히 둔다 -->
+  <div id="resetModal" onclick="if (event.target === this) closeResetModal()" class="dlg-backdrop fixed inset-0 z-[60] flex items-center justify-center p-4 hidden">
+    <div role="alertdialog" aria-modal="true" aria-labelledby="resetTitle" aria-describedby="resetDesc" class="dlg-panel glass-modal w-full max-w-[420px] rounded-[18px] p-6 flex flex-col gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 shrink-0 rounded-full bg-[#ff453a]/15 text-[#ff6a60] flex items-center justify-center text-[22px]">
+          <i data-icon="triangle-alert"></i>
+        </div>
+        <h3 id="resetTitle" class="text-[18px] font-bold text-white">계좌를 초기화할까요?</h3>
+      </div>
+      <p id="resetDesc" class="text-sm leading-relaxed text-[#d3d6e2]">지금까지의 모의 거래 기록과 보유 종목이 모두 지워지고, 자산이 시드 금액으로 돌아가요. <b class="text-white">되돌릴 수 없어요.</b></p>
+      <div id="resetSummary" class="flex flex-col gap-2.5 px-3.5 py-3 rounded-xl bg-black/35 text-sm text-[#d3d6e2]"></div>
+      <div class="grid grid-cols-2 gap-2">
+        <button id="resetCancelBtn" onclick="closeResetModal()" class="min-h-[48px] w-full rounded-xl bg-white/[0.08] border border-white/20 text-[15px] font-semibold text-[#f5f5f7] hover:bg-white/15 tap-press transition">취소</button>
+        <button id="resetConfirmBtn" onclick="confirmReset()" class="min-h-[48px] w-full rounded-xl bg-[#ff453a] hover:brightness-110 text-[15px] font-bold text-white tap-press transition">초기화</button>
       </div>
     </div>
   </div>
@@ -712,6 +753,7 @@
       'timer': '<line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>',
       'chart-column': '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
       'chart-line': '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/>',
+      'search-x': '<path d="m13.5 8.5-5 5"/><path d="m8.5 8.5 5 5"/><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     };
 
     function icon(name, cls = '') {
@@ -881,6 +923,35 @@
       if (currentPortfolio) renderHoldings(currentPortfolio);
       renderDetailPane();
     });
+
+    // ===== 상태 화면 로직 (DOM 을 쓰지 않는 순수 함수. tests/test_frontend_states.py 가 이 구간을 그대로 실행해 검증) =====
+    // <state-logic>
+    // 추천 목록 칸에 무엇을 보일지: ok(목록) / loading(스켈레톤) / empty(맞는 종목 없음) / error(불러오지 못함).
+    // 이미 받은 목록이 있으면 갱신이 실패해도 그 목록을 둔다("마지막으로 확인된 값").
+    // 서버가 계산에 성공하지 못했으면(updatedAt 없음) 빈 상태가 아니라 오류다.
+    function recsViewState(loaded, failed, updatedAt, count) {
+      if (count > 0) return 'ok';
+      if (failed) return 'error';
+      if (!loaded) return 'loading';
+      return updatedAt ? 'empty' : 'error';
+    }
+
+    // 추천 예산: 현금을 1만~1억 원 사이로 맞춘다
+    function recsBudget(cash) {
+      const c = (typeof cash === 'number' && isFinite(cash)) ? cash : 100000;
+      return Math.min(100000000, Math.max(10000, Math.floor(c)));
+    }
+
+    // 계좌 초기화 확인창에 보일 요약. 서버가 거래 기록을 주지 않으면 건수를 지어내지 않고 null 로 둔다
+    function resetSummary(p) {
+      return {
+        trades: Array.isArray(p.history) ? p.history.length : null,
+        holdings: (p.holdings || []).length,
+        from: p.total_asset,
+        to: p.initial_balance || 100000,
+      };
+    }
+    // </state-logic>
     // ===== 🔍 종목 검색 및 자동완성 로직 =====
     function onSearchFocus() {
       const input = document.getElementById('searchInput');
@@ -1546,17 +1617,174 @@
       document.getElementById('menuBackdrop').classList.add('hidden');
       document.getElementById('menuBtn').setAttribute('aria-expanded', 'false');
     }
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { closeMenu(); closeResetModal(); }
+      if (e.key === 'Tab') trapResetFocus(e);
+    });
     let recsLoaded = false;   // 추천을 한 번이라도 받았는지 (빈 목록 문구 구분용)
+    let recsFailed = false;   // 마지막 추천 요청이 실패했는지 (받아 둔 목록이 없을 때 오류 화면의 기준)
     let recsUpdatedAt = '';   // 서버가 계산에 성공한 시각. 비어 있으면 시세를 못 받은 것
 
     function applyRecsResponse(rData) {
       currentRecs = rData.recommendations;
       recsLoaded = true;
+      recsFailed = false;
       recsUpdatedAt = rData.updated_at || '';
       document.getElementById('lastUpdated').textContent =
         recsUpdatedAt ? recsUpdatedAt.split(' ')[1] + ' 갱신' : '시세를 불러오지 못했어요';
       renderRecommendations(currentRecs);
+    }
+
+    // 추천 요청 실패 표시: 받아 둔 목록이 없으면 오류 화면, 있으면 그 목록을 두고 '갱신 실패'만 알린다
+    function markRecsFailed() {
+      recsFailed = true;
+      document.getElementById('lastUpdated').textContent = '갱신 실패';
+      renderRecommendations(currentRecs);
+    }
+
+    // ===== 상태 화면 조각 (명세 6항) =====
+    // 빈 상태·오류 공통 카드: 아이콘 + 제목 + 이유 한 줄 + 할 수 있는 행동
+    function stateCardHtml({ icon, title, body, actions = [], tone = 'neutral' }) {
+      const isError = tone === 'error';
+      const circle = isError ? 'bg-[#ff453a]/15 text-[#ff6a60]' : 'bg-white/10 text-[#d3d6e2]';
+      const buttons = actions.map(a => `
+        <button onclick="${a.onclick}" class="min-h-[44px] px-5 rounded-xl text-sm tap-press transition ${a.primary ? 'bg-[#f5f5f7] text-[#0b0d12] font-bold' : 'border border-white/20 text-[#f5f5f7] font-semibold hover:bg-white/10'}">${a.label}</button>`).join('');
+      return `
+        <div role="${isError ? 'alert' : 'status'}" class="state-card glass-card rounded-2xl flex flex-col items-center text-center gap-3 px-4 py-8"${isError ? ' style="border-color: rgba(255,106,96,0.45)"' : ''}>
+          <div class="w-12 h-12 rounded-full flex items-center justify-center text-[24px] ${circle}"><i data-icon="${icon}"></i></div>
+          <div class="break-keep text-base font-bold text-white">${title}</div>
+          <div class="break-keep text-sm leading-relaxed text-[#d3d6e2]">${body}</div>
+          ${buttons ? `<div class="flex flex-wrap justify-center gap-2 mt-1">${buttons}</div>` : ''}
+        </div>`;
+    }
+
+    // 목록 행 모양의 스켈레톤 (최종 목록과 같은 높이·배치). 둥근 스피너는 쓰지 않는다
+    function skeletonRowsHtml(n = 5, label = '추천 종목을 불러오는 중이에요') {
+      const row = `
+        <div class="min-h-[64px] py-2.5 flex items-center justify-between border-b border-white/10 last:border-b-0">
+          <div class="flex flex-col gap-2"><div class="sk w-[130px] h-4"></div><div class="sk w-12 h-3"></div></div>
+          <div class="flex flex-col items-end gap-2"><div class="sk w-[70px] h-4"></div><div class="sk w-[46px] h-3"></div></div>
+        </div>`;
+      return `
+        <div aria-busy="true">
+          <div class="text-[13px] text-[#a9aebf] px-1 pb-1">${label}</div>
+          ${row.repeat(n)}
+        </div>`;
+    }
+
+    // 추천 목록 칸의 로딩·빈 상태·오류 (view 는 recsViewState 의 결과)
+    function recsStateCard(view) {
+      if (view === 'loading') return skeletonRowsHtml(5, '추천 종목을 불러오는 중이에요');
+      if (view === 'empty') {
+        const budget = recsBudget(currentPortfolio ? currentPortfolio.cash_balance : undefined);
+        return stateCardHtml({
+          icon: 'search-x',
+          title: '맞는 종목이 아직 없어요',
+          body: `예산 ${budget.toLocaleString()}원으로 살 수 있는 후보가 없어요.<br>예산을 늘리거나 잠시 뒤에 새로 고쳐 보세요.`,
+          actions: [
+            { label: '예산 설정', onclick: 'openBudgetModal()' },
+            { label: '새로 고침', onclick: 'refreshData(true)', primary: true },
+          ],
+        });
+      }
+      // 오류: 이유와 함께 다시 시도. PC 는 오른쪽 패널에 안내 카드가 있어 이 문구는 모바일에서만 보인다
+      return stateCardHtml({
+        icon: 'triangle-alert',
+        tone: 'error',
+        title: '추천을 불러오지 못했어요',
+        body: '서버와 연결이 끊겼거나 시세를 가져오지 못했어요.<br>잠시 뒤에 다시 시도해 주세요.',
+        actions: [{ label: '다시 시도', onclick: 'refreshData(true)', primary: true }],
+      }) + `
+        <div class="lg:hidden mt-3 text-[13px] leading-relaxed text-center text-[#a9aebf]">
+          시세를 확인할 수 없는 동안에는 매수·매도가 막혀요.<br>내 자산 숫자는 마지막으로 확인된 값이에요.
+        </div>`;
+    }
+
+    // 자산 카드: 계좌를 받기 전에는 스켈레톤, 받으면 실제 값
+    function setAssetLoading(loading) {
+      document.getElementById('assetSkeleton').classList.toggle('hidden', !loading);
+      document.getElementById('assetContent').classList.toggle('hidden', loading);
+    }
+
+    // 계좌를 한 번도 못 받았을 때: 지어낸 기본값 대신 '–' 와 오류 카드를 보인다
+    function showPortfolioUnavailable() {
+      ['totalAsset', 'cashBalance', 'stockEval', 'accountReturnBadge'].forEach(id => {
+        document.getElementById(id).textContent = '–';
+      });
+      document.getElementById('seedTargetLabel').textContent = '';
+      document.getElementById('holdingsCards').innerHTML = stateCardHtml({
+        icon: 'triangle-alert',
+        tone: 'error',
+        title: '보유 종목을 불러오지 못했어요',
+        body: '서버와 연결이 끊겼어요.<br>잠시 뒤에 다시 시도해 주세요.',
+        actions: [{ label: '다시 시도', onclick: 'refreshData(true)', primary: true }],
+      });
+    }
+
+    function renderHoldingsLoading() {
+      document.getElementById('holdingsCards').innerHTML = skeletonRowsHtml(3, '보유 종목을 불러오는 중이에요');
+    }
+
+    // ===== 계좌 초기화 확인창 =====
+    let resetReturnFocus = null;
+
+    function resetSummaryRowsHtml(sm) {
+      const row = (label, value) =>
+        `<div class="flex justify-between gap-3"><span>${label}</span><b class="font-semibold text-[#f5f5f7] tabular-nums">${value}</b></div>`;
+      return [
+        sm.trades === null ? '' : row('지워지는 거래', `${sm.trades}건`),
+        row('정리되는 보유 종목', `${sm.holdings}종목`),
+        row('총 자산', `${sm.from.toLocaleString()}원 → ${sm.to.toLocaleString()}원`),
+      ].join('');
+    }
+
+    function openResetModal() {
+      if (!currentPortfolio) { showToast('계좌 정보를 불러온 뒤 다시 시도해 주세요.', 'error'); return; }
+      document.getElementById('resetSummary').innerHTML = resetSummaryRowsHtml(resetSummary(currentPortfolio));
+      // 닫을 때 돌아갈 곳. 내 메뉴 항목으로 열면 그 항목은 이미 숨겨져 있으니 내 메뉴 버튼으로
+      const active = document.activeElement;
+      resetReturnFocus = (active && active !== document.body && active.offsetParent !== null) ? active : document.getElementById('menuBtn');
+      document.getElementById('resetModal').classList.remove('hidden');
+      document.getElementById('resetCancelBtn').focus(); // 되돌릴 수 없는 동작이라 초점은 안전한 쪽(취소)에
+    }
+
+    function closeResetModal() {
+      const modal = document.getElementById('resetModal');
+      if (!modal || modal.classList.contains('hidden')) return;
+      modal.classList.add('hidden');
+      if (resetReturnFocus && resetReturnFocus.focus) resetReturnFocus.focus();
+      resetReturnFocus = null;
+    }
+
+    // Tab 이 확인창 밖으로 나가지 않게 두 버튼 안에서 돈다
+    function trapResetFocus(e) {
+      const modal = document.getElementById('resetModal');
+      if (!modal || modal.classList.contains('hidden')) return;
+      const btns = [document.getElementById('resetCancelBtn'), document.getElementById('resetConfirmBtn')].filter(b => !b.disabled);
+      e.preventDefault();
+      if (btns.length === 0) return;
+      const i = btns.indexOf(document.activeElement);
+      const next = e.shiftKey ? (i <= 0 ? btns.length - 1 : i - 1) : (i === btns.length - 1 ? 0 : i + 1);
+      btns[next].focus();
+    }
+
+    async function confirmReset() {
+      const confirmBtn = document.getElementById('resetConfirmBtn');
+      const cancelBtn = document.getElementById('resetCancelBtn');
+      confirmBtn.disabled = cancelBtn.disabled = true; // 처리 중 중복 클릭 방지
+      confirmBtn.textContent = '초기화 중…';
+      try {
+        const data = await api('/api/reset', { method: 'POST' });
+        closeResetModal();
+        showToast(data.message || '계좌가 초기화되었습니다.', 'success');
+        await refreshData();
+      } catch (err) {
+        closeResetModal();
+        if (err.status !== 401) showToast(err.status ? err.message : '초기화 실패', 'error');
+      } finally {
+        confirmBtn.disabled = cancelBtn.disabled = false;
+        confirmBtn.textContent = '초기화';
+      }
     }
 
     async function refreshData(force = false) {
@@ -1575,8 +1803,7 @@
 
         // 2. 추천 종목 로드. 서버는 예산 구간별 캐시를 쓰고 수량은 이 예산으로 다시 계산한다.
         //    강제 갱신(새로고침 버튼)만 서버가 사용자별 60초 간격으로 제한하며, 429 는 남은 초 안내와 함께 현재 목록을 다시 조회한다.
-        const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
-        const budget = Math.min(100000000, Math.max(10000, Math.floor(cash)));
+        const budget = recsBudget(currentPortfolio ? currentPortfolio.cash_balance : undefined);
         document.getElementById('recsBudgetLabel').textContent = `${budget.toLocaleString()}원 맞춤 종목`;
         document.getElementById('lastUpdated').textContent = '갱신 중…';
         try {
@@ -1589,17 +1816,21 @@
               const rData = await api(`/api/recommendations?budget=${budget}`);
               if (rData.success) applyRecsResponse(rData);
             } catch (_) {
-              document.getElementById('lastUpdated').textContent = '갱신 실패';
+              markRecsFailed();
             }
+          } else if (err.status !== 401) {
+            markRecsFailed();
+            throw err;
           } else {
             document.getElementById('lastUpdated').textContent = '갱신 실패';
-            if (err.status !== 401) throw err;
           }
         }
       } catch (err) {
         if (err.status !== 401) {
           console.error(err);
           if (err.status) showToast(err.message, 'error');
+          if (!recsFailed) markRecsFailed(); // 계좌 요청이 먼저 실패해 추천을 요청하지 못한 경우
+          if (!currentPortfolio) { showPortfolioUnavailable(); setAssetLoading(false); }
         }
       } finally {
         if (refreshBtn) setTimeout(() => refreshBtn.classList.remove('animate-spin'), 350);
@@ -1607,6 +1838,7 @@
     }
 
     function renderPortfolio(data) {
+      setAssetLoading(false);
       document.getElementById('totalAsset').textContent = data.total_asset.toLocaleString();
       document.getElementById('cashBalance').textContent = data.cash_balance.toLocaleString() + '원';
       document.getElementById('stockEval').textContent = data.total_evaluation.toLocaleString() + '원';
@@ -1664,13 +1896,12 @@
       const container = document.getElementById('holdingsCards');
 
       if (holdings.length === 0) {
-        container.innerHTML = `
-          <div class="text-center py-14 px-4">
-            <i data-icon="wallet" class="text-3xl text-[#a9aebf] mb-2.5"></i>
-            <p class="text-sm font-medium text-[#a9aebf]">보유 중인 주식이 없습니다.</p>
-            <p class="text-[13px] text-[#a9aebf] mt-1">[스윙 추천] 탭에서 원하는 종목을 모의 매수해보세요.</p>
-          </div>
-        `;
+        container.innerHTML = stateCardHtml({
+          icon: 'wallet',
+          title: '보유 중인 종목이 없어요',
+          body: '스윙 추천 탭에서 마음에 드는 종목을<br>모의 매수해 보세요.',
+          actions: [{ label: '추천 보기', onclick: "switchTab('recs')", primary: true }],
+        });
         renderDetailPane();
         return;
       }
@@ -1750,17 +1981,9 @@
     // 추천 종목 렌더링 (아코디언: 한 번에 하나만 펼침)
     function renderRecommendations(list) {
       const container = document.getElementById('recommendationCards');
-      if (!list || list.length === 0) {
-        const emptyMsg = !recsLoaded
-          ? '추천 종목을 불러오는 중입니다...'
-          : (recsUpdatedAt
-              ? '이 예산에 맞는 추천 종목이 없어요. 예산을 바꾸거나 잠시 후 새로고침해 보세요.'
-              : '시세를 불러오지 못해 추천을 만들지 못했어요. 잠시 후 새로고침해 주세요.');
-        container.innerHTML = `
-          <div class="text-center py-12 text-[#a9aebf] text-[13px]">
-            ${emptyMsg}
-          </div>
-        `;
+      const view = recsViewState(recsLoaded, recsFailed, recsUpdatedAt, (list || []).length);
+      if (view !== 'ok') {
+        container.innerHTML = recsStateCard(view);
         renderDetailPane();
         renderBottomBar();
         return;
@@ -1917,23 +2140,46 @@
       return n > 0 ? 'text-[#ff6a60]' : n < 0 ? 'text-[#5aa9ff]' : 'text-white';
     }
 
-    // 요약 모드: 내 계좌 숫자 + 안내. (거래별 손익 막대·자산 구성 등 차트는 다음 PR)
+    // 요약 모드: 내 계좌 숫자 + 안내. 추천 탭의 상태(로딩·빈 상태·오류)에 따라 아래 카드가 달라진다.
+    // (거래별 손익 막대·자산 구성 등 차트는 다음 PR)
     function summaryPaneHtml() {
       const p = currentPortfolio;
+      const view = recsViewState(recsLoaded, recsFailed, recsUpdatedAt, (currentRecs || []).length);
+      const onRecs = activeTab === 'recs';
       const account = p ? `
         <div class="flex items-center gap-2 text-sm font-semibold text-white"><i data-icon="chart-column" class="text-[18px] text-[#a9aebf]"></i> 내 계좌</div>
         <div class="grid grid-cols-3 gap-3">
           ${statCell('총 자산', `${p.total_asset.toLocaleString()}원`)}
           ${statCell('수익률', `${p.total_return_pct > 0 ? '+' : ''}${p.total_return_pct}%`, pnlTextClass(p.total_return_pct))}
           ${statCell('실현 손익', signedWon(p.realized_pnl), pnlTextClass(p.realized_pnl))}
-        </div>` : '<div class="text-[13px] text-[#a9aebf]">계좌 정보를 불러오는 중이에요.</div>';
-      const guide = activeTab === 'holdings'
-        ? '왼쪽 목록에서 보유 종목을 고르면 손절·익절 기준선과 전량 매도가 여기에 보여요.'
-        : '왼쪽 목록에서 종목을 고르면 차트와 AI 진단이 여기에 보여요.';
+        </div>` : `
+        <div class="sk w-24 h-4"></div>
+        <div class="grid grid-cols-3 gap-3"><div class="sk h-[68px]"></div><div class="sk h-[68px]"></div><div class="sk h-[68px]"></div></div>`;
+      let second;
+      if (onRecs && view === 'loading') {
+        second = pcPanel('<div aria-busy="true" class="space-y-3"><div class="sk w-40 h-5"></div><div class="sk h-24"></div><div class="sk w-2/3 h-4"></div></div>');
+      } else if (onRecs && view === 'error') {
+        // 시세 실패: 주문이 막히는 이유와 지금 보이는 숫자가 마지막으로 확인된 값이라는 것
+        second = `<div role="alert" class="glass-card rounded-[14px] p-[18px] flex gap-3" style="border-color: rgba(255,106,96,0.45)">
+          <div class="w-10 h-10 shrink-0 rounded-full bg-[#ff453a]/15 text-[#ff6a60] flex items-center justify-center text-[22px]"><i data-icon="triangle-alert"></i></div>
+          <div class="space-y-1.5">
+            <div class="text-base font-bold text-white">시세를 확인할 수 없는 동안에는 매수·매도가 막혀요</div>
+            <div class="text-sm leading-relaxed text-[#d3d6e2]">체결가는 서버의 실시간 시세로만 정해져서, 시세가 확인될 때까지 기다려야 해요.</div>
+            <div class="text-[13px] text-[#a9aebf]">내 계좌 숫자는 마지막으로 확인된 값이에요.</div>
+          </div>
+        </div>`;
+      } else if (onRecs && view === 'empty') {
+        second = pcPanel('<div class="text-center py-10 space-y-2"><div class="text-base font-bold text-white">추천 목록이 비어 있어요</div><div class="text-sm text-[#d3d6e2]">지금은 계좌 현황만 볼 수 있어요.</div></div>');
+      } else {
+        const guide = onRecs
+          ? '왼쪽 목록에서 종목을 고르면 차트와 AI 진단이 여기에 보여요.'
+          : '왼쪽 목록에서 보유 종목을 고르면 손절·익절 기준선과 전량 매도가 여기에 보여요.';
+        second = pcPanel(`<div class="text-center py-10 space-y-2"><div class="text-base font-bold text-white">종목을 선택하세요</div><div class="text-sm text-[#d3d6e2]">${guide}</div></div>`);
+      }
       return `
         <div class="space-y-4 pb-4">
           ${pcPanel(`<div class="space-y-3">${account}</div>`)}
-          ${pcPanel(`<div class="text-center py-10 space-y-2"><div class="text-base font-bold text-white">종목을 선택하세요</div><div class="text-sm text-[#d3d6e2]">${guide}</div></div>`)}
+          ${second}
         </div>`;
     }
 
@@ -2267,17 +2513,10 @@
       }
     }
 
-    async function resetAccount() {
+    // 계좌 초기화: 내 메뉴 항목이 부른다. 확인창(openResetModal)에서 '초기화'를 눌러야 confirmReset 이 서버를 부른다
+    function resetAccount() {
       if (!currentUser) { openAuthModal(); return; }
-      const initAmount = currentPortfolio ? (currentPortfolio.initial_balance || 100000) : 100000;
-      if (!confirm(`내 가상 계좌를 설정된 시드머니(${initAmount.toLocaleString()}원)로 초기화하시겠습니까?`)) return;
-      try {
-        const data = await api('/api/reset', { method: 'POST' });
-        showToast(data.message || '계좌가 초기화되었습니다.', 'success');
-        await refreshData();
-      } catch (err) {
-        if (err.status !== 401) showToast(err.status ? err.message : '초기화 실패', 'error');
-      }
+      openResetModal();
     }
 
     // ===== 실시간 스마트폰 네이티브 알림 시스템 (ON / OFF 지원) =====
@@ -2470,6 +2709,8 @@
     }
 
     renderBrokerPill();
+    renderRecommendations(currentRecs); // 아직 아무것도 못 받았으니 로딩 스켈레톤
+    renderHoldingsLoading();
 
     (async () => {
       if (await loadSession()) await refreshData();
