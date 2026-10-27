@@ -291,6 +291,10 @@
       <button onclick="switchTab('holdings')" id="tabHoldings" aria-selected="false" class="flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center">
         보유 종목 (<span id="holdingsCount">0</span>)
       </button>
+      <!-- 모바일 전용 3번째 탭. PC 는 종목 미선택일 때 오른쪽 패널이 요약이라 탭이 없다 -->
+      <button onclick="switchTab('summary')" id="tabSummary" aria-selected="false" class="lg:hidden flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center">
+        요약
+      </button>
     </div>
 
     <!-- TAB 1: 추천 종목 섹션 (애플 주식 리스트 + 카카오페이 인터랙티브 차트) -->
@@ -309,6 +313,9 @@
       <!-- 내용은 renderHoldings 가 채운다(처음에는 로딩 스켈레톤) -->
       <div id="holdingsCards" class="divide-y divide-[#1c1c1e] border-y border-[#1c1c1e]"></div>
     </div>
+
+    <!-- TAB 3: 요약 섹션 (모바일 전용. renderSummarySection 이 채운다) -->
+    <div id="sectionSummary" class="hidden lg:hidden"></div>
 
     </div>
     <!-- /listColumn -->
@@ -939,6 +946,11 @@
     function isPcLayout() { return pcMql.matches; }
     // 창 크기를 바꿔 PC/모바일 경계를 넘으면 목록과 오른쪽 패널을 다시 그린다
     pcMql.addEventListener('change', () => {
+      if (isPcLayout() && activeTab === 'summary') {
+        // PC 에는 요약 탭이 없다. 요약을 보던 중이었으니 PC 에서도 요약이 보이게 선택을 풀고 추천 탭으로
+        expandedCardIndex = expandedHoldingIndex = -1;
+        switchTab('recs');
+      }
       renderRecommendations(currentRecs);
       if (currentPortfolio) renderHoldings(currentPortfolio);
       renderDetailPane();
@@ -1687,17 +1699,22 @@
       activeTab = tab;
       const recsBtn = document.getElementById('tabRecs');
       const holdingsBtn = document.getElementById('tabHoldings');
+      const summaryBtn = document.getElementById('tabSummary');
       const secRecs = document.getElementById('sectionRecs');
       const secHoldings = document.getElementById('sectionHoldings');
+      const secSummary = document.getElementById('sectionSummary');
       const on = 'flex-1 py-3 rounded-lg bg-[#f5f5f7] text-[#0b0d12] shadow-sm tap-press transition text-center';
       const off = 'flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center';
 
       recsBtn.className = tab === 'recs' ? on : off;
-      holdingsBtn.className = tab === 'recs' ? off : on;
+      holdingsBtn.className = tab === 'holdings' ? on : off;
+      summaryBtn.className = (tab === 'summary' ? on : off) + ' lg:hidden'; // 요약 탭은 모바일에만 보인다
       recsBtn.setAttribute('aria-selected', tab === 'recs' ? 'true' : 'false');
-      holdingsBtn.setAttribute('aria-selected', tab === 'recs' ? 'false' : 'true');
+      holdingsBtn.setAttribute('aria-selected', tab === 'holdings' ? 'true' : 'false');
+      summaryBtn.setAttribute('aria-selected', tab === 'summary' ? 'true' : 'false');
       secRecs.classList.toggle('hidden', tab !== 'recs');
-      secHoldings.classList.toggle('hidden', tab === 'recs');
+      secHoldings.classList.toggle('hidden', tab !== 'holdings');
+      secSummary.classList.toggle('hidden', tab !== 'summary');
       renderBottomBar();
       renderDetailPane();
     }
@@ -2677,8 +2694,16 @@
         </div>`;
     }
 
-    // 오른쪽 패널을 현재 선택에 맞게 다시 그린다 (PC 에서만)
+    // 모바일 "요약" 탭의 내용(같은 패널을 세로로, 등급 분포 제외). PC 에는 이 탭이 없다
+    function renderSummarySection() {
+      const sec = document.getElementById('sectionSummary');
+      if (!sec || isPcLayout()) return;
+      if (activeTab === 'summary') sec.innerHTML = summaryPanelsHtml(true);
+    }
+
+    // 오른쪽 패널(PC)과 요약 탭(모바일)을 현재 상태에 맞게 다시 그린다
     function renderDetailPane() {
+      renderSummarySection(); // 모바일이면 여기서 끝나므로 PC 용 조기 반환보다 먼저
       const pane = document.getElementById('detailPane');
       if (!pane || !isPcLayout()) return;
       const holdings = currentPortfolio ? (currentPortfolio.holdings || []) : [];
