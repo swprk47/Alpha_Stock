@@ -46,6 +46,12 @@
     input[id^="sellQtyInput_"]::-webkit-outer-spin-button,
     input[id^="sellQtyInput_"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     input[id^="sellQtyInput_"] { -moz-appearance: textfield; appearance: textfield; }
+    input[id^="ibQtyInput_"]::-webkit-outer-spin-button,
+    input[id^="ibQtyInput_"]::-webkit-inner-spin-button,
+    input[id^="ibAmtInput_"]::-webkit-outer-spin-button,
+    input[id^="ibAmtInput_"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[id^="ibQtyInput_"] { -moz-appearance: textfield; appearance: textfield; }
+    input[id^="ibAmtInput_"] { -moz-appearance: textfield; appearance: textfield; }
     /* 애플 주식 스타일 슬릭 스크롤 */
     ::-webkit-scrollbar {
       display: none;
@@ -965,6 +971,7 @@
     let sellPreviewSeq = 0; // 늦게 온 응답을 버리기 위한 순번
     let sellMsg = {};       // 종목 코드 → 입력 안내 { kind: 'notice'|'error', message }
     const sellPreviewTimers = {};
+    let ibSel = {};         // 종목 코드 → PC 인라인 매수 패널 상태 { mode: 'amount'|'qty', qty, amount, msg }
     let activeTab = 'recs';
     let summarySeg = 'pnl';  // 요약의 내 계좌 패널 보기: 'pnl'(거래별 손익) | 'trades'(거래 내역)
 
@@ -1316,12 +1323,6 @@
     function closeSearchStock() {
       searchStock = null;
       renderDetailPane();
-    }
-
-    // 패널의 매수 버튼: 기존 매수 모달을 연다(주문 계산은 모달 그대로). 아직 못 받은 종목으로는 열지 않는다
-    function buySearchStock() {
-      if (!searchStock || searchStock.loading) return;
-      openCustomBuyModal(searchStock);
     }
 
     // ===== 💡 수량 조절 매수 모달 로직 =====
@@ -2657,17 +2658,8 @@
     function recDetailHtml(item, idx) {
       const s = item.sizing;
       const isGain = item.change_rate >= 0;
-      const bar = bottomBarState('recs', idx, currentRecs); // 하단 바와 같은 N주·총 결제(수수료 포함) 계산
-      const buy = bar ? pcPanel(`
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <div class="text-[13px] text-[#a9aebf]">총 결제 예상 (수수료 포함)</div>
-            <b class="text-xl font-extrabold text-white">${bar.total.toLocaleString()}원</b>
-          </div>
-          <button onclick="openBuyModal(${idx})" class="m-pulse min-w-[220px] min-h-[48px] px-6 rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
-            <i data-icon="zap" class="text-[18px]"></i> ${bar.qty}주 모의 매수
-          </button>
-        </div>`) : '';
+      // 매수 패널(PC): 금액/수량 전환·수량 −/+·총 결제·'N주 모의 매수'. 하단 바·모달은 모바일에서 그대로 쓴다
+      const buy = item.current_price > 0 ? pcPanel(ibBoxHtml(item), 'flex flex-col gap-3') : '';
       return `
         <div class="space-y-4 pb-4">
           <div class="flex items-start justify-between gap-4">
@@ -2685,8 +2677,10 @@
           </div>
           ${pcChartPanel(`${item.current_price.toLocaleString()}원`)}
           <div class="grid grid-cols-4 gap-3">${recStatCellsHtml(s)}</div>
-          ${pcPanel(recAiHtml(item))}
-          ${buy}
+          <div class="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4">
+            ${pcPanel(recAiHtml(item))}
+            ${buy}
+          </div>
         </div>`;
     }
 
@@ -2792,17 +2786,7 @@
       }
       const isGain = stock.change_rate >= 0;
       const t = swingTargets(stock.current_price);
-      const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
-      const buy = pcPanel(`
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <div class="text-[13px] text-[#a9aebf]">내 현금</div>
-            <b class="text-xl font-extrabold text-white">${cash.toLocaleString()}원</b>
-          </div>
-          <button onclick="buySearchStock()" class="m-pulse min-w-[220px] min-h-[48px] px-6 rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
-            <i data-icon="zap" class="text-[18px]"></i> 모의 매수
-          </button>
-        </div>`);
+      const buy = pcPanel(ibBoxHtml(stock), 'flex flex-col gap-3');
       return `
         <div class="space-y-4 pb-4">
           <div class="flex items-start justify-between gap-4">
@@ -2829,8 +2813,10 @@
             ${statCell('손익비', `${t.ratio} : 1`)}
             ${statCell('권장 보유', `${t.holdDays}영업일`)}
           </div>
-          ${pcPanel(recAiHtml(stock))}
-          ${buy}
+          <div class="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4">
+            ${pcPanel(recAiHtml(stock))}
+            ${buy}
+          </div>
         </div>`;
     }
 
@@ -3234,6 +3220,255 @@
         delete sellMsg[code];
         showToast(data.message || '매도가 체결되었습니다.', 'success');
         await refreshData();
+      } catch (err) {
+        if (err.status !== 401) showToast(err.status ? err.message : '서버 통신 오류가 발생했습니다.', 'error');
+      }
+    }
+
+    // ===== PC 인라인 매수 패널(시안 S1): 금액/수량 전환 · 수량 − [입력] + · 총 결제 · "N주 모의 매수" =====
+    // 추천 상세와 검색 종목 상세 안에서 쓴다(PC). 모바일은 하단 바와 매수 모달을 그대로 쓴다.
+    // 결제 금액은 buyTotals(서버와 같은 계산)만 쓰고, 입력 규칙은 매수 모달과 같다(normalizeBuyQty·stepBuyQty·buyQtyMax 계열).
+    // 함수 이름의 ib = inline buy (매수 모달의 함수와 이름이 겹치지 않게 한다)
+    function ibCash() { return currentPortfolio ? currentPortfolio.cash_balance : 100000; }
+
+    function ibItemOf(code) {
+      return (currentRecs || []).find(r => r.code === code)
+        || (searchStock && !searchStock.loading && searchStock.code === code ? searchStock : null);
+    }
+
+    // 종목별 상태. 추천 권장 수량이 있으면 수량 방식으로, 아니면 모달처럼 금액 방식(기본 금액 = min(현금, max(가격, 3만)))으로 시작한다
+    function ibStateOf(item) {
+      let st = ibSel[item.code];
+      if (st) return st;
+      const rec = item.sizing && item.sizing.recommended_quantity > 0 ? item.sizing.recommended_quantity : 0;
+      if (rec > 0) {
+        st = { mode: 'qty', qty: rec, amount: 0, msg: null };
+      } else {
+        const amount = Math.min(ibCash(), Math.max(item.current_price, 30000));
+        st = { mode: 'amount', qty: qtyForAmount(item.current_price, amount, item.is_fractional === true), amount: amount, msg: null };
+      }
+      ibSel[item.code] = st;
+      return st;
+    }
+
+    // 지금 살 수량. 금액 모드는 금액에서만 계산하고(수량 모드에서 바꾼 값의 영향을 받지 않는다), 수량 모드는 수량 그대로
+    function ibQtyOf(item, st) {
+      return st.mode === 'amount' ? qtyForAmount(item.current_price, st.amount, item.is_fractional === true) : st.qty;
+    }
+
+    // 입력칸 아래(안내·총 결제·남는 현금·매수 버튼). 타이핑 중에는 입력칸은 두고 이 영역만 다시 그린다
+    function ibDynHtml(item) {
+      const st = ibStateOf(item);
+      const qty = ibQtyOf(item, st);
+      const t = buyTotals(item.current_price, qty, ibCash());
+      const frac = item.is_fractional === true;
+      const help = frac
+        ? '소수점 거래가 가능한 종목이에요. 0.0001주 단위까지 입력돼요.'
+        : '소수점 거래가 안 되는 종목이라 1주 단위로만 살 수 있어요.';
+      const msg = st.msg && st.msg.message ? st.msg : { kind: '', message: help };
+      const tone = msg.kind === 'error' ? 'text-[#ff9f0a]' : (msg.kind === 'notice' ? 'text-[#30d158]' : 'text-[#a9aebf]');
+      const row = (label, value) =>
+        `<div class="flex items-center justify-between gap-3 text-[13px] text-[#d3d6e2]"><span>${label}</span><b class="num font-semibold text-[#f5f5f7]">${value}</b></div>`;
+      let label = `${qty}주 모의 매수`;
+      let off = false;
+      let cls = 'm-pulse bg-white text-black';
+      if (!(qty > 0)) { label = '매수 수량 0'; off = true; }
+      else if (t.short) { label = '잔여 현금 부족'; off = true; }
+      else if (item.grade === 'C') { label = `비추천 종목 ${qty}주 매수`; cls = 'bg-[#48484a] text-white'; }
+      if (off) cls = 'bg-white/20 text-[#a9aebf] opacity-60 cursor-not-allowed';
+      return `
+        <div id="ibDyn_${item.code}" class="flex flex-col gap-3">
+          ${st.mode === 'amount' ? `<div class="text-[13px] text-[#a9aebf]">이 금액으로 <b class="num text-white">${qty}주</b>를 살 수 있어요</div>` : ''}
+          <div role="${msg.kind === 'error' ? 'alert' : 'status'}" class="text-[13px] leading-relaxed break-keep ${tone}">${msg.message}</div>
+          <div class="flex flex-col gap-2">
+            ${row('총 결제 예상 (수수료 포함)', `${t.total.toLocaleString()}원`)}
+            ${row('매수 후 남는 현금', `${t.remaining.toLocaleString()}원`)}
+          </div>
+          <button type="button" onclick="executeInlineBuy('${item.code}')" ${off ? 'disabled aria-disabled="true"' : ''} class="${cls} w-full min-h-[48px] rounded-xl font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
+            <i data-icon="zap" class="text-[18px]"></i> ${label}
+          </button>
+        </div>`;
+    }
+
+    function ibBoxHtml(item) {
+      const st = ibStateOf(item);
+      const code = item.code;
+      const price = item.current_price;
+      const maxInt = buyQtyMax(ibCash(), price);
+      const modeBtn = (m, text) => {
+        const on = st.mode === m;
+        return `<button type="button" onclick="ibMode('${code}', '${m}')" aria-pressed="${on}" class="flex-1 min-h-[44px] rounded-lg text-sm font-semibold tap-press transition ${on ? 'bg-[#2c2c2e] text-white' : 'text-[#a9aebf] hover:text-white'}">${text}</button>`;
+      };
+      const stepBtn = (dir, label, ic) =>
+        `<button type="button" onclick="ibStep('${code}', ${dir})" aria-label="${label}" class="w-11 h-11 rounded-[12px] border border-white/20 bg-white/10 text-white flex items-center justify-center tap-press transition"><i data-icon="${ic}"></i></button>`;
+      const qtyText = st.qty > 0 ? String(st.qty) : '';
+      const quick = (v, text, extra = '') =>
+        `<button type="button" onclick="ibQuick('${code}', ${typeof v === 'number' ? v : `'${v}'`})" class="min-h-[44px] rounded-lg bg-white/10 hover:bg-white/20 text-[13px] font-semibold tap-press transition ${extra || 'text-white'}">${text}</button>`;
+      const inputs = st.mode === 'amount'
+        ? `
+          <label class="flex items-center gap-2 rounded-[14px] border border-white/20 bg-black/35 px-3 min-h-[48px] focus-within:border-[#30d158]/60 transition">
+            <input type="number" id="ibAmtInput_${code}" inputmode="numeric" min="0" value="${st.amount > 0 ? st.amount : ''}" placeholder="매수할 금액 입력" oninput="onIbAmtInput('${code}', this.value)" onblur="onIbBlur('${code}')" aria-label="매수 금액"
+                   class="min-w-0 flex-1 bg-transparent text-right text-xl font-bold text-white focus:outline-none">
+            <span class="text-sm text-[#d3d6e2] shrink-0">원</span>
+          </label>
+          <div class="grid grid-cols-4 gap-2">${quick(10000, '+1만')}${quick(30000, '+3만')}${quick(50000, '+5만')}${quick('max', '전액(최대)', 'text-[#30d158] font-bold')}</div>`
+        : `
+          <div class="grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2">
+            ${stepBtn(-1, '수량 줄이기', 'minus')}
+            <label class="flex items-baseline justify-center gap-1 rounded-[14px] border border-transparent py-1 transition focus-within:border-[#30d158]/60">
+              <input type="number" id="ibQtyInput_${code}" inputmode="decimal" step="any" min="0" value="${qtyText}" oninput="onIbQtyInput('${code}', this.value)" onblur="onIbBlur('${code}')" aria-label="매수 수량"
+                     class="min-w-0 max-w-full bg-transparent text-center text-[28px] font-bold text-white focus:outline-none" style="width:${buyQtyInputWidthCh(qtyText)}ch">
+              <span class="text-sm text-[#d3d6e2] shrink-0">주</span>
+            </label>
+            ${stepBtn(1, '수량 늘리기', 'plus')}
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-[13px] text-[#a9aebf]">최대 ${maxInt}주 가능</span>
+            <button type="button" onclick="ibMax('${code}')" class="min-h-[44px] px-2 -mr-2 text-[13px] font-bold text-[#30d158] tap-press">최대로 채우기</button>
+          </div>`;
+      return `
+        <div id="ibBox_${code}" class="flex flex-col gap-3">
+          <div class="flex gap-1 p-1 rounded-xl bg-black/35 border border-white/10">${modeBtn('amount', '금액으로 매수')}${modeBtn('qty', '수량으로 매수')}</div>
+          ${inputs}
+          ${ibDynHtml(item)}
+        </div>`;
+    }
+
+    // 입력칸 아래 영역만 다시 그린다(입력칸·차트는 건드리지 않는다)
+    function ibRefresh(code) {
+      const el = document.getElementById('ibDyn_' + code);
+      const item = ibItemOf(code);
+      if (!el || !item) return;
+      el.outerHTML = ibDynHtml(item);
+    }
+
+    // 방식을 바꿀 때는 입력칸이 달라지므로 패널 전체를 다시 그린다
+    function ibRerender(code) {
+      const el = document.getElementById('ibBox_' + code);
+      const item = ibItemOf(code);
+      if (!el || !item) return;
+      el.outerHTML = ibBoxHtml(item);
+    }
+
+    // 입력칸을 현재 값으로 맞춘다(−/+·최대·빠른 금액과 칸을 벗어날 때처럼 코드가 값을 바꾸는 경우). 타이핑 중에는 부르지 않는다
+    function ibSyncInput(code) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      const input = document.getElementById('ibQtyInput_' + code);
+      if (input) {
+        input.value = st.qty > 0 ? String(st.qty) : '';
+        input.style.width = buyQtyInputWidthCh(input.value) + 'ch';
+      }
+      const amt = document.getElementById('ibAmtInput_' + code);
+      if (amt) amt.value = st.amount > 0 ? String(st.amount) : '';
+    }
+
+    function ibMode(code, mode) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      if (mode !== st.mode) {
+        // 두 방식이 서로의 값을 이어받는다: 수량 → 금액은 그 수량의 총 결제, 금액 → 수량은 그 금액으로 살 수 있는 수량
+        if (mode === 'amount') st.amount = st.qty > 0 ? buyTotals(item.current_price, st.qty, 0).total : 0;
+        else st.qty = ibQtyOf(item, st);
+        st.mode = mode;
+        if (mode === 'amount') st.qty = ibQtyOf(item, st);
+      }
+      st.msg = null;
+      ibRerender(code);
+    }
+
+    function ibStep(code, dir) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      const r = stepBuyQty(st.qty, dir, buyQtyMax(ibCash(), item.current_price));
+      st.qty = r.qty;
+      st.msg = r.message ? { kind: r.kind, message: r.message } : null;
+      ibSyncInput(code);
+      ibRefresh(code);
+    }
+
+    function ibMax(code) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      const maxInt = buyQtyMax(ibCash(), item.current_price);
+      if (maxInt > 0) {
+        st.qty = maxInt;
+        st.msg = { kind: 'notice', message: `현금으로 살 수 있는 최대 ${maxInt}주예요.` };
+      } else {
+        st.qty = 0;
+        st.msg = { kind: 'error', message: '잔여 현금이 부족해요.' };
+      }
+      ibSyncInput(code);
+      ibRefresh(code);
+    }
+
+    // 직접 입력(수량): 입력 도중에는 칸의 글자를 건드리지 않고 적용 수량·안내만 갱신한다(보정값은 칸을 벗어날 때 반영)
+    function onIbQtyInput(code, raw) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      const cash = ibCash();
+      const r = normalizeBuyQty(raw, item.is_fractional === true, buyQtyMax(cash, item.current_price), buyQtyMaxFractional(cash, item.current_price));
+      st.qty = r.qty;
+      st.msg = r.message ? { kind: r.kind, message: r.message } : null;
+      const input = document.getElementById('ibQtyInput_' + code);
+      if (input) input.style.width = buyQtyInputWidthCh(raw) + 'ch';
+      ibRefresh(code);
+    }
+
+    // 직접 입력(금액): 총 결제(수수료 포함)가 금액을 넘지 않는 최대 수량으로 바꾼다
+    function onIbAmtInput(code, raw) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      st.amount = parseInt(raw) || 0;
+      st.qty = qtyForAmount(item.current_price, st.amount, item.is_fractional === true);
+      st.msg = null;
+      ibRefresh(code);
+    }
+
+    function ibQuick(code, v) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      const cash = ibCash();
+      st.amount = v === 'max' ? cash : Math.min(cash, (st.amount || 0) + v);
+      st.qty = qtyForAmount(item.current_price, st.amount, item.is_fractional === true);
+      st.msg = null;
+      ibSyncInput(code);
+      ibRefresh(code);
+    }
+
+    function onIbBlur(code) {
+      ibSyncInput(code);
+    }
+
+    // 매수 실행: 확인창(네이티브 confirm) → 모달과 같은 주문. 체결가는 서버 실시간 시세
+    async function executeInlineBuy(code) {
+      const item = ibItemOf(code);
+      if (!item) return;
+      const st = ibStateOf(item);
+      const qty = ibQtyOf(item, st); // 화면에 보이는 수량과 같다
+      const t = buyTotals(item.current_price, qty, ibCash());
+      if (!(qty > 0) || t.short) return;
+      const msg = `${item.name} ${qty}주를 매수하시겠습니까?`
+        + `\n총 결제 예상 ${t.total.toLocaleString()}원 (수수료 포함)`
+        + '\n체결가는 서버 실시간 시세입니다.';
+      if (!confirm(msg)) return;
+      const tg = swingTargets(item.current_price); // 목표가·손절가는 매수 모달이 저장하는 값과 같은 식
+      try {
+        const data = await api('/api/buy', {
+          method: 'POST',
+          body: { code: item.code, quantity: qty, target_price: tg.target, stop_loss_price: tg.stop, max_hold_days: tg.holdDays }
+        });
+        delete ibSel[code];
+        showToast(data.message || '매수가 체결되었습니다!', 'success');
+        await refreshData();
+        switchTab('holdings');
       } catch (err) {
         if (err.status !== 401) showToast(err.status ? err.message : '서버 통신 오류가 발생했습니다.', 'error');
       }

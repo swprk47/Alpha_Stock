@@ -147,7 +147,7 @@ def test_pane_dispatches_search_mode():
 
 def test_search_detail_has_the_same_parts_as_the_recommendation_detail():
     body = _func("searchDetailHtml")
-    for needed in ("pcChartPanel(", "recAiHtml(", "swingTargets(", "statCell(", "모의 매수"):
+    for needed in ("pcChartPanel(", "recAiHtml(", "swingTargets(", "statCell(", "ibBoxHtml("):
         assert needed in body, needed
     assert "sizing" not in body  # 검색 응답에는 sizing 이 없다(권장 수량·예상 수익은 만들지 않는다)
 
@@ -178,11 +178,9 @@ def test_search_detail_shows_a_skeleton_while_loading():
     assert "loading" in body and 'class="sk' in body
 
 
-def test_buy_button_opens_the_existing_modal_only_when_loaded():
-    assert 'onclick="buySearchStock()"' in _func("searchDetailHtml")
-    body = _func("buySearchStock")
-    assert "openCustomBuyModal(searchStock)" in body
-    assert "loading" in body  # 아직 못 받은 종목으로는 열지 않는다
+def test_pc_search_detail_buys_inline_and_mobile_still_opens_the_modal():
+    assert "ibBoxHtml(stock)" in _func("searchDetailHtml")  # PC: 상세 안의 인라인 패널(로딩 중에는 스켈레톤이라 패널이 없다)
+    assert "openCustomBuyModal(stock)" in _func("selectSearchResult")  # 모바일: 기존 매수 모달
 
 
 def test_pc_chart_is_drawn_for_the_search_stock():

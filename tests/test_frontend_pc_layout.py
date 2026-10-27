@@ -209,10 +209,10 @@ def test_detail_pane_dispatches_by_mode():
         assert name in body, name
 
 
-def test_detail_pane_recommendation_uses_existing_buy_modal():
+def test_detail_pane_recommendation_uses_the_inline_buy_panel():
     body = _func("recDetailHtml")
-    assert "openBuyModal(" in body  # 매수는 기존 모달(주문 계산 코드는 건드리지 않음)
-    assert "bottomBarState(" in body  # 버튼의 N주·총 결제 예상은 하단 바와 같은 계산
+    assert "ibBoxHtml(" in body  # PC 매수는 상세 안의 인라인 패널(tests/test_frontend_buy_panel.py). 모달은 모바일 경로
+    assert "openBuyModal(" not in body
     assert "pcChartPanel(" in body  # 차트 칸(캔버스 pcChartCanvas)은 보유 상세와 공통
 
 
@@ -231,11 +231,14 @@ def test_stat_cells_become_visible_glass_cells_on_pc():
     assert "#detailPane .stat-cell" in _between(s, "<style>", "</style>")
 
 
-def test_pc_detail_keeps_buy_button_on_the_first_screen():
-    # 차트를 낮추고 매수 패널을 한 줄(총 결제 예상 | 버튼)로 해서 800px 높이에서도 스크롤 없이 보이게 한다
+def test_pc_detail_puts_the_buy_panel_next_to_the_ai_diagnosis():
+    # 시안 S1: AI 진단(1fr) | 매수 패널(360px) 2열. 차트는 낮게(h-48) 둔다
+    # (800px 높이에서는 매수 버튼까지 스크롤이 필요하다. 높이가 충분하면 첫 화면에 들어온다)
     body = _func("pcChartPanel")
     assert "h-48" in body and "h-64" not in body
-    assert "justify-between" in _func("recDetailHtml").split("const buy")[1].split("return")[0]
+    rec = _func("recDetailHtml")
+    assert "ibBoxHtml(" in rec.split("const buy")[1].split("return")[0]
+    assert "grid-cols-[minmax(0,1fr)_360px]" in rec and rec.index("recAiHtml(") < rec.index("${buy}")
 
 
 def test_pc_chart_panel_draws_on_its_canvas():
