@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 import market_data
 from portfolio import MultiUserPortfolioManager, OrderError
-from schemas import BuyRequest, SellRequest
+from schemas import BuyRequest, SellPreviewQuery, SellRequest
 
 DEFAULT_TARGET_RATIO = 1.065
 DEFAULT_STOP_RATIO = 0.97
@@ -69,5 +69,17 @@ def place_sell(mgr: MultiUserPortfolioManager, user_id: str, req: SellRequest) -
     _check_sell_quantity(mgr, user_id, req.code, req.quantity)
     try:
         return mgr.sell(user_id=user_id, code=req.code, price=quote["current_price"], quantity=req.quantity)
+    except OrderError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def place_sell_preview(mgr: MultiUserPortfolioManager, user_id: str, query: SellPreviewQuery) -> dict:
+    """읽기 전용: 실제 매도와 같은 검증 순서(미보유 400 → 시세 503 → 소수 수량 400 → 계산)."""
+    if mgr.get_holding_quantity(user_id, query.code) <= 0:
+        raise HTTPException(status_code=400, detail="보유하고 있지 않은 종목입니다.")
+    quote = fetch_live_quote(query.code)
+    _check_sell_quantity(mgr, user_id, query.code, query.quantity)
+    try:
+        return mgr.preview_sell(user_id=user_id, code=query.code, price=quote["current_price"], quantity=query.quantity)
     except OrderError as e:
         raise HTTPException(status_code=400, detail=str(e))

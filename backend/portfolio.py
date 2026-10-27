@@ -220,20 +220,32 @@ class MultiUserPortfolioManager:
         data = self.store.load(user_id) or {}
         return float(data.get("holdings", {}).get(code, {}).get("quantity", 0))
 
+    @staticmethod
+    def _plan_sell(h: dict | None, price: int, quantity: float | None) -> tuple[float, float, dict, int]:
+        """매도 검증과 계산(체결·미리보기 공용). (수량, 보유 수량, 수령 내역, 손익)을 돌려준다."""
+        if not h:
+            raise OrderError("보유하고 있지 않은 종목입니다.")
+        cur_qty = round(float(h["quantity"]), 4)
+        qty = cur_qty if quantity is None else _norm_qty(quantity)
+        if qty > cur_qty + QTY_EPS:
+            raise OrderError(f"보유 수량({cur_qty:g}주)보다 많이 매도할 수 없습니다.")
+        proceeds = calc_sell_proceeds(price, qty)
+        pnl = proceeds["net"] - int(h["avg_price"] * qty)
+        return qty, cur_qty, proceeds, pnl
+
+    def preview_sell(self, user_id: str, code: str, price: int, quantity: float | None = None) -> dict:
+        """수량별 매도 미리보기. 계정을 바꾸지 않고, sell()과 같은 계산(_plan_sell)을 쓴다."""
+        price = _check_price(price)
+        data = self.store.load(user_id) or {}
+        qty, _, proceeds, pnl = self._plan_sell(data.get("holdings", {}).get(code), price, quantity)
+        return {"code": code, "price": price, "quantity": qty, **proceeds, "est_realized_pnl": pnl}
+
     def sell(self, user_id: str, code: str, price: int, quantity: float | None = None) -> dict:
         price = _check_price(price)
         with self.store.locked(user_id):
             data = self._load_or_new(user_id)
             h = data["holdings"].get(code)
-            if not h:
-                raise OrderError("보유하고 있지 않은 종목입니다.")
-            cur_qty = round(float(h["quantity"]), 4)
-            qty = cur_qty if quantity is None else _norm_qty(quantity)
-            if qty > cur_qty + QTY_EPS:
-                raise OrderError(f"보유 수량({cur_qty:g}주)보다 많이 매도할 수 없습니다.")
-            proceeds = calc_sell_proceeds(price, qty)
-            invested = int(h["avg_price"] * qty)
-            pnl = proceeds["net"] - invested
+            qty, cur_qty, proceeds, pnl = self._plan_sell(h, price, quantity)
             data["cash_balance"] += proceeds["net"]
             data["realized_pnl"] += pnl
             remaining = round(cur_qty - qty, 4)
