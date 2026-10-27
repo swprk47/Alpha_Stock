@@ -1422,6 +1422,17 @@
     }
 
     // ===== 💡 수량 조절 매수 모달 로직 =====
+    // <toast-logic>
+    // 상단 알림이 떠 있는 시간(ms): 종류별 기본 시간에 글자가 길면 조금 더 얹는다(상한 12초). 체결 알림을 읽을 시간이 필요하다
+    const TOAST_BASE_MS = { success: 5000, info: 4000, error: 7000 };
+    function toastDuration(type, message) {
+      const base = TOAST_BASE_MS[type] || TOAST_BASE_MS.info;
+      const len = message ? String(message).length : 0;
+      return Math.min(12000, base + Math.max(0, len - 20) * 60);
+    }
+    // </toast-logic>
+    let toastTimer = null; // 새 알림이 뜨면 이전 알림의 타이머를 지워서 일찍 사라지지 않게 한다
+
     function showToast(message, type = 'success') {
       const toast = document.getElementById('toastNotification');
       const toastMsg = document.getElementById('toastMessage');
@@ -1439,10 +1450,11 @@
       toast.classList.remove('opacity-0', '-translate-y-4', 'pointer-events-none');
       toast.classList.add('opacity-100', 'translate-y-0');
 
-      setTimeout(() => {
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
         toast.classList.remove('opacity-100', 'translate-y-0');
         toast.classList.add('opacity-0', '-translate-y-4', 'pointer-events-none');
-      }, 2500);
+      }, toastDuration(type, message));
     }
 
     let buyMode = 'amount'; // 'amount' (금액 기준) or 'qty' (수량 기준)
