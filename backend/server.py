@@ -151,6 +151,7 @@ def get_portfolio(user: dict = Depends(get_current_user)):
     for h in summary["holdings"]:
         h["chart_data"] = chart_data_map.get(h["code"], {"dates": [], "prices": []})
         h["price_stale"] = h["code"] not in current_prices
+        h["is_fractional"] = orders._is_fractional(h["code"])  # 매도 화면의 소수 수량 입력 허용 여부(목록 조회, 실패하면 정수만)
     return {"success": True, "portfolio": summary}
 
 

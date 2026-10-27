@@ -202,7 +202,7 @@ def test_holding_detail_has_a_trade_history_panel_next_to_the_sell_panel():
     body = _func("holdingDetailHtml")
     assert "holdingTradesHtml(" in body
     assert "grid-cols-[minmax(0,1fr)_360px]" in body  # 시안: 거래 이력(1fr) | 매도 패널(360px)
-    assert "executeSell('${h.code}')" in body and "전량 모의 매도" in body  # 매도 버튼은 그대로
+    assert "sellBoxHtml(h, false)" in body  # 매도 패널(버튼 포함)은 sellBoxHtml
 
 
 def test_trade_history_panel_content_and_states():

@@ -218,8 +218,8 @@ def test_detail_pane_recommendation_uses_existing_buy_modal():
 
 def test_detail_pane_holding_has_gauge_and_full_sell():
     body = _func("holdingDetailHtml")
-    assert "executeSell(" in body
-    assert "전량 모의 매도" in body
+    assert "sellBoxHtml(h, false)" in body  # 매도 버튼은 sellBoxHtml 안에서 executeSell 을 부른다
+    assert "executeSell(" in _func("sellDynHtml")
     assert "stop_loss_price" in body and "target_price" in body
     assert "pcChartPanel(" in body
 
