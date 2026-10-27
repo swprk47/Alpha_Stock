@@ -1069,6 +1069,40 @@
         .slice(0, n)
         .map((x, k) => ({ rank: k + 1, name: x.r.name, score: x.r.score || 0, grade: x.r.grade }));
     }
+
+    // 한 종목의 "현재 보유 구간" 거래(시간순). 추가 매수·부분 매도는 포함하고, 전량 청산 뒤 다시 산 경우 이전 거래는 뺀다.
+    // 수량은 서버와 같은 기준(소수 4자리 반올림, 1e-6 이하는 청산)으로 센다. 지금 보유 중이 아니면 빈 배열
+    function positionTrades(history, code) {
+      const EPS = 1e-6;
+      let qty = 0;
+      let cycle = [];
+      (Array.isArray(history) ? history : []).forEach(h => {
+        if (!h || h.code !== code) return;
+        const q = Number(h.quantity) || 0;
+        if (h.type === 'BUY') {
+          if (qty <= EPS) cycle = []; // 새 보유 구간의 시작
+          qty = Math.round((qty + q) * 10000) / 10000;
+          cycle.push(h);
+        } else if (h.type === 'SELL') {
+          qty = Math.round((qty - q) * 10000) / 10000;
+          cycle.push(h);
+        }
+      });
+      return qty > EPS ? cycle : [];
+    }
+
+    // 보유 상세의 거래 이력 행: 최신이 위, 최대 max 건, 나머지 건수. 손익은 매도에만 있다
+    function holdingTradeRows(history, code, max) {
+      const all = positionTrades(history, code);
+      const rows = all.slice().reverse().slice(0, max).map(h => ({
+        date: String(h.date || '').slice(5, 10).replace('-', '/'),
+        type: h.type,
+        qty: h.quantity,
+        price: h.price,
+        pnl: h.type === 'SELL' ? (h.pnl || 0) : null,
+      }));
+      return { rows: rows, more: Math.max(0, all.length - max) };
+    }
     // </summary-logic>
     // ===== 🔍 종목 검색 및 자동완성 로직 =====
     function onSearchFocus() {
@@ -2581,7 +2615,22 @@
         </div>`;
     }
 
-    // 보유 상세: 헤더 → 수치 4칸 → 차트 → 손절·익절 기준선 → 전량 매도. (거래 이력은 서버가 주지 않아 아직 없다)
+    // 거래 이력: 이 종목의 현재 보유 구간 거래(최신순 최대 8건). 서버가 주는 history 에서 걸러 낸다. PC 전용(모바일 시안 M3 에는 없다)
+    function holdingTradesHtml(h) {
+      const { rows, more } = holdingTradeRows(currentPortfolio ? currentPortfolio.history : [], h.code, 8);
+      const body = rows.length === 0 ? sumEmpty('거래 기록이 없어요') : `
+        <div class="flex flex-col divide-y divide-white/10">${rows.map(r => `
+          <div class="flex items-center gap-2 py-2 text-[13px]">
+            <span class="num w-11 shrink-0 text-[#a9aebf]">${r.date}</span>
+            <span class="shrink-0 rounded bg-white/10 px-1.5 font-semibold text-[#f5f5f7]">${r.type === 'SELL' ? '매도' : '매수'}</span>
+            <span class="num min-w-0 flex-1 text-[#d3d6e2]">${r.qty}주 · ${Number(r.price).toLocaleString()}원</span>
+            ${r.pnl === null ? '' : `<span class="num shrink-0 text-right font-semibold ${pnlTextClass(r.pnl)}">${signedWon(r.pnl)}</span>`}
+          </div>`).join('')}</div>
+        ${more > 0 ? `<div class="text-[13px] text-[#a9aebf]">외 ${more}건</div>` : ''}`;
+      return pcPanel(`<div class="text-sm font-semibold text-white">거래 이력</div>${body}`, 'flex flex-col gap-3');
+    }
+
+    // 보유 상세: 헤더 → 수치 4칸 → 차트 → 손절·익절 기준선 → (거래 이력 | 전량 매도)
     function holdingDetailHtml(h) {
       const isGain = h.pnl_pct >= 0;
       const pnlSign = isGain ? '+' : '';
@@ -2624,10 +2673,13 @@
               <span class="text-white font-semibold">현재 ${h.current_price.toLocaleString()}원</span>
               <span>익절 ${h.target_price.toLocaleString()}원${targetPct ? ` (+${targetPct}%)` : ''}</span>
             </div>`)}
-          ${pcPanel(`
-            <button onclick="executeSell('${h.code}')" class="m-pulse w-full min-h-[48px] rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
-              <i data-icon="zap" class="text-[18px]"></i> ${qty}주 전량 모의 매도
-            </button>`)}
+          <div class="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4">
+            ${holdingTradesHtml(h)}
+            ${pcPanel(`
+              <button onclick="executeSell('${h.code}')" class="m-pulse w-full min-h-[48px] rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
+                <i data-icon="zap" class="text-[18px]"></i> ${qty}주 전량 모의 매도
+              </button>`)}
+          </div>
         </div>`;
     }
 
