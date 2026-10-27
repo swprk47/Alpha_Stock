@@ -789,23 +789,52 @@
       });
     }
     // </icons>
-    // ===== 수량 입력 로직 (DOM 을 쓰지 않는 순수 함수. tests/test_frontend_qty.py 가 이 구간을 그대로 실행해 검증) =====
-    // <qty-logic>
-    const BUY_FEE_MULTIPLIER = 1.00015; // 매수 수수료 0.015% 포함 단가 배수
+    // <buy-calc>
+    // 매수 결제 계산: 모달·하단 바·PC 인라인 매수 패널이 모두 이 구간을 쓴다.
+    // 서버(backend/fees.py calc_buy_cost)와 정확히 같다: 총액 = 원 미만 내림(가격×수량), 수수료 = 총액×요율을 부동소수 보정 후 내림.
+    // 요율은 backend/config.py 의 BUY_FEE_RATE 기본값이다. tests/test_frontend_buy_calc.py 가 서버와 1원 단위로 대조한다.
+    const BUY_FEE_RATE = 0.00015;
 
-    function floorQty4(x) { return Math.floor(x * 10000 + 1e-9) / 10000; }
+    function buyFee(gross) {
+      return Math.floor(Math.round(gross * BUY_FEE_RATE * 1e6) / 1e6);
+    }
+
+    function buyTotals(price, qty, cash) {
+      const gross = Math.floor(price * qty);
+      const fee = buyFee(gross);
+      const total = gross + fee;
+      const have = cash > 0 ? cash : 0;
+      return { gross: gross, fee: fee, total: total, remaining: Math.max(0, have - total), short: total > have };
+    }
+
+    // 금액으로 살 수 있는 최대 수량(총 결제가 금액을 넘지 않는 가장 큰 수량). 소수점 가능 종목은 소수 4자리, 아니면 정수.
+    // 총 결제는 수량에 대해 줄지 않으므로 단위(1주 또는 0.0001주) 개수를 이분 탐색한다.
+    function qtyForAmount(price, amount, fractional) {
+      if (!(price > 0) || !(amount > 0)) return 0;
+      const scale = fractional ? 10000 : 1;
+      let lo = 0;
+      let hi = Math.ceil((amount + 1) / price * scale) + 1;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        if (buyTotals(price, mid / scale, 0).total <= amount) lo = mid; else hi = mid - 1;
+      }
+      return lo / scale;
+    }
 
     // 현금으로 살 수 있는 정수 단위 최대 수량 (표시·"최대로 채우기"·입력 상한 모두 이 값)
     function buyQtyMax(cash, price) {
-      if (!(price > 0) || !(cash > 0)) return 0;
-      return Math.floor(cash / (price * BUY_FEE_MULTIPLIER));
+      return qtyForAmount(price, cash, false);
     }
 
     // 소수점 가능 종목이 직접 입력으로 살 수 있는 최대 수량 (소수 4자리 내림). 화면의 "최대"(정수)와 별개 상한.
     function buyQtyMaxFractional(cash, price) {
-      if (!(price > 0) || !(cash > 0)) return 0;
-      return floorQty4(cash / (price * BUY_FEE_MULTIPLIER));
+      return qtyForAmount(price, cash, true);
     }
+    // </buy-calc>
+
+    // ===== 수량 입력 로직 (DOM 을 쓰지 않는 순수 함수. tests/test_frontend_qty.py 가 이 구간을 그대로 실행해 검증) =====
+    // <qty-logic>
+    function floorQty4(x) { return Math.floor(x * 10000 + 1e-9) / 10000; }
 
     // 직접 입력값 보정. 소수점 가능 종목만 소수 4자리까지(상한 = maxFracQty), 그 외는 내림(상한 = maxQty).
     // maxFracQty 를 생략하면 maxQty 를 상한으로 쓴다.
@@ -941,23 +970,20 @@
 
     // ===== 홈 화면 로직 (DOM 을 쓰지 않는 순수 함수. tests/test_frontend_mobile_home.py 가 이 구간을 그대로 실행해 검증) =====
     // <home-logic>
-    const BUY_FEE_RATE = 0.00015; // 매수 수수료 0.015%. 매수 모달(updateBuyModalCalcs)과 같은 계산
-
     // 아코디언: 한 번에 하나만 펼치고, 펼쳐진 행을 다시 누르면 접는다
     function nextExpandedIndex(current, clicked) {
       return current === clicked ? -1 : clicked;
     }
 
     // 하단 고정 매수 바에 보일 내용. 추천 탭에서 펼친 종목이 있을 때만 값을 돌려준다.
-    // 총 결제 = 가격×수량 + 수수료(내림). 서버의 sizing.total_cost 는 수수료를 뺀 금액이라 쓰지 않는다.
+    // 총 결제 = buyTotals(가격×수량 + 수수료, 서버와 같은 계산). 서버의 sizing.total_cost 는 수수료를 뺀 금액이라 쓰지 않는다.
     function bottomBarState(tab, expandedIdx, recs) {
       if (tab !== 'recs' || !Array.isArray(recs)) return null;
       const item = recs[expandedIdx];
       if (!item || !item.sizing || !(item.current_price > 0)) return null;
       const qty = item.sizing.recommended_quantity;
       if (!(qty > 0)) return null;
-      const cost = Math.floor(item.current_price * qty);
-      return { idx: expandedIdx, qty: qty, total: cost + Math.floor(cost * BUY_FEE_RATE) };
+      return { idx: expandedIdx, qty: qty, total: buyTotals(item.current_price, qty, 0).total };
     }
     // </home-logic>
 
@@ -1405,17 +1431,8 @@
 
     function calculateQtyFromAmount() {
       if (!selectedRecForBuy || selectedRecForBuy.current_price <= 0) return;
-      const price = selectedRecForBuy.current_price;
-      const unitCost = price * 1.00015; // 수수료 포함
-
-      if (selectedRecForBuy.is_fractional) {
-        // 소수점 거래 가능 종목: 소수점 4자리까지 정확히 분할 매수
-        const rawQty = currentBuyAmount / unitCost;
-        currentBuyQty = Math.max(0, Math.floor(rawQty * 10000) / 10000);
-      } else {
-        // 소수점 미지원 종목: 정수 단위로만 매수
-        currentBuyQty = Math.floor(currentBuyAmount / unitCost);
-      }
+      // 소수점 거래 가능 종목은 소수 4자리까지, 아니면 정수 단위. 총 결제(수수료 포함)가 금액을 넘지 않는 최대 수량
+      currentBuyQty = qtyForAmount(selectedRecForBuy.current_price, currentBuyAmount, selectedRecForBuy.is_fractional === true);
     }
 
     // AI 등급별 색상·문구 (구매 모달과 추천 카드가 공유)
@@ -1617,11 +1634,11 @@
 
     function updateBuyModalCalcs() {
       const price = selectedRecForBuy ? selectedRecForBuy.current_price : 0;
-      const totalCost = Math.floor(price * currentBuyQty);
-      const fee = Math.floor(totalCost * 0.00015);
-      const totalRequired = totalCost + fee;
       const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
-      const remaining = Math.max(0, cash - totalRequired);
+      const t = buyTotals(price, currentBuyQty, cash);
+      const totalCost = t.gross;
+      const totalRequired = t.total;
+      const remaining = t.remaining;
       const ratio = currentPortfolio && currentPortfolio.total_asset > 0 ? ((totalCost / currentPortfolio.total_asset) * 100).toFixed(1) : 0;
 
       const qtyDisplayStr = (currentBuyQty > 0) ? `${currentBuyQty}` : '0';

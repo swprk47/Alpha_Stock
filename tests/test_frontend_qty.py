@@ -20,7 +20,9 @@ def _logic_source():
     s = HTML.read_text(encoding="utf-8")
     m = re.search(r"// <qty-logic>\r?\n(.*?)// </qty-logic>", s, re.S)
     assert m, "index.html 에 qty-logic 구간이 없습니다"
-    return m.group(1)
+    calc = re.search(r"// <buy-calc>\r?\n(.*?)// </buy-calc>", s, re.S)
+    assert calc, "index.html 에 buy-calc 구간이 없습니다"  # buyQtyMax 계열은 buy-calc 로 옮겨졌다
+    return calc.group(1) + m.group(1)
 
 
 @pytest.fixture(scope="module")
@@ -115,8 +117,9 @@ def test_no_cash_is_error_even_with_valid_input(run):
 
 # ---- 소수점 종목의 직접 입력 상한은 "소수로 살 수 있는 최대" (정수 최대보다 큼) ----
 def test_fractional_max_is_four_decimal_floor(run):
-    # 100,000 / (30,500 * 1.00015) = 3.27810... -> 3.2781
-    assert run("buyQtyMaxFractional(100000, 30500)") == 3.2781
+    # 서버 기준 최대: 3.2782주 = 30,500×3.2782 → 99,985원(내림) + 수수료 14원 = 99,999원 ≤ 100,000원 (3.2783주는 99,999+수수료 15원 초과)
+    # (예전 근사식 100,000/(30,500×1.00015)는 3.2781 로 1단위 보수적이었다)
+    assert run("buyQtyMaxFractional(100000, 30500)") == 3.2782
     assert run("buyQtyMaxFractional(0, 30500)") == 0
     assert run("buyQtyMaxFractional(100000, 0)") == 0
 
