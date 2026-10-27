@@ -103,13 +103,41 @@
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
     }
+    /* ===== PC (1024px 이상, 명세 2항): 왼쪽 목록은 독립된 글라스 카드, 자산 요약은 그 안의 평면 영역 ===== */
+    @media (min-width: 1024px) {
+      #listColumn {
+        padding: 20px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.08);
+        -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 0 24px rgba(140, 170, 255, 0.18), 0 8px 20px rgba(0, 0, 0, 0.35);
+      }
+      #assetSummary {
+        padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+        -webkit-backdrop-filter: none; backdrop-filter: none;
+      }
+      /* 오른쪽 패널의 수치 칸: 검정 바탕 위 반투명 검정은 보이지 않으므로 글라스 칸으로 */
+      #detailPane .stat-cell {
+        padding: 14px; border-radius: 14px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+    }
+    @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+      @media (min-width: 1024px) { #listColumn { background: #12141c; } }
+    }
+    @media (min-width: 1024px) and (prefers-reduced-transparency: reduce) {
+      #listColumn { background: #12141c; -webkit-backdrop-filter: none; backdrop-filter: none; }
+    }
   </style>
 </head>
-<body class="min-h-screen flex flex-col justify-between bg-black text-[#f5f5f7] pb-40">
+<body class="min-h-screen flex flex-col justify-between bg-black text-[#f5f5f7] pb-40 lg:h-screen lg:overflow-hidden lg:pb-0">
 
   <!-- 상단 헤더: 앱 이름 + 증권사 알약 / 검색 · 새로고침 · 내 메뉴 (명세 2항) -->
-  <header class="sticky top-0 z-30 glass-bar px-4 h-14 flex items-center justify-between">
-    <div class="flex items-center gap-2 min-w-0">
+  <!-- PC(lg)에서는 두 묶음을 풀어(contents) 한 줄로 늘어놓고 order 로 아바타를 맨 앞에 둔다 -->
+  <header class="sticky top-0 z-30 glass-bar px-4 h-14 lg:h-16 lg:px-6 lg:gap-3 flex items-center justify-between lg:justify-start">
+    <div class="flex items-center gap-2 min-w-0 lg:contents">
       <h1 class="text-[17px] font-bold tracking-tight text-white leading-none whitespace-nowrap">Alpha Stock</h1>
       <!-- 증권사 알약 (표시 전용). 색은 BROKER_THEMES 에서 적용 -->
       <div id="brokerPill" class="inline-flex items-center gap-1.5 h-6 pl-2 pr-2.5 rounded-full text-[13px] font-semibold text-[#f5f5f7] select-none whitespace-nowrap" title="연결된 증권사 (표시 전용)">
@@ -118,14 +146,18 @@
       </div>
     </div>
 
-    <div class="flex items-center -mr-2">
-      <button onclick="toggleSearch()" id="searchToggleBtn" aria-label="종목 검색" aria-expanded="false" class="w-11 h-11 rounded-full text-[#f5f5f7] flex items-center justify-center tap-press transition">
+    <div class="flex items-center -mr-2 lg:contents">
+      <button onclick="toggleSearch()" id="searchToggleBtn" aria-label="종목 검색" aria-expanded="false" class="lg:hidden w-11 h-11 rounded-full text-[#f5f5f7] flex items-center justify-center tap-press transition">
         <i data-icon="search" class="text-[20px]"></i>
+      </button>
+      <!-- 알림: PC 헤더에만 둔다(모바일은 내 메뉴 안의 알림 설정). 아이콘은 updateNotifBtnUI 가 켜짐/꺼짐으로 바꾼다 -->
+      <button onclick="toggleNotificationSetting()" id="notifHeaderBtn" aria-label="알림 설정" class="m-ring hidden lg:flex lg:ml-auto w-11 h-11 rounded-full text-[#a9aebf] hover:text-white items-center justify-center tap-press transition">
+        <span id="notifHeaderIcon" class="flex text-[20px]"><i data-icon="bell-off"></i></span>
       </button>
       <button onclick="refreshData(true)" id="refreshBtn" aria-label="추천 새로고침" class="m-spin w-11 h-11 rounded-full text-[#f5f5f7] flex items-center justify-center tap-press transition">
         <i data-icon="refresh-cw" class="text-[20px]"></i>
       </button>
-      <button onclick="toggleMenu()" id="menuBtn" aria-label="내 메뉴" aria-haspopup="menu" aria-expanded="false" class="w-11 h-11 rounded-full flex items-center justify-center tap-press transition">
+      <button onclick="toggleMenu()" id="menuBtn" aria-label="내 메뉴" aria-haspopup="menu" aria-expanded="false" class="lg:order-first w-11 h-11 rounded-full flex items-center justify-center tap-press transition">
         <img id="userAvatar" src="" alt="" class="w-7 h-7 rounded-full object-cover hidden">
         <i id="userDefaultIcon" data-icon="circle-user-round" class="text-[24px] text-[#a9aebf]"></i>
       </button>
@@ -134,7 +166,7 @@
 
   <!-- 내 메뉴 (아바타 버튼으로 열림). 계좌 초기화는 헤더가 아니라 여기에 둔다 -->
   <div id="menuBackdrop" onclick="closeMenu()" class="fixed inset-0 z-[35] hidden"></div>
-  <div id="userMenu" role="menu" aria-label="내 메뉴" class="fixed right-2 top-[60px] z-40 w-[300px] max-w-[calc(100vw-16px)] glass-modal rounded-2xl p-2 shadow-2xl hidden">
+  <div id="userMenu" role="menu" aria-label="내 메뉴" class="fixed right-2 top-[60px] lg:right-auto lg:left-4 lg:top-[68px] z-40 w-[300px] max-w-[calc(100vw-16px)] glass-modal rounded-2xl p-2 shadow-2xl hidden">
     <div class="px-3 pt-2.5 pb-3 mb-1 border-b border-white/15">
       <div class="text-sm font-bold text-white">내 계정</div>
       <div id="userName" class="text-[13px] text-[#a9aebf] mt-0.5">로그인 필요</div>
@@ -158,10 +190,12 @@
   <!-- /userMenu -->
 
   <!-- 메인 스크롤 콘텐츠 -->
-  <main class="flex-1 px-4 py-3 max-w-md mx-auto w-full space-y-4">
+  <!-- PC(lg): 왼쪽 목록 카드(440px) | 오른쪽 상세 패널(1fr). 각 칸이 따로 스크롤한다 -->
+  <main class="flex-1 px-4 py-3 max-w-md mx-auto w-full space-y-4 lg:max-w-none lg:mx-0 lg:grid lg:grid-cols-[440px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 lg:space-y-0 lg:py-4 lg:min-h-0 lg:overflow-hidden">
 
     <!-- 종목 검색바: 헤더의 검색 버튼으로 펼치고 접는다 -->
-    <div id="searchWrap" class="relative z-20 hidden">
+    <!-- PC 에서는 헤더 안에 상시 노출(고정 배치). 모바일은 헤더의 검색 버튼으로 펼친다 -->
+    <div id="searchWrap" class="relative z-20 hidden lg:!block lg:fixed lg:top-[10px] lg:right-[136px] lg:w-[300px] lg:z-[32]">
       <div class="flex items-center bg-[#1c1c1e] rounded-xl px-3 min-h-[44px] border border-[#2c2c2e] focus-within:border-[#30d158] transition">
         <i data-icon="search" class="text-[13px] text-[#a9aebf] mr-2"></i>
         <input type="text" id="searchInput" oninput="onSearchInput(event)" onfocus="onSearchFocus()" aria-label="종목명 또는 코드 검색"
@@ -178,8 +212,11 @@
       </div>
     </div>
 
+    <!-- 목록 칸: 모바일은 그냥 세로 묶음, PC 는 독립된 글라스 카드(스타일은 #listColumn) -->
+    <div id="listColumn" class="space-y-4 lg:min-h-0 lg:overflow-y-auto">
+
     <!-- 시드 자산 요약 (애플 주식 상단 위젯 느낌 + 시드머니 변경 버튼) -->
-    <section class="py-2 glass-card p-3.5 rounded-2xl">
+    <section id="assetSummary" class="py-2 glass-card p-3.5 rounded-2xl">
       <div class="flex justify-between items-center">
         <span class="text-[13px] font-medium text-[#a9aebf] flex items-center gap-1.5">
           <span>내 시드 자산</span>
@@ -250,6 +287,12 @@
       </div>
     </div>
 
+    </div>
+    <!-- /listColumn -->
+
+    <!-- PC 오른쪽 패널: 종목 미선택이면 요약, 고르면 상세 (renderDetailPane) -->
+    <aside id="detailPane" aria-label="종목 상세" class="hidden lg:block lg:min-h-0 lg:overflow-y-auto"></aside>
+
   </main>
 
   <!-- 애플 스타일 플로팅 토스트 알림 (모바일 Safari 최적화) -->
@@ -259,7 +302,7 @@
   </div>
 
   <!-- 하단 고정 바: 추천 종목을 펼치면 매수 바, 아니면 사용 팁 (명세 2항) -->
-  <footer id="bottomBar" class="fixed bottom-0 left-0 right-0 z-20 glass-bar-bottom px-4 pt-3 pb-5">
+  <footer id="bottomBar" class="lg:hidden fixed bottom-0 left-0 right-0 z-20 glass-bar-bottom px-4 pt-3 pb-5">
     <div id="bottomBarBuy" class="max-w-md mx-auto flex flex-col gap-2 hidden">
       <div class="flex justify-between text-[13px] text-[#a9aebf]">
         <span>총 결제 예상 (수수료 포함)</span>
@@ -667,6 +710,8 @@
       'target': '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
       'hourglass': '<path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/>',
       'timer': '<line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>',
+      'chart-column': '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+      'chart-line': '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/>',
     };
 
     function icon(name, cls = '') {
@@ -801,6 +846,41 @@
       return { idx: expandedIdx, qty: qty, total: cost + Math.floor(cost * BUY_FEE_RATE) };
     }
     // </home-logic>
+
+    // ===== PC 레이아웃 로직 (DOM 을 쓰지 않는 순수 함수. tests/test_frontend_pc_layout.py 가 이 구간을 그대로 실행해 검증) =====
+    // <pc-logic>
+    const PC_MIN_WIDTH = 1024; // CSS 의 lg 구간(min-width: 1024px)과 같다
+
+    function isPcWidth(w) { return w >= PC_MIN_WIDTH; }
+
+    // 첫 화면: PC 는 종목 미선택(요약 모드), 모바일은 첫 행을 펼친다
+    function initialSelectedIndex(w) { return isPcWidth(w) ? -1 : 0; }
+
+    // 오른쪽 패널에 보일 내용: 활성 탭에서 고른 행이 있으면 상세, 없으면 요약
+    function detailPaneState(tab, recIdx, holdIdx, recs, holdings) {
+      const isRecs = tab === 'recs';
+      const list = isRecs ? recs : holdings;
+      const idx = isRecs ? recIdx : holdIdx;
+      if (!Array.isArray(list) || !list[idx]) return { mode: 'summary' };
+      return { mode: isRecs ? 'rec' : 'holding', idx: idx, item: list[idx] };
+    }
+
+    // PC 목록 행의 모양(명세 3·7항). 선택 여부와 관계없이 테두리 두께가 같아 선택해도 크기가 변하지 않는다
+    function pcRowClass(pc, selected) {
+      if (!pc) return '';
+      return 'rounded-xl px-3 border ' + (selected ? 'bg-white/[0.16] border-white/30' : 'border-transparent hover:bg-white/10');
+    }
+    // </pc-logic>
+    expandedCardIndex = expandedHoldingIndex = initialSelectedIndex(window.innerWidth);
+
+    const pcMql = window.matchMedia('(min-width: 1024px)');
+    function isPcLayout() { return pcMql.matches; }
+    // 창 크기를 바꿔 PC/모바일 경계를 넘으면 목록과 오른쪽 패널을 다시 그린다
+    pcMql.addEventListener('change', () => {
+      renderRecommendations(currentRecs);
+      if (currentPortfolio) renderHoldings(currentPortfolio);
+      renderDetailPane();
+    });
     // ===== 🔍 종목 검색 및 자동완성 로직 =====
     function onSearchFocus() {
       const input = document.getElementById('searchInput');
@@ -1412,6 +1492,7 @@
       secRecs.classList.toggle('hidden', tab !== 'recs');
       secHoldings.classList.toggle('hidden', tab === 'recs');
       renderBottomBar();
+      renderDetailPane();
     }
 
     function toggleAccordion(index) {
@@ -1421,7 +1502,7 @@
 
     // 하단 고정 바: 추천 종목을 펼치면 총 결제 예상액과 매수 버튼, 아니면 사용 팁
     function renderBottomBar() {
-      const st = bottomBarState(activeTab, expandedCardIndex, currentRecs);
+      const st = isPcLayout() ? null : bottomBarState(activeTab, expandedCardIndex, currentRecs); // PC 는 하단 바 대신 오른쪽 패널의 매수 버튼
       const buy = document.getElementById('bottomBarBuy');
       const tip = document.getElementById('bottomBarTip');
       if (!buy || !tip) return;
@@ -1559,7 +1640,7 @@
     // 값 칸(라벨 + 값 + 선택적 보조 줄). 아코디언 펼침 영역의 2×2 수치에 쓴다
     function statCell(label, value, valueClass = 'text-white', sub = '') {
       return `
-        <div class="bg-black/35 p-2.5 rounded-xl">
+        <div class="stat-cell bg-black/35 p-2.5 rounded-xl">
           <div class="text-[13px] text-[#a9aebf]">${label}</div>
           <div class="text-base font-extrabold ${valueClass} mt-0.5">${value}</div>
           ${sub ? `<div class="text-[13px] text-[#a9aebf]">${sub}</div>` : ''}
@@ -1590,6 +1671,7 @@
             <p class="text-[13px] text-[#a9aebf] mt-1">[스윙 추천] 탭에서 원하는 종목을 모의 매수해보세요.</p>
           </div>
         `;
+        renderDetailPane();
         return;
       }
 
@@ -1598,22 +1680,15 @@
         const pillBg = isGain ? 'bg-[#ff453a]' : 'bg-[#0a84ff]';
         const pnlSign = isGain ? '+' : '';
         const pnlText = isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]';
-        const isExpanded = (expandedHoldingIndex === idx);
+        const isSelected = (expandedHoldingIndex === idx);
+        const isExpanded = isSelected && !isPcLayout(); // PC 는 펼치지 않고 오른쪽 패널에 보여준다
         const qtyFormatted = (typeof h.quantity === 'number') ? `${h.quantity}` : h.quantity;
-
-        let statusBadge = '';
-        if (h.signal_status === 'TARGET_REACHED') {
-          statusBadge = '<span class="bg-[#ff453a] text-white text-[13px] font-bold px-2 py-0.5 rounded-md inline-flex items-center gap-1"><i data-icon="target"></i> 목표가 도달 (익절)</span>';
-        } else if (h.signal_status === 'STOP_LOSS_REACHED') {
-          statusBadge = '<span class="bg-[#0a84ff] text-white text-[13px] font-bold px-2 py-0.5 rounded-md inline-flex items-center gap-1"><i data-icon="triangle-alert"></i> 손절선 터치</span>';
-        } else if (h.signal_status === 'TIME_EXPIRED') {
-          statusBadge = '<span class="bg-[#ffd60a] text-black text-[13px] font-bold px-2 py-0.5 rounded-md inline-flex items-center gap-1"><i data-icon="hourglass"></i> 5일 만료</span>';
-        }
+        const statusBadge = holdingStatusBadge(h);
 
         return `
           <div class="py-1">
-            <div role="button" tabindex="0" aria-expanded="${isExpanded}" onclick="toggleHolding(${idx})" ${rowKeyAttr(`toggleHolding(${idx})`)}
-                 class="min-h-[64px] py-2.5 flex items-center justify-between gap-3 cursor-pointer tap-press">
+            <div role="button" tabindex="0" ${isPcLayout() ? `aria-pressed="${isSelected}"` : `aria-expanded="${isExpanded}"`} onclick="toggleHolding(${idx})" ${rowKeyAttr(`toggleHolding(${idx})`)}
+                 class="min-h-[64px] py-2.5 flex items-center justify-between gap-3 cursor-pointer tap-press ${pcRowClass(isPcLayout(), isSelected)}">
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-1.5">
                   <h4 class="font-bold text-[15px] text-white">${h.name}</h4>
@@ -1626,7 +1701,7 @@
                   <div class="text-sm font-extrabold text-white whitespace-nowrap">${h.current_price.toLocaleString()}원</div>
                   <div class="${pillBg} text-white font-bold text-[13px] px-2 rounded-md min-w-[62px] text-center">${pnlSign}${h.pnl_pct}%</div>
                 </div>
-                <i data-icon="chevron-down" class="text-xl text-[#a9aebf] transition-transform ${isExpanded ? 'rotate-180' : ''}"></i>
+                ${isPcLayout() ? '' : `<i data-icon="chevron-down" class="text-xl text-[#a9aebf] transition-transform ${isExpanded ? 'rotate-180' : ''}"></i>`}
               </div>
             </div>
 
@@ -1654,9 +1729,22 @@
 
       // 펼쳐진 보유 종목 차트
       const cur = holdings[expandedHoldingIndex];
-      if (cur && cur.chart_data && cur.chart_data.prices && cur.chart_data.prices.length > 0) {
+      if (!isPcLayout() && cur && cur.chart_data && cur.chart_data.prices && cur.chart_data.prices.length > 0) {
         setTimeout(() => drawInteractiveChart(`holdingChart_${expandedHoldingIndex}`, cur.chart_data.prices, cur.chart_data.dates, cur.pnl_pct >= 0), 50);
       }
+      renderDetailPane();
+    }
+
+    // 보유 종목의 신호 배지(목표가 도달·손절선 터치·기한 만료). 모바일 아코디언과 PC 상세가 같이 쓴다
+    function holdingStatusBadge(h) {
+      if (h.signal_status === 'TARGET_REACHED') {
+        return '<span class="bg-[#ff453a] text-white text-[13px] font-bold px-2 py-0.5 rounded-md inline-flex items-center gap-1"><i data-icon="target"></i> 목표가 도달 (익절)</span>';
+      } else if (h.signal_status === 'STOP_LOSS_REACHED') {
+        return '<span class="bg-[#0a84ff] text-white text-[13px] font-bold px-2 py-0.5 rounded-md inline-flex items-center gap-1"><i data-icon="triangle-alert"></i> 손절선 터치</span>';
+      } else if (h.signal_status === 'TIME_EXPIRED') {
+        return '<span class="bg-[#ffd60a] text-black text-[13px] font-bold px-2 py-0.5 rounded-md inline-flex items-center gap-1"><i data-icon="hourglass"></i> 5일 만료</span>';
+      }
+      return '';
     }
 
     // 추천 종목 렌더링 (아코디언: 한 번에 하나만 펼침)
@@ -1673,6 +1761,7 @@
             ${emptyMsg}
           </div>
         `;
+        renderDetailPane();
         renderBottomBar();
         return;
       }
@@ -1682,21 +1771,15 @@
         const isGain = item.change_rate >= 0;
         const changeSign = isGain ? '+' : '';
         const pillBg = isGain ? 'bg-[#ff453a]' : 'bg-[#0a84ff]';
-        const isExpanded = (expandedCardIndex === idx);
-        const gradeStyle = GRADE_STYLES[item.grade] || GRADE_STYLES['N/A'];
-        const gradeLabel = GRADE_STYLES[item.grade] ? item.grade : '-';
-        const gradeText = item.grade === 'N/A' || !GRADE_STYLES[item.grade]
-          ? gradeStyle.label
-          : `${item.grade_score || 0}점 · ${gradeStyle.label}`;
-        const reasons = (item.grade_reasons || []).map(r =>
-          `<div class="text-[13px] text-[#ebebf5] leading-snug">· ${r}</div>`
-        ).join('') || '<div class="text-[13px] text-[#a9aebf]">근거 없음</div>';
+        const isSelected = (expandedCardIndex === idx);
+        const isExpanded = isSelected && !isPcLayout(); // PC 는 펼치지 않고 오른쪽 패널에 보여준다
+        const { gradeStyle, gradeLabel } = recGradeInfo(item);
 
         return `
           <div class="py-1 transition-all duration-150">
-            <!-- 1. 행(Row) 헤더: 누르면 펼침/접힘 -->
-            <div role="button" tabindex="0" aria-expanded="${isExpanded}" onclick="toggleAccordion(${idx})" ${rowKeyAttr(`toggleAccordion(${idx})`)}
-                 class="min-h-[64px] py-2.5 flex items-center justify-between gap-3 cursor-pointer tap-press">
+            <!-- 1. 행(Row) 헤더: 모바일은 누르면 펼침/접힘, PC 는 선택/선택 해제 -->
+            <div role="button" tabindex="0" ${isPcLayout() ? `aria-pressed="${isSelected}"` : `aria-expanded="${isExpanded}"`} onclick="toggleAccordion(${idx})" ${rowKeyAttr(`toggleAccordion(${idx})`)}
+                 class="min-h-[64px] py-2.5 flex items-center justify-between gap-3 cursor-pointer tap-press ${pcRowClass(isPcLayout(), isSelected)}">
               <div class="flex items-center gap-3 min-w-0">
                 <div class="w-6 h-6 shrink-0 rounded-full bg-[#1c1c1e] text-[#a9aebf] text-[13px] font-bold flex items-center justify-center">
                   ${idx + 1}
@@ -1719,7 +1802,7 @@
                   <div class="text-sm font-extrabold text-white whitespace-nowrap">${item.current_price.toLocaleString()}원</div>
                   <div class="${pillBg} text-white font-bold text-[13px] px-2 rounded-md min-w-[62px] text-center">${changeSign}${item.change_rate}%</div>
                 </div>
-                <i data-icon="chevron-down" class="text-xl text-[#a9aebf] transition-transform ${isExpanded ? 'rotate-180' : ''}"></i>
+                ${isPcLayout() ? '' : `<i data-icon="chevron-down" class="text-xl text-[#a9aebf] transition-transform ${isExpanded ? 'rotate-180' : ''}"></i>`}
               </div>
             </div>
 
@@ -1750,22 +1833,10 @@
                 </div>
 
                 <div class="grid grid-cols-2 gap-2">
-                  ${statCell(`목표 익절가 <b class="text-[#ff6a60]">+${s.target_return_pct}%</b>`, `${s.target_price.toLocaleString()}원`, 'text-white', `예상 수익 +${s.expected_gain_krw.toLocaleString()}원`)}
-                  ${statCell(`손절 기준가 <b class="text-[#5aa9ff]">${s.stop_loss_pct}%</b>`, `${s.stop_loss_price.toLocaleString()}원`, 'text-white', `예상 손실 -${s.expected_loss_krw.toLocaleString()}원`)}
-                  ${statCell('손익비', `${s.risk_reward_ratio} : 1`)}
-                  ${statCell('예산 비중 / 권장 보유', `${s.budget_ratio_pct}% / ${s.max_hold_days}영업일`)}
+                  ${recStatCellsHtml(s)}
                 </div>
 
-                <div class="flex items-start gap-3">
-                  <div class="w-10 h-10 shrink-0 rounded-full ${gradeStyle.bg} ${gradeStyle.text} flex items-center justify-center text-lg font-black">${gradeLabel}</div>
-                  <div class="min-w-0">
-                    <div class="flex flex-wrap items-center gap-1.5 text-[13px] text-[#a9aebf]">
-                      <i data-icon="brain"></i> AI 스윙 진단
-                      <span class="px-1.5 rounded bg-[#2c2c2e]">${gradeText}</span>
-                    </div>
-                    <div class="mt-1 space-y-0.5">${reasons}</div>
-                  </div>
-                </div>
+                ${recAiHtml(item)}
               </div>
             ` : ''}
           </div>
@@ -1773,7 +1844,7 @@
       }).join('');
 
       // 펼쳐진 카드에 인터랙티브 차트 그리기
-      if (expandedCardIndex >= 0 && list[expandedCardIndex]) {
+      if (!isPcLayout() && expandedCardIndex >= 0 && list[expandedCardIndex]) {
         const cur = list[expandedCardIndex];
         if (cur.chart_data && cur.chart_data.prices && cur.chart_data.prices.length > 0) {
           setTimeout(() => {
@@ -1790,7 +1861,205 @@
         }
       }
 
+      renderDetailPane();
       renderBottomBar();
+    }
+
+    // 추천 종목의 등급 표시(색·글자·점수·근거). 목록 행, 모바일 아코디언, PC 상세가 같이 쓴다
+    function recGradeInfo(item) {
+      const gradeStyle = GRADE_STYLES[item.grade] || GRADE_STYLES['N/A'];
+      const gradeLabel = GRADE_STYLES[item.grade] ? item.grade : '-';
+      const gradeText = item.grade === 'N/A' || !GRADE_STYLES[item.grade]
+        ? gradeStyle.label
+        : `${item.grade_score || 0}점 · ${gradeStyle.label}`;
+      const reasons = (item.grade_reasons || []).map(r =>
+        `<div class="text-[13px] text-[#ebebf5] leading-snug">· ${r}</div>`
+      ).join('') || '<div class="text-[13px] text-[#a9aebf]">근거 없음</div>';
+      return { gradeStyle, gradeLabel, gradeText, reasons };
+    }
+
+    // 핵심 수치 4칸(익절가·손절가·손익비·예산 비중). 모바일은 2×2, PC 는 한 줄로 감싸서 쓴다
+    function recStatCellsHtml(s) {
+      return `
+        ${statCell(`목표 익절가 <b class="text-[#ff6a60]">+${s.target_return_pct}%</b>`, `${s.target_price.toLocaleString()}원`, 'text-white', `예상 수익 +${s.expected_gain_krw.toLocaleString()}원`)}
+        ${statCell(`손절 기준가 <b class="text-[#5aa9ff]">${s.stop_loss_pct}%</b>`, `${s.stop_loss_price.toLocaleString()}원`, 'text-white', `예상 손실 -${s.expected_loss_krw.toLocaleString()}원`)}
+        ${statCell('손익비', `${s.risk_reward_ratio} : 1`)}
+        ${statCell('예산 비중 / 권장 보유', `${s.budget_ratio_pct}% / ${s.max_hold_days}영업일`)}`;
+    }
+
+    // AI 스윙 진단 블록
+    function recAiHtml(item) {
+      const { gradeStyle, gradeLabel, gradeText, reasons } = recGradeInfo(item);
+      return `
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 shrink-0 rounded-full ${gradeStyle.bg} ${gradeStyle.text} flex items-center justify-center text-lg font-black">${gradeLabel}</div>
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-1.5 text-[13px] text-[#a9aebf]">
+              <i data-icon="brain"></i> AI 스윙 진단
+              <span class="px-1.5 rounded bg-[#2c2c2e]">${gradeText}</span>
+            </div>
+            <div class="mt-1 space-y-0.5">${reasons}</div>
+          </div>
+        </div>`;
+    }
+
+    // ===== PC 오른쪽 패널 (명세 2항): 종목 미선택 = 요약, 추천 선택 = 상세, 보유 선택 = 보유 상세 =====
+    function pcPanel(inner, cls = '') {
+      return `<div class="glass-card rounded-[14px] p-[18px] ${cls}">${inner}</div>`;
+    }
+
+    function signedWon(n) {
+      const v = Number(n) || 0;
+      return (v > 0 ? '+' : v < 0 ? '-' : '') + Math.abs(v).toLocaleString() + '원';
+    }
+
+    function pnlTextClass(n) {
+      return n > 0 ? 'text-[#ff6a60]' : n < 0 ? 'text-[#5aa9ff]' : 'text-white';
+    }
+
+    // 요약 모드: 내 계좌 숫자 + 안내. (거래별 손익 막대·자산 구성 등 차트는 다음 PR)
+    function summaryPaneHtml() {
+      const p = currentPortfolio;
+      const account = p ? `
+        <div class="flex items-center gap-2 text-sm font-semibold text-white"><i data-icon="chart-column" class="text-[18px] text-[#a9aebf]"></i> 내 계좌</div>
+        <div class="grid grid-cols-3 gap-3">
+          ${statCell('총 자산', `${p.total_asset.toLocaleString()}원`)}
+          ${statCell('수익률', `${p.total_return_pct > 0 ? '+' : ''}${p.total_return_pct}%`, pnlTextClass(p.total_return_pct))}
+          ${statCell('실현 손익', signedWon(p.realized_pnl), pnlTextClass(p.realized_pnl))}
+        </div>` : '<div class="text-[13px] text-[#a9aebf]">계좌 정보를 불러오는 중이에요.</div>';
+      const guide = activeTab === 'holdings'
+        ? '왼쪽 목록에서 보유 종목을 고르면 손절·익절 기준선과 전량 매도가 여기에 보여요.'
+        : '왼쪽 목록에서 종목을 고르면 차트와 AI 진단이 여기에 보여요.';
+      return `
+        <div class="space-y-4 pb-4">
+          ${pcPanel(`<div class="space-y-3">${account}</div>`)}
+          ${pcPanel(`<div class="text-center py-10 space-y-2"><div class="text-base font-bold text-white">종목을 선택하세요</div><div class="text-sm text-[#d3d6e2]">${guide}</div></div>`)}
+        </div>`;
+    }
+
+    // 시세 차트 칸(PC 상세 공통). 그리기는 drawPcChart
+    function pcChartPanel(priceText) {
+      return pcPanel(`
+        <div class="flex justify-between items-baseline">
+          <div>
+            <span class="text-[13px] font-semibold text-[#a9aebf]">최근 30일 시세 흐름</span>
+            <div id="pcTipPrice" class="text-lg font-black text-white mt-0.5">${priceText}</div>
+          </div>
+          <div id="pcTipDate" class="text-[13px] text-[#a9aebf] font-medium">마우스를 올려 탐색</div>
+        </div>
+        <div class="w-full h-48 relative select-none bg-black/35 rounded-xl p-2 border border-white/10 mt-3">
+          <canvas id="pcChartCanvas" class="w-full h-full block"></canvas>
+          <div id="pcPulse" class="absolute pointer-events-none hidden" style="transform: translate(-50%, -50%);"></div>
+        </div>`);
+    }
+
+    function drawPcChart(chart, isGain) {
+      if (!chart || !chart.prices || chart.prices.length === 0) return;
+      setTimeout(() => drawInteractiveChart('pcChartCanvas', chart.prices, chart.dates, isGain, 'pcTipPrice', 'pcTipDate', 'pcPulse'), 50);
+    }
+
+    // 추천 상세: 헤더 → 차트 → 핵심 수치 4칸 → AI 진단 → 매수 (매수는 기존 모달을 연다)
+    function recDetailHtml(item, idx) {
+      const s = item.sizing;
+      const isGain = item.change_rate >= 0;
+      const bar = bottomBarState('recs', idx, currentRecs); // 하단 바와 같은 N주·총 결제(수수료 포함) 계산
+      const buy = bar ? pcPanel(`
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <div class="text-[13px] text-[#a9aebf]">총 결제 예상 (수수료 포함)</div>
+            <b class="text-xl font-extrabold text-white">${bar.total.toLocaleString()}원</b>
+          </div>
+          <button onclick="openBuyModal(${idx})" class="m-pulse min-w-[220px] min-h-[48px] px-6 rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
+            <i data-icon="zap" class="text-[18px]"></i> ${bar.qty}주 모의 매수
+          </button>
+        </div>`) : '';
+      return `
+        <div class="space-y-4 pb-4">
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <h2 class="text-2xl font-bold tracking-tight text-white">${item.name}</h2>
+              <div class="flex flex-wrap items-center gap-2 mt-1.5 text-[13px] text-[#a9aebf]">
+                <span>${item.market} ${item.code || ''}</span>
+                ${item.is_fractional === true ? '<span class="px-1.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>' : ''}
+              </div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="text-[28px] font-bold tracking-tight text-white">${item.current_price.toLocaleString()}원</div>
+              <div class="text-[13px] font-semibold ${isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]'}">${isGain ? '+' : ''}${item.change_rate}%</div>
+            </div>
+          </div>
+          ${pcChartPanel(`${item.current_price.toLocaleString()}원`)}
+          <div class="grid grid-cols-4 gap-3">${recStatCellsHtml(s)}</div>
+          ${pcPanel(recAiHtml(item))}
+          ${buy}
+        </div>`;
+    }
+
+    // 보유 상세: 헤더 → 수치 4칸 → 차트 → 손절·익절 기준선 → 전량 매도. (거래 이력은 서버가 주지 않아 아직 없다)
+    function holdingDetailHtml(h) {
+      const isGain = h.pnl_pct >= 0;
+      const pnlSign = isGain ? '+' : '';
+      const qty = (typeof h.quantity === 'number') ? `${h.quantity}` : h.quantity;
+      const badge = holdingStatusBadge(h);
+      const range = h.target_price - h.stop_loss_price;
+      const pos = range > 0 ? Math.min(100, Math.max(0, (h.current_price - h.stop_loss_price) / range * 100)) : 50;
+      const vsAvg = (price) => h.avg_price > 0 ? ((price / h.avg_price - 1) * 100).toFixed(1) : '';
+      const stopPct = vsAvg(h.stop_loss_price);
+      const targetPct = vsAvg(h.target_price);
+      return `
+        <div class="space-y-4 pb-4">
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <h2 class="text-2xl font-bold tracking-tight text-white">${h.name}</h2>
+              <div class="flex flex-wrap items-center gap-2 mt-1.5 text-[13px] text-[#a9aebf]">
+                <span>${h.code} · 보유 중 · ${h.hold_days}일차</span>
+                ${badge}
+              </div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="text-[28px] font-bold tracking-tight text-white">${h.current_price.toLocaleString()}원</div>
+              <div class="text-[13px] font-semibold ${pnlTextClass(h.pnl_pct)}">${pnlSign}${h.pnl_pct}%</div>
+            </div>
+          </div>
+          <div class="grid grid-cols-4 gap-3">
+            ${statCell('보유 수량', `${qty}주`)}
+            ${statCell('평균 매입가', `${h.avg_price.toLocaleString()}원`)}
+            ${statCell('평가 금액', `${h.eval_amount.toLocaleString()}원`)}
+            ${statCell('평가 손익', signedWon(h.unrealized_pnl), pnlTextClass(h.unrealized_pnl))}
+          </div>
+          ${pcChartPanel(`${h.current_price.toLocaleString()}원`)}
+          ${pcPanel(`
+            <div class="flex items-center gap-2 text-sm font-semibold text-white"><i data-icon="chart-line" class="text-[18px] text-[#a9aebf]"></i> 손절 · 익절 기준선</div>
+            <div class="relative h-2 rounded-full mt-5 mb-2" style="background: linear-gradient(90deg, #0a84ff 0%, rgba(255,255,255,0.14) 30%, rgba(255,255,255,0.14) 70%, #ff453a 100%)">
+              <div class="absolute -top-[5px] w-1 h-[18px] rounded-sm bg-[#f5f5f7]" style="left: ${pos}%"></div>
+            </div>
+            <div class="flex justify-between text-[13px] text-[#a9aebf]">
+              <span>손절 ${h.stop_loss_price.toLocaleString()}원${stopPct ? ` (${stopPct}%)` : ''}</span>
+              <span class="text-white font-semibold">현재 ${h.current_price.toLocaleString()}원</span>
+              <span>익절 ${h.target_price.toLocaleString()}원${targetPct ? ` (+${targetPct}%)` : ''}</span>
+            </div>`)}
+          ${pcPanel(`
+            <button onclick="executeSell('${h.code}')" class="m-pulse w-full min-h-[48px] rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
+              <i data-icon="zap" class="text-[18px]"></i> ${qty}주 전량 모의 매도
+            </button>`)}
+        </div>`;
+    }
+
+    // 오른쪽 패널을 현재 선택에 맞게 다시 그린다 (PC 에서만)
+    function renderDetailPane() {
+      const pane = document.getElementById('detailPane');
+      if (!pane || !isPcLayout()) return;
+      const holdings = currentPortfolio ? (currentPortfolio.holdings || []) : [];
+      const st = detailPaneState(activeTab, expandedCardIndex, expandedHoldingIndex, currentRecs, holdings);
+      if (st.mode === 'rec') {
+        pane.innerHTML = recDetailHtml(st.item, st.idx);
+        drawPcChart(st.item.chart_data, st.item.change_rate >= 0);
+      } else if (st.mode === 'holding') {
+        pane.innerHTML = holdingDetailHtml(st.item);
+        drawPcChart(st.item.chart_data, st.item.pnl_pct >= 0);
+      } else {
+        pane.innerHTML = summaryPaneHtml();
+      }
     }
     /**
      * 카카오페이 / 토스 주식 스타일의 네이티브 벡터 Canvas 인터랙티브 차트
@@ -2028,6 +2297,8 @@
       const menuIcon = document.getElementById('notifMenuIcon');
       const menuState = document.getElementById('notifMenuState');
       if (menuIcon) menuIcon.innerHTML = '<i data-icon="' + (isEnabled ? 'bell' : 'bell-off') + '"></i>';
+      const headerIcon = document.getElementById('notifHeaderIcon'); // PC 헤더의 알림 버튼
+      if (headerIcon) headerIcon.innerHTML = '<i data-icon="' + (isEnabled ? 'bell' : 'bell-off') + '"></i>';
       if (menuState) {
         menuState.textContent = isEnabled ? '켜짐' : '꺼짐';
         menuState.className = 'text-[13px] font-normal ' + (isEnabled ? 'text-[#30d158]' : 'text-[#a9aebf]');
