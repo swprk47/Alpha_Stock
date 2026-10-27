@@ -244,10 +244,11 @@ def test_pc_chart_panel_draws_on_its_canvas():
 
 
 def test_detail_pane_summary_shows_account_numbers_and_guide():
-    body = _func("summaryPaneHtml")
-    assert "realized_pnl" in body
-    assert "total_return_pct" in body
-    assert "종목을 선택하세요" in body
+    # 단계 5 에서 요약이 패널 묶음(summaryPanelsHtml)이 되어 계좌 숫자는 내 계좌 패널이 만든다
+    account = _func("accountPanelHtml")
+    assert "realized_pnl" in account
+    assert "total_return_pct" in account
+    assert "종목을 선택하세요" in _func("summaryPaneHtml")
 
 
 def test_mobile_accordion_and_pc_detail_share_the_same_pieces():
