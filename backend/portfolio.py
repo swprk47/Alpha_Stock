@@ -114,6 +114,11 @@ class MultiUserPortfolioManager:
 
             est_sell_cost = estimate_sell_cost(eval_val)
             unrealized_pnl = eval_val - invested - est_sell_cost
+            # 지금 팔았을 때의 순수령액·기록될 손익. 실제 매도와 같은 함수(calc_sell_proceeds)로 계산해 정확히 같다
+            # (est_sell_cost 는 수수료+세금을 합쳐 한 번 절사해 1원 다를 수 있다). 시세를 못 받았으면 추정하지 않는다
+            has_quote = current_prices.get(code, 0) > 0
+            est_proceeds = calc_sell_proceeds(cur_price, qty)["net"] if has_quote else None
+            est_realized_pnl = (est_proceeds - invested) if has_quote else None
             pnl_pct = round(((eval_val - est_sell_cost - invested) / invested) * 100, 2) if invested > 0 else 0.0
 
             buy_dt = datetime.strptime(item.get("buy_date", today_str), "%Y-%m-%d").date()
@@ -136,6 +141,8 @@ class MultiUserPortfolioManager:
                 "invested_amount": invested,
                 "eval_amount": eval_val,
                 "unrealized_pnl": unrealized_pnl,
+                "est_proceeds": est_proceeds,
+                "est_realized_pnl": est_realized_pnl,
                 "pnl_pct": pnl_pct,
                 "target_price": item.get("target_price"),
                 "stop_loss_price": item.get("stop_loss_price"),

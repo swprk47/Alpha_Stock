@@ -2138,6 +2138,7 @@
                   ${statCell('평가 손익', `${pnlSign}${h.unrealized_pnl.toLocaleString()}원`, pnlText)}
                 </div>
                 <div class="text-[13px] text-[#a9aebf]">보유 ${h.hold_days}일차 · 목표 ${h.target_price.toLocaleString()}원 · 손절 ${h.stop_loss_price.toLocaleString()}원</div>
+                ${estimateRowsHtml(h, true)}
                 <button onclick="executeSell('${h.code}')" class="w-full min-h-[48px] rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
                   <i data-icon="zap" class="text-[18px]"></i> ${qtyFormatted}주 전량 모의 매도
                 </button>
@@ -2615,6 +2616,22 @@
         </div>`;
     }
 
+    // 예상 수령액·예상 실현 손익: 서버가 실제 매도와 같은 계산(calc_sell_proceeds)으로 내려준 값을 그대로 보인다.
+    // 화면에서 수수료·세금을 계산하지 않는다. PC 는 2줄(시안 S2), 모바일은 예상 수령액 1줄(시안 M3).
+    // 서버가 시세를 못 받아 null 을 준 종목은 숫자 대신 안내 한 줄, 필드가 없으면(옛 서버) 아무것도 보이지 않는다
+    function estimateRowsHtml(h, mobile) {
+      if (h.est_proceeds === undefined) return '';
+      if (h.est_proceeds === null) {
+        return '<div class="text-[13px] leading-relaxed text-[#a9aebf] break-keep">시세를 가져오지 못해 예상 금액을 표시하지 못해요</div>';
+      }
+      const row = (label, value, cls = 'text-[#f5f5f7]') =>
+        `<div class="flex items-center justify-between gap-3 text-[13px] text-[#d3d6e2]"><span>${label}</span><b class="num font-semibold ${cls}">${value}</b></div>`;
+      return `<div class="flex flex-col gap-2">
+        ${row('예상 수령액 (세금·수수료 반영)', `${h.est_proceeds.toLocaleString()}원`)}
+        ${mobile ? '' : row('예상 실현 손익', signedWon(h.est_realized_pnl), pnlTextClass(h.est_realized_pnl))}
+      </div>`;
+    }
+
     // 거래 이력: 이 종목의 현재 보유 구간 거래(최신순 최대 8건). 서버가 주는 history 에서 걸러 낸다. PC 전용(모바일 시안 M3 에는 없다)
     function holdingTradesHtml(h) {
       const { rows, more } = holdingTradeRows(currentPortfolio ? currentPortfolio.history : [], h.code, 8);
@@ -2676,9 +2693,10 @@
           <div class="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4">
             ${holdingTradesHtml(h)}
             ${pcPanel(`
+              ${estimateRowsHtml(h, false)}
               <button onclick="executeSell('${h.code}')" class="m-pulse w-full min-h-[48px] rounded-xl bg-white text-black font-extrabold text-[15px] tap-press flex items-center justify-center gap-2 transition">
                 <i data-icon="zap" class="text-[18px]"></i> ${qty}주 전량 모의 매도
-              </button>`)}
+              </button>`, 'flex flex-col gap-3')}
           </div>
         </div>`;
     }
