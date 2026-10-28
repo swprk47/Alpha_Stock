@@ -147,24 +147,21 @@ def test_bottom_bar_structure():
     assert "openBuyModal(" in _between(s, "function renderBottomBar", "\n    }\n")
 
 
-def test_bar_buy_opens_modal_with_the_recommended_quantity():
-    # 바에 "N주 모의 매수"라고 보이면 모달도 그 N주(수량 방식)로 열려야 한다.
+def test_bar_buy_opens_sheet_with_the_recommended_quantity():
+    # 바에 "N주 모의 매수"라고 보이면 시트도 그 N주(수량 방식)로 열려야 한다.
+    # 시트는 인라인 패널의 시작 규칙(ibStateOf)을 쓴다: 추천 수량이 있으면 수량 방식.
     # 금액 방식 기본값으로 열면 1주 가격에 수수료가 더해져 0.9998주가 되는 불일치가 생긴다.
     s = _html()
-    body = _between(s, "function openBuyModal", "\n    }\n")
-    assert "sizing.recommended_quantity" in body
-    assert "openCustomBuyModal(item," in body
-    modal = s[s.index("function openCustomBuyModal"):]
-    modal = modal[:modal.index("\n    }\n")]
-    assert "presetQty" in modal
-    assert "setBuyMode('qty')" in modal
+    assert "openCustomBuyModal(item)" in _between(s, "function openBuyModal", "\n    }\n")
+    state = _between(s, "function ibStateOf", "\n    }\n")
+    assert "sizing.recommended_quantity" in state and "mode: 'qty'" in state
 
 
-def test_modal_total_matches_bottom_bar_total():
-    # 모달의 "총 결제 예상 금액 (수수료 포함)" 은 가격×수량 + 수수료 여야 한다(바와 같은 금액).
+def test_sheet_total_matches_bottom_bar_total():
+    # 시트의 "총 결제 예상 (수수료 포함)"(ibDynHtml)과 하단 바(bottomBarState)는 같은 계산(buyTotals)을 쓴다
     s = _html()
-    calc = _between(s, "function updateBuyModalCalcs", "\n    }\n")
-    assert "getElementById('buyTotalCost').textContent = totalRequired" in calc
+    assert "buyTotals(" in _between(s, "function ibDynHtml", "\n    }\n")
+    assert "buyTotals(" in _between(s, "function bottomBarState", "\n    }\n")
 
 
 def test_in_card_buy_button_removed():

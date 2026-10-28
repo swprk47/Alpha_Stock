@@ -232,6 +232,6 @@ def test_mobile_holdings_accordion_has_no_trade_history():
 
 
 def test_order_code_is_untouched_by_this_feature():
-    for name in ("executeSell", "executeSelectedBuy", "updateBuyModalCalcs", "calculateQtyFromAmount"):
+    for name in ("executeSell", "executeInlineBuy"):
         body = _func(name)
         assert "positionTrades" not in body and "holdingTrade" not in body, name

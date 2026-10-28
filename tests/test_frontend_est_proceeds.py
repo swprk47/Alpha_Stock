@@ -122,6 +122,6 @@ def test_screen_does_not_calculate_fees_or_taxes():
 
 
 def test_order_code_is_untouched_by_this_feature():
-    for name in ("executeSell", "executeSelectedBuy", "updateBuyModalCalcs", "calculateQtyFromAmount", "confirmReset"):
+    for name in ("executeSell", "executeInlineBuy", "confirmReset"):
         body = _func(name)
         assert "est_proceeds" not in body and "estimateRowsHtml" not in body, name

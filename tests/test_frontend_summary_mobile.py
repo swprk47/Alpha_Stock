@@ -88,5 +88,5 @@ def test_bottom_bar_is_not_shown_on_the_summary_tab():
 
 
 def test_order_code_is_untouched_by_the_mobile_tab():
-    for name in ("executeSelectedBuy", "updateBuyModalCalcs", "calculateQtyFromAmount", "confirmReset"):
+    for name in ("executeInlineBuy", "confirmReset"):
         assert "sectionSummary" not in _func(name) and "tabSummary" not in _func(name), name

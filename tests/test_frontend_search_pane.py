@@ -89,12 +89,11 @@ def test_swing_targets_use_the_same_rounding_as_the_buy_modal(run):
     assert t["target"] == round(58600 * 1.065) and t["stop"] == round(58600 * 0.97)
 
 
-def test_swing_targets_match_the_modal_formula_in_source():
-    # 모달은 건드리지 않는다. 대신 같은 식을 쓰는지 소스로 고정해 두 값이 어긋나면 테스트가 실패하게 한다
-    modal = _func("openCustomBuyModal")
-    assert "Math.round(stockItem.current_price * 1.065)" in modal
-    assert "Math.round(stockItem.current_price * 0.97)" in modal
-    assert "max_hold_days: 5" in modal
+def test_swing_targets_match_the_formula_the_order_stores():
+    # 주문(모바일 시트·PC 패널 모두 executeInlineBuy)이 저장하는 목표가·손절가는 swingTargets 의 식이다
+    body = _func("executeInlineBuy")
+    assert "swingTargets(item.current_price)" in body
+    assert "target_price: tg.target" in body and "stop_loss_price: tg.stop" in body and "max_hold_days: tg.holdDays" in body
     logic = _logic_source()
     assert "Math.round(price * 1.065)" in logic and "Math.round(price * 0.97)" in logic
 
@@ -191,5 +190,5 @@ def test_pc_chart_is_drawn_for_the_search_stock():
 
 def test_order_code_is_untouched_by_this_feature():
     # 주문 실행·수량·총액 계산 함수에 검색 패널 상태가 끼어들지 않는다
-    for name in ("executeSelectedBuy", "updateBuyModalCalcs", "calculateQtyFromAmount"):
+    for name in ("executeInlineBuy",):
         assert "searchStock" not in _func(name), name

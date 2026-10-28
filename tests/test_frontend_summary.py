@@ -312,7 +312,7 @@ def test_summary_state_and_segment_switch_rerender():
 
 
 def test_order_code_is_untouched_by_this_feature():
-    for name in ("executeSelectedBuy", "updateBuyModalCalcs", "calculateQtyFromAmount", "confirmReset"):
+    for name in ("executeInlineBuy", "confirmReset"):
         for token in ("summarySeg", "tradeStats", "summaryPanelsHtml"):
             assert token not in _func(name), (name, token)
 

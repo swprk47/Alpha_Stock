@@ -186,10 +186,10 @@ def test_inline_buy_code_does_not_calculate_fees_by_itself():
 
 
 def test_number_inputs_hide_the_browser_spin_arrows():
-    # 입력칸 오른쪽의 위아래 화살표가 숫자를 가리지 않게 한다(매수 모달·매도 패널·인라인 매수 패널의 숫자 칸 모두)
+    # 입력칸 오른쪽의 위아래 화살표가 숫자를 가리지 않게 한다(매도 패널·인라인 매수 패널(PC·모바일 시트)의 숫자 칸 모두)
     s = _html()
     style = s[s.index("<style>"):s.index("</style>")]
-    for prefix in ("buyQtyInput", "sellQtyInput_", "ibQtyInput_", "ibAmtInput_"):
+    for prefix in ("sellQtyInput_", "ibQtyInput_", "ibAmtInput_"):
         assert re.search(rf'{prefix}[^{{]*::-webkit-inner-spin-button\s*{{[^}}]*-webkit-appearance:\s*none', style), prefix
         assert re.search(rf'{prefix}[^{{]*{{[^}}]*appearance:\s*textfield', style), prefix
 
