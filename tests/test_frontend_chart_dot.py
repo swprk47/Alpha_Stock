@@ -229,3 +229,44 @@ def test_canvas_text_align_uses_valid_values_only():
     draw = _func("drawInteractiveChart")
     assert re.search(r"textAlign = e\.anchor === 'middle' \? 'center' : e\.anchor", draw)
     assert "textAlign = e.anchor;" not in draw
+
+
+# ---- 창 크기가 바뀌면 다시 그린다 ----
+@needs_node
+def test_chart_needs_a_redraw_only_when_the_visible_size_really_changed(run):
+    drawn = "{w: 736, h: 366}"
+    assert run(f"chartNeedsRedraw({drawn}, 736, 366)") is False      # 같으면 건너뛴다(무한 반복 방지)
+    assert run(f"chartNeedsRedraw({drawn}, 556, 366)") is True       # 폭이 줄면
+    assert run(f"chartNeedsRedraw({drawn}, 1156, 366)") is True      # 폭이 늘면
+    assert run(f"chartNeedsRedraw({drawn}, 736, 270)") is True       # 높이만 바뀌어도
+    assert run(f"chartNeedsRedraw({drawn}, 736.4, 366)") is False    # 1px 미만 흔들림은 무시
+    assert run("chartNeedsRedraw({w: 0, h: 0}, 736, 366)") is True   # 숨겨져서 못 그렸던 차트가 보이게 되면
+    assert run(f"chartNeedsRedraw({drawn}, 0, 0)") is False          # 숨겨진 동안은 그리지 않는다
+
+
+@needs_node
+def test_resize_action_forgets_charts_that_left_the_page(run):
+    reg = "{el: 'A', w: 736, h: 366}"
+    assert run(f"chartResizeAction({reg}, 'A', true, 556, 366)") == "redraw"
+    assert run(f"chartResizeAction({reg}, 'A', true, 736, 366)") == "skip"
+    assert run(f"chartResizeAction({reg}, 'A', false, 556, 366)") == "forget"        # 화면에서 사라진 캔버스
+    assert run(f"chartResizeAction({reg}, 'B', true, 556, 366)") == "forget"         # 같은 id 의 새 캔버스가 이미 등록됨(옛 캔버스의 알림)
+    assert run("chartResizeAction(undefined, 'A', true, 556, 366)") == "forget"      # 등록이 없음
+
+
+def test_chart_function_registers_and_watches_before_it_may_skip_a_hidden_canvas():
+    draw = _func("drawInteractiveChart")
+    assert "chartRegistry[canvasId]" in draw and "watchChartSize(" in draw
+    # 숨겨진 캔버스도 등록해 둬야 보이게 될 때 감시자가 그린다(숨김 검사보다 앞)
+    assert draw.index("watchChartSize(") < draw.index("if (!canvas.clientWidth")
+    reg = draw[draw.index("chartRegistry[canvasId]"):]
+    assert "opts" in reg.split("\n")[0] or "opts" in reg[:200]  # 평단·닷 인자도 함께 기억한다
+
+
+def test_watcher_uses_resize_observer_batches_frames_and_cleans_up():
+    watch = _func("watchChartSize")
+    assert "new ResizeObserver(" in watch and "requestAnimationFrame(" in watch
+    assert "chartResizeAction(" in watch and "unobserve(" in watch
+    assert "isConnected" in watch or "document.body.contains" in watch
+    assert "drawInteractiveChart(" in watch  # 같은 인자로 다시 그린다
+    assert "chartRegistry" in watch

@@ -1092,6 +1092,19 @@
       return cands.find(c => !hits(c)) || cands[0];
     }
 
+    // 차트가 마지막으로 그려진 크기(drawn.w/h)와 지금 보이는 크기가 달라졌으면 다시 그려야 한다.
+    // 숨겨진 동안(크기 0)은 그리지 않고, 못 그렸던 차트가 보이게 되면 그린다. 1px 미만 흔들림은 무시한다
+    function chartNeedsRedraw(drawn, w, h) {
+      if (!(w > 0 && h > 0)) return false;
+      return !drawn || Math.abs(drawn.w - w) >= 1 || Math.abs(drawn.h - h) >= 1;
+    }
+
+    // 크기 변화 알림을 받았을 때 할 일: 'forget'(화면에서 사라졌거나 같은 id 의 새 캔버스가 이미 등록됨) | 'redraw' | 'skip'
+    function chartResizeAction(reg, el, connected, w, h) {
+      if (!reg || reg.el !== el || !connected) return 'forget';
+      return chartNeedsRedraw(reg, w, h) ? 'redraw' : 'skip';
+    }
+
     // 모바일 아코디언 안의 시세 차트 블록(추천·보유 공통): 제목 · 현재가/날짜 안내 · 터치 탐색 차트(높이 208px) · 끝점 닷 자리
     function mobileChartBlockHtml(o) {
       return `
@@ -1136,6 +1149,10 @@
     let sellPreviewSeq = 0; // 늦게 온 응답을 버리기 위한 순번
     let sellMsg = {};       // 종목 코드 → 입력 안내 { kind: 'notice'|'error', message }
     const sellPreviewTimers = {};
+    const chartRegistry = {};  // 캔버스 id → { el, args(마지막 그리기 인자), w, h(마지막으로 그린 크기) }. 창 크기가 바뀌면 이 인자로 다시 그린다
+    let chartObserver = null;
+    let chartFrame = 0;
+    const chartPending = new Set();
     let ibSel = {};         // 종목 코드 → PC 인라인 매수 패널 상태 { mode: 'amount'|'qty', qty, amount, msg }
     let activeTab = 'recs';
     let summarySeg = 'pnl';  // 요약의 내 계좌 패널 보기: 'pnl'(거래별 손익) | 'trades'(거래 내역)
@@ -3007,11 +3024,43 @@
      * - 세련된 반투명 그라데이션 영역 채우기
      * - 실시간 터치/드래그 시 십자선(Crosshair) 및 가격/날짜 실시간 피드백
      */
+    // 캔버스 크기를 감시한다. 크기가 바뀌면(창 크기·화면 회전·레이아웃 변화) 한 프레임에 모아서 마지막 인자로 다시 그린다.
+    // 목록이 다시 그려져 캔버스가 사라지면 감시와 등록을 같이 지운다
+    function watchChartSize(canvas) {
+      if (typeof ResizeObserver === 'undefined') return;
+      if (!chartObserver) {
+        chartObserver = new ResizeObserver(entries => {
+          entries.forEach(e => chartPending.add(e.target));
+          if (chartFrame) return;
+          chartFrame = requestAnimationFrame(() => {
+            chartFrame = 0;
+            const targets = Array.from(chartPending);
+            chartPending.clear();
+            targets.forEach(cv => {
+              const reg = chartRegistry[cv.id];
+              const action = chartResizeAction(reg, cv, cv.isConnected, cv.clientWidth, cv.clientHeight);
+              if (action === 'forget') {
+                chartObserver.unobserve(cv);
+                if (reg && reg.el === cv) delete chartRegistry[cv.id];
+              } else if (action === 'redraw') {
+                drawInteractiveChart(...reg.args);
+              }
+            });
+          });
+        });
+      }
+      chartObserver.observe(canvas);
+    }
+
     // opts.avgPrice: 보유 종목의 평균 매입가(있으면 주황 점선과 라벨로 그린다)
     function drawInteractiveChart(canvasId, prices, dates, isGain, priceTooltipId = null, dateTooltipId = null, pulseId = null, opts = {}) {
       const canvas = document.getElementById(canvasId);
       if (!canvas) return;
-      // 숨겨진 탭 안의 캔버스는 크기가 0 이라 임시 크기로 그리면 닷·터치 위치가 어긋난다. 보일 때(switchTab) 다시 그린다
+      // 마지막 인자와 그린 크기를 기억하고 크기 변화를 감시한다(창 크기가 바뀌면 글자·선·닷이 늘어나지 않게 같은 인자로 다시 그린다).
+      // 숨겨진 캔버스도 먼저 등록해 둬야 보이게 될 때 감시자가 그린다
+      const reg = chartRegistry[canvasId] = { el: canvas, args: [canvasId, prices, dates, isGain, priceTooltipId, dateTooltipId, pulseId, opts], w: 0, h: 0 };
+      watchChartSize(canvas);
+      // 숨겨진 탭 안의 캔버스는 크기가 0 이라 임시 크기로 그리면 닷·터치 위치가 어긋난다. 보일 때 다시 그린다
       if (!canvas.clientWidth || !canvas.clientHeight) return;
 
       const ctx = canvas.getContext('2d');
@@ -3019,6 +3068,8 @@
       // 그림 크기는 화면에 보이는 캔버스 크기와 같게 한다(바깥 칸의 크기를 쓰면 여백만큼 줄어들어 보여서 닷·터치 위치가 어긋난다)
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
+      reg.w = width;
+      reg.h = height;
 
       canvas.width = width * dpr;
       canvas.height = height * dpr;
