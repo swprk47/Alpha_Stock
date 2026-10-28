@@ -39,10 +39,6 @@
       transform: scale(0.985);
       transition: all 0.1s ease;
     }
-    /* 수량 입력칸: 브라우저 기본 증감 화살표 숨김 (−/+ 버튼 사용) */
-    #buyQtyInput::-webkit-outer-spin-button,
-    #buyQtyInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-    #buyQtyInput { -moz-appearance: textfield; appearance: textfield; }
     input[id^="sellQtyInput_"]::-webkit-outer-spin-button,
     input[id^="sellQtyInput_"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     input[id^="sellQtyInput_"] { -moz-appearance: textfield; appearance: textfield; }
@@ -161,6 +157,23 @@
     @starting-style {
       .dlg-backdrop { opacity: 0; }
       .dlg-panel { opacity: 0; transform: scale(0.95); }
+    }
+    /* 모바일 매수 시트: 아래에서 올라온다(PC 폭에서는 가운데 창). 확인창(.dlg-*)은 가운데에서 커진다 */
+    .sheet-backdrop {
+      background: rgba(0, 0, 0, 0.75);
+      -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+      opacity: 1; transition: opacity 160ms var(--ease-out);
+    }
+    .sheet-panel {
+      opacity: 1; transform: translateY(0);
+      transition: opacity 180ms var(--ease-out), transform 240ms var(--ease-out);
+    }
+    @starting-style {
+      .sheet-panel { opacity: 0; transform: translateY(32px); }
+      .sheet-backdrop { opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .sheet-backdrop, .sheet-panel { transition: none; }
     }
     /* PC 는 목록 카드 안이 이미 글라스 면이라 상태 카드는 평면으로 */
     @media (min-width: 1024px) {
@@ -545,21 +558,21 @@
     </div>
   </div>
 
-  <!-- 종목 상세 및 수량/금액 조절 매수 모달 시트 (애플 액션 시트) -->
-  <div id="buyModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
-    <div class="glass-modal w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
-      <div class="flex justify-between items-center pb-2 border-b border-[#2c2c2e]">
+  <!-- 모바일 매수 시트(시안 B): 위쪽은 종목 카드·차트·AI 진단, 아래쪽은 PC 인라인 패널과 같은 ibBoxHtml 이 그린다 -->
+  <div id="buyModal" onclick="if (event.target === this) closeBuyModal()" class="sheet-backdrop fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
+    <div role="dialog" aria-modal="true" aria-labelledby="buyModalTitle" class="sheet-panel glass-modal w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 flex flex-col gap-2.5 max-h-[95vh] overflow-y-auto [&>*]:shrink-0">
+      <div class="flex justify-between items-center">
         <div>
           <h3 id="buyModalTitle" class="font-bold text-base text-white">종목 매수</h3>
           <span id="buyModalSubtitle" class="text-[13px] text-[#a9aebf]">시드머니 맞춤 매수 시뮬레이션</span>
         </div>
-        <button onclick="closeBuyModal()" aria-label="닫기" class="text-[#a9aebf] hover:text-white text-lg w-11 h-11 -mr-2 flex items-center justify-center">
-          <i data-icon="x" class=""></i>
+        <button id="buyModalCloseBtn" type="button" onclick="closeBuyModal()" aria-label="닫기" class="text-[#a9aebf] hover:text-white text-lg w-11 h-11 -mr-2 flex items-center justify-center">
+          <i data-icon="x"></i>
         </button>
       </div>
 
       <!-- 종목 기본 정보 및 시세 -->
-      <div class="bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#2c2c2e] flex justify-between items-center">
+      <div class="rounded-2xl border border-white/10 bg-black/35 p-3 flex justify-between items-center gap-3">
         <div class="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 items-center">
           <div id="buyStockLogo" class="row-span-2"></div>
           <div class="flex items-center gap-1.5">
@@ -568,134 +581,34 @@
           </div>
           <div class="flex items-center gap-1 mt-0.5">
             <span id="buyStockMarket" class="text-[13px] px-1.5 py-0.5 rounded bg-[#1c1c1e] text-[#a9aebf]">KOSPI</span>
+            <span id="buyKindTag"></span>
             <span id="buyFractionalTag" class="text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold">소수점 가능</span>
           </div>
         </div>
-        <div class="text-right">
+        <div class="text-right shrink-0">
           <div id="buyStockPrice" class="text-base font-black text-white">0원</div>
           <div id="buyStockChange" class="text-[13px] font-semibold text-[#ff6a60]">+0.0%</div>
         </div>
       </div>
 
-      <!-- 📈 미니 꺾은선 차트 (상세 시트 내부용) -->
-      <div id="buyModalChartWrap" class="w-full h-32 bg-[#0a0a0c] rounded-xl border border-[#2c2c2e] p-2 relative touch-none select-none">
+      <!-- 미니 꺾은선 차트 -->
+      <div id="buyModalChartWrap" class="w-full h-[112px] rounded-xl border border-white/10 bg-black/35 p-1.5 relative touch-none select-none">
         <canvas id="buyModalChart" class="w-full h-full block"></canvas>
       </div>
 
-      <!-- 🤖 AI 스윙 진단 카드 -->
-      <div id="gradeCard" class="bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#2c2c2e] flex items-start gap-3">
-        <!-- 등급 원 -->
-        <div id="gradeBadge" class="w-12 h-12 rounded-full flex items-center justify-center text-xl font-black shrink-0">?</div>
-        <!-- 텍스트 영역 -->
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-1.5 mb-1">
-            <span class="text-[13px] text-[#a9aebf] font-medium flex items-center gap-1"><i data-icon="brain"></i> AI 스윙 진단</span>
-            <span id="gradeScoreTag" class="text-[13px] px-1.5 py-0.5 rounded bg-[#2c2c2e] text-[#a9aebf]">-점</span>
-          </div>
-          <div id="gradeReasonsList" class="space-y-0.5"></div>
-        </div>
-      </div>
-
-      <!-- 🎛️ 매수 방식 탭: [금액으로 매수] vs [수량으로 매수] -->
-      <div class="flex p-1 bg-[#0a0a0c] rounded-xl text-[13px] font-semibold border border-[#2c2c2e]">
-        <button onclick="setBuyMode('amount')" id="buyModeAmountBtn" class="flex-1 py-3 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center">
-          금액으로 매수
+      <!-- AI 스윙 진단: 등급·점수 한 줄만 보이고 근거 문장은 눌러서 펼친다(검색으로 열면 이 시트가 근거를 볼 수 있는 유일한 곳) -->
+      <div id="gradeCard" class="rounded-xl border border-white/10 bg-black/35 overflow-hidden">
+        <button id="gradeToggleBtn" type="button" aria-expanded="false" aria-controls="gradeReasonsList" onclick="toggleGradeReasons()" class="w-full min-h-[44px] px-3 py-1.5 flex items-center gap-2.5 text-left tap-press">
+          <div id="gradeBadge" class="w-8 h-8 rounded-full flex items-center justify-center text-base font-black shrink-0">?</div>
+          <span class="text-[13px] text-[#a9aebf] font-medium flex items-center gap-1 shrink-0"><i data-icon="brain"></i> AI 스윙 진단</span>
+          <span id="gradeScoreTag" class="text-[13px] px-1.5 rounded bg-white/10 text-[#d3d6e2] truncate">-점</span>
+          <i data-icon="chevron-down" id="gradeChevron" class="ml-auto text-xl text-[#a9aebf] shrink-0 transition-transform"></i>
         </button>
-        <button onclick="setBuyMode('qty')" id="buyModeQtyBtn" class="flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center">
-          수량으로 매수
-        </button>
+        <div id="gradeReasonsList" class="hidden px-3 pb-2.5 space-y-0.5"></div>
       </div>
 
-      <!-- 💡 1. 금액 기준 매수 영역 -->
-      <div id="buyAmountSection" class="bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#2c2c2e] space-y-2.5">
-        <div class="flex justify-between items-center text-[13px]">
-          <span class="text-[#a9aebf] font-medium">매수 희망 금액</span>
-          <span class="text-[13px] text-[#a9aebf]">
-            잔여 현금 <strong id="buyCashAvailableText" class="text-white">100,000</strong>원
-          </span>
-        </div>
-
-        <div class="relative flex items-center">
-          <input type="number" id="buyAmountInput" oninput="onBuyAmountChange(this.value)" placeholder="매수할 금액 입력"
-                 class="w-full bg-[#1c1c1e] border border-[#2c2c2e] rounded-xl px-3.5 py-2.5 text-base text-white placeholder-[#8e93a3] focus:outline-none focus:border-[#30d158] font-bold">
-          <span class="absolute right-3.5 text-[13px] text-[#a9aebf]">원</span>
-        </div>
-
-        <!-- 빠른 금액 칩 버튼들 -->
-        <div class="grid grid-cols-4 gap-1.5">
-          <button onclick="setQuickBuyAmount(10000)" class="py-3 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-white font-medium text-[13px] tap-press">+1만</button>
-          <button onclick="setQuickBuyAmount(30000)" class="py-3 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-white font-medium text-[13px] tap-press">+3만</button>
-          <button onclick="setQuickBuyAmount(50000)" class="py-3 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-white font-medium text-[13px] tap-press">+5만</button>
-          <button onclick="setQuickBuyAmount('max')" class="py-3 rounded-lg bg-[#1c1c1e] hover:bg-[#2c2c2e] text-[#30d158] font-bold text-[13px] tap-press">전액(최대)</button>
-        </div>
-
-        <!-- 계산된 수량 안내 -->
-        <div class="p-2.5 rounded-xl bg-[#1c1c1e] flex justify-between items-center text-[13px]">
-          <span class="text-[#a9aebf]">자동 환산 주식 수</span>
-          <div class="text-right">
-            <span id="buyCalcQtyResult" class="text-sm font-extrabold text-[#30d158]">0주</span>
-            <span id="buyCalcModeNotice" class="text-[13px] text-[#a9aebf] block">(소수점 매매 적용)</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- 💡 2. 수량 기준 매수 영역 -->
-      <div id="buyQtySection" class="bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#2c2c2e] space-y-2.5 hidden">
-        <div class="flex justify-between items-center text-[13px]">
-          <span class="text-[#a9aebf] font-medium">매수 수량</span>
-          <span class="text-[13px] text-[#a9aebf]">
-            최대 <strong id="buyMaxQtyText" class="text-white">0</strong>주 가능
-          </span>
-        </div>
-
-        <div class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
-          <!-- 마이너스: 1주씩 -->
-          <button id="buyQtyMinusBtn" onclick="changeBuyQty(-1)" aria-label="수량 줄이기" class="w-11 h-11 rounded-[13px] bg-[#26262a] hover:bg-[#303034] border border-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] text-white flex items-center justify-center tap-press text-sm transition">
-            <i data-icon="minus" class=""></i>
-          </button>
-
-          <!-- 수량 직접 입력 (정수 중심, 소수점 가능 종목만 소수 허용) -->
-          <label id="buyQtyField" class="flex items-baseline justify-center gap-1 rounded-[14px] border border-transparent py-1 transition focus-within:border-[#30d158]/60">
-            <input type="number" id="buyQtyInput" inputmode="decimal" step="any" min="0" oninput="onBuyQtyInput(this.value)" onblur="onBuyQtyBlur()" aria-label="매수 수량"
-                   class="min-w-0 max-w-full bg-transparent text-center text-4xl font-black tracking-tight text-white focus:outline-none" style="width:1.2ch">
-            <span class="text-[13px] text-[#a9aebf] shrink-0">주</span>
-          </label>
-
-          <!-- 플러스: 1주씩 -->
-          <button id="buyQtyPlusBtn" onclick="changeBuyQty(1)" aria-label="수량 늘리기" class="w-11 h-11 rounded-[13px] bg-[#26262a] hover:bg-[#303034] border border-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] text-white flex items-center justify-center tap-press text-sm transition">
-            <i data-icon="plus" class=""></i>
-          </button>
-        </div>
-
-        <div class="flex justify-between items-center">
-          <span id="buyBudgetRatio" class="text-[13px] text-[#30d158]">내 자산의 0%</span>
-          <button onclick="fillMaxBuyQty()" class="text-[13px] font-bold text-[#30d158] px-1 py-1.5 tap-press">최대로 채우기</button>
-        </div>
-
-        <div id="buyQtyHelp" class="text-[13px] leading-relaxed text-[#a9aebf] border-t border-[#1c1c1e] pt-2"></div>
-      </div>
-
-      <!-- 결제 예상 금액 및 잔고 변동 내역 -->
-      <div class="space-y-1.5 px-1 text-[13px]">
-        <div class="flex justify-between text-[#a9aebf]">
-          <span>총 결제 예상 금액 (수수료 0.015% 포함)</span>
-          <span id="buyTotalCost" class="text-white font-bold">0원</span>
-        </div>
-        <div class="flex justify-between text-[#a9aebf]">
-          <span>매수 후 남는 현금</span>
-          <span id="buyRemainingCash" class="text-[#30d158] font-semibold">100,000원</span>
-        </div>
-        <div class="flex justify-between text-[13px] text-[#a9aebf] pt-0.5">
-          <span>스윙 룰 적용</span>
-          <span>익절 +6.5% / 손절 -3.0% (5영업일)</span>
-        </div>
-      </div>
-
-      <!-- 최종 매수 체결 버튼 -->
-      <button onclick="executeSelectedBuy()" id="confirmBuyBtn" class="w-full py-3.5 rounded-xl bg-[#ff453a] hover:bg-[#ff3b30] text-white font-extrabold text-sm shadow-lg shadow-[#ff453a]/25 tap-press flex items-center justify-center gap-2 transition">
-        <i data-icon="zap" class="text-[13px]"></i>
-        <span id="confirmBuyBtnText">매수 주문 실행</span>
-      </button>
+      <!-- 금액/수량 입력·총 결제·매수 버튼: PC 인라인 매수 패널(ibBoxHtml)과 같은 코드 -->
+      <div id="buySheetPanel" class="rounded-2xl border border-white/10 bg-black/25 p-3"></div>
     </div>
   </div>
 
@@ -750,11 +663,6 @@
 
     let currentRecs = [];
     let currentPortfolio = null;
-    let selectedRecForBuy = null;
-    let currentBuyQty = 1;
-    let maxPossibleBuyQty = 1;     // 정수 단위 최대 (표시, 최대로 채우기, −/+ 상한)
-    let maxPossibleBuyQtyFrac = 1; // 소수점 종목의 직접 입력 상한 (소수 4자리까지 살 수 있는 최대)
-    let buyQtyMsg = { kind: '', message: '' }; // 수량 입력 안내: kind = '' | 'notice' | 'error'
     let searchDebounceTimer = null;
     let searchStock = null;  // PC 오른쪽 패널에 띄운 검색 종목 ({loading: true, code} 또는 /api/stock 응답). 없으면 null
     let searchReq = 0;       // 검색 결과를 연달아 누를 때 마지막 요청만 반영하기 위한 번호
@@ -1221,6 +1129,7 @@
     function isPcLayout() { return pcMql.matches; }
     // 창 크기를 바꿔 PC/모바일 경계를 넘으면 목록과 오른쪽 패널을 다시 그린다
     pcMql.addEventListener('change', () => {
+      closeBuyModal(); // 모바일 시트는 PC 폭에서 쓰지 않는다(같은 종목의 인라인 패널과 id 가 겹치지 않게)
       if (isPcLayout() && activeTab === 'summary') {
         // PC 에는 요약 탭이 없다. 요약을 보던 중이었으니 PC 에서도 요약이 보이게 선택을 풀고 추천 탭으로
         expandedCardIndex = expandedHoldingIndex = -1;
@@ -1449,14 +1358,14 @@
         return `
           <div onclick="selectSearchResult('${item.code}', '${String(item.market || '').replace(/[^A-Za-z]/g, '')}')" class="p-3 flex items-center justify-between hover:bg-[#2c2c2e] cursor-pointer tap-press transition">
             <div class="flex items-center gap-2.5">
-              ${logoHtml(item.code, item.name, 28)}
+              ${logoHtml(item.code, item.name, 28, item.logo_url)}
               <div>
                 <div class="flex items-center gap-1.5">
                   <h4 class="font-bold text-[13px] text-white">${item.name}</h4>
                   <span class="text-[13px] text-[#a9aebf]">${item.market}</span>
                   ${budgetBadge}
                 </div>
-                <div class="text-[13px] text-[#a9aebf]">${item.code}</div>
+                <div class="flex items-center gap-1.5 text-[13px] text-[#a9aebf]"><span>${item.code}</span>${securityTagHtml(item.security_type)}</div>
               </div>
             </div>
 
@@ -1507,12 +1416,17 @@
     }
 
     // <logo-logic>
-    // 종목 로고: 주소는 종목코드로만 만든다(보유 종목에는 저장된 logo_url 이 비어 있을 수 있다).
-    // 이미지가 없거나(ETF 등) 불러오지 못하면 이름 첫 글자 원으로 대신하고, 실패한 코드는 기억해 다시 요청하지 않는다
+    // 종목 로고: 서버가 내려준 logo_url(네이버 시세 응답. 주식은 종목 로고, ETF 는 운용사 로고)을 쓰되 네이버 로고 주소만 받는다.
+    // 없거나 허용되지 않으면 종목코드로 만든 주식 로고 주소, 그것도 안 되면(잘못된 코드) 이름 첫 글자 원이다.
+    // 불러오지 못해도 첫 글자 원으로 대신하고, 실패한 주소는 기억해 목록을 다시 그릴 때 요청을 되풀이하지 않는다
     const LOGO_CODE_PATTERN = /^[0-9A-Z]{6}$/; // schemas.CODE_PATTERN 과 같은 규칙
+    const LOGO_URL_PATTERN = /^https:\/\/ssl\.pstatic\.net\/imgstock\/[A-Za-z0-9._\/-]+$/; // 서버 market_data.LOGO_URL_PREFIX 와 같은 호스트
     const logoFailed = new Set();
     function logoUrl(code) {
       return LOGO_CODE_PATTERN.test(code) ? `https://ssl.pstatic.net/imgstock/fn/real/logo/png/stock/Stock${code}.png` : '';
+    }
+    function logoSrc(code, url) {
+      return typeof url === 'string' && LOGO_URL_PATTERN.test(url) ? url : logoUrl(code);
     }
     function logoEsc(s) {
       return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1520,25 +1434,35 @@
     function logoInitial(name) {
       return Array.from(String(name == null ? '' : name).trim())[0] || '?'; // 이모지 등을 반으로 자르지 않는다
     }
-    function logoHtml(code, name, size) {
+    function logoHtml(code, name, size, url) {
       const initial = logoInitial(name);
       const box = `width: ${size}px; height: ${size}px; font-size: ${Math.round(size * 0.42)}px`;
       const cls = 'shrink-0 rounded-full overflow-hidden flex items-center justify-center text-white font-bold';
-      const url = logoFailed.has(code) ? '' : logoUrl(code);
+      const src = logoSrc(code, url);
       // 네이버 로고는 이미 원형·투명 이미지라 배경 없이 그대로 보인다. 글자로 대신할 때만 회색 원을 둔다
-      if (url) {
-        return `<div class="${cls}" style="${box}"><img src="${url}" alt="" data-initial="${logoEsc(initial)}" onerror="logoImgFailed(this, '${code}')" class="w-full h-full object-contain"></div>`;
+      if (src && !logoFailed.has(src)) {
+        return `<div class="${cls}" style="${box}"><img src="${src}" alt="" data-src="${src}" data-initial="${logoEsc(initial)}" onerror="logoImgFailed(this)" class="w-full h-full object-contain"></div>`;
       }
       return `<div class="${cls} bg-[#2c2c2e]" style="${box}">${logoEsc(initial)}</div>`;
     }
-    function logoImgFailed(img, code) {
-      logoFailed.add(code);
+    function logoImgFailed(img) {
+      if (img.dataset && img.dataset.src) logoFailed.add(img.dataset.src);
       const p = img.parentElement;
       if (!p) return;
       p.textContent = (img.dataset && img.dataset.initial) || '?';
       p.style.background = '#2c2c2e';
     }
     // </logo-logic>
+
+    // <tag-logic>
+    // 종목 종류 태그(시안 '태그 C': 밝은 회색 채움). 서버가 주는 security_type 이 etf/etn 일 때만 그린다.
+    // 일반 주식·값 없음(시세 실패 등)·이상한 값이면 아무것도 그리지 않는다(모르는 종목에 틀리게 달지 않는다)
+    const SECURITY_TAG_LABELS = { etf: 'ETF', etn: 'ETN' };
+    function securityTagHtml(type) {
+      const label = typeof type === 'string' && Object.prototype.hasOwnProperty.call(SECURITY_TAG_LABELS, type) ? SECURITY_TAG_LABELS[type] : '';
+      return label ? `<span class="text-[13px] px-1.5 rounded bg-[#3a3a3c] text-[#f5f5f7] ring-1 ring-inset ring-white/20 font-semibold whitespace-nowrap">${label}</span>` : '';
+    }
+    // </tag-logic>
 
     // ===== 💡 수량 조절 매수 모달 로직 =====
     // <toast-logic>
@@ -1576,8 +1500,6 @@
       }, toastDuration(type, message));
     }
 
-    let buyMode = 'amount'; // 'amount' (금액 기준) or 'qty' (수량 기준)
-    let currentBuyAmount = 0;
 
     function openBudgetModal() {
       const input = document.getElementById('budgetAmountInput');
@@ -1614,55 +1536,6 @@
       }
     }
 
-    function setBuyMode(mode) {
-      buyMode = mode;
-      const amountBtn = document.getElementById('buyModeAmountBtn');
-      const qtyBtn = document.getElementById('buyModeQtyBtn');
-      const amountSec = document.getElementById('buyAmountSection');
-      const qtySec = document.getElementById('buyQtySection');
-
-      if (mode === 'amount') {
-        amountBtn.className = 'flex-1 py-3 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
-        qtyBtn.className = 'flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center';
-        amountSec.classList.remove('hidden');
-        qtySec.classList.add('hidden');
-      } else {
-        amountBtn.className = 'flex-1 py-3 rounded-lg text-[#a9aebf] hover:text-white tap-press transition text-center';
-        qtyBtn.className = 'flex-1 py-3 rounded-lg bg-[#2c2c2e] text-white shadow-sm tap-press transition text-center';
-        amountSec.classList.add('hidden');
-        qtySec.classList.remove('hidden');
-      }
-      updateBuyModalCalcs();
-    }
-
-    function onBuyAmountChange(val) {
-      const num = parseInt(val) || 0;
-      currentBuyAmount = num;
-      calculateQtyFromAmount();
-      updateBuyModalCalcs();
-    }
-
-    function setQuickBuyAmount(amount) {
-      const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
-      let target = 0;
-      if (amount === 'max') {
-        target = cash;
-      } else {
-        target = (currentBuyAmount || 0) + amount;
-        if (target > cash) target = cash;
-      }
-      currentBuyAmount = target;
-      document.getElementById('buyAmountInput').value = target;
-      calculateQtyFromAmount();
-      updateBuyModalCalcs();
-    }
-
-    function calculateQtyFromAmount() {
-      if (!selectedRecForBuy || selectedRecForBuy.current_price <= 0) return;
-      // 소수점 거래 가능 종목은 소수 4자리까지, 아니면 정수 단위. 총 결제(수수료 포함)가 금액을 넘지 않는 최대 수량
-      currentBuyQty = qtyForAmount(selectedRecForBuy.current_price, currentBuyAmount, selectedRecForBuy.is_fractional === true);
-    }
-
     // AI 등급별 색상·문구 (구매 모달과 추천 카드가 공유)
     const GRADE_STYLES = {
       'S': { bg: 'bg-[#ffd60a]', text: 'text-black', border: 'border-[#ffd60a]/30', label: '강력 추천' },
@@ -1672,103 +1545,64 @@
       'N/A': { bg: 'bg-[#2c2c2e]', text: 'text-[#a9aebf]', border: 'border-[#2c2c2e]', label: '분석 불가' }
     };
 
-    // presetQty > 0 이면 수량 방식으로 그 수량을 채워 연다 (하단 바의 'N주 모의 매수'와 같은 수량).
-    // 0 이면 기존처럼 금액 방식으로 연다 (검색 결과에서 고른 종목 등).
-    function openCustomBuyModal(stockItem, presetQty = 0) {
+    // 모바일 매수 시트(시안 B): 위쪽은 종목 카드·차트·AI 진단, 아래쪽은 PC 인라인 패널과 같은 ibBoxHtml 이다.
+    // 시트에 띄운 종목은 buySheetItem 에 둔다(추천 항목 또는 /api/stock 응답). 주문은 executeInlineBuy → 공용 확인창이다.
+    let buySheetItem = null;
+    let buySheetReturnFocus = null;
+
+    // 하단 바(추천 수량으로 수량 방식)와 검색 결과(금액 방식) 모두 여기로 온다. 시작 상태는 인라인 패널의 규칙(ibStateOf)을 따른다
+    function openCustomBuyModal(stockItem) {
+      const active = document.activeElement;
+      buySheetReturnFocus = (active && active !== document.body && active.offsetParent !== null) ? active : null;
+      buySheetItem = stockItem;
+      delete ibSel[stockItem.code]; // 열 때마다 추천 수량(없으면 기본 금액)으로 다시 시작한다
       const isFractional = stockItem.is_fractional === true; // 서버 판별값만 신뢰 (없으면 정수만)
-      selectedRecForBuy = {
-        code: stockItem.code,
-        name: stockItem.name,
-        current_price: stockItem.current_price,
-        change_rate: stockItem.change_rate,
-        market: stockItem.market || 'KOSPI',
-        chart_data: stockItem.chart_data || null,
-        target_price: Math.round(stockItem.current_price * 1.065),
-        stop_loss_price: Math.round(stockItem.current_price * 0.97),
-        max_hold_days: 5,
-        grade: stockItem.grade || 'N/A',
-        grade_score: stockItem.grade_score || 0,
-        grade_reasons: stockItem.grade_reasons || [],
-        is_fractional: isFractional,
-        fractional_desc: stockItem.fractional_desc || ''
-      };
 
-      const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
-      // 최대 수량은 소수점 종목이든 아니든 정수 단위 (표시, "최대로 채우기", 입력 상한 모두 동일)
-      maxPossibleBuyQty = buyQtyMax(cash, stockItem.current_price);
-      maxPossibleBuyQtyFrac = buyQtyMaxFractional(cash, stockItem.current_price);
-      buyQtyMsg = { kind: '', message: '' };
-
-      // 기본 매수 희망 금액 설정 (예: 3만원 또는 1주 가격)
-      currentBuyAmount = Math.min(cash, Math.max(stockItem.current_price, 30000));
-      document.getElementById('buyAmountInput').value = currentBuyAmount;
-      calculateQtyFromAmount();
-
-      document.getElementById('buyStockLogo').innerHTML = logoHtml(stockItem.code, stockItem.name, 40);
+      document.getElementById('buyKindTag').innerHTML = securityTagHtml(stockItem.security_type);
+      document.getElementById('buyStockLogo').innerHTML = logoHtml(stockItem.code, stockItem.name, 40, stockItem.logo_url);
       document.getElementById('buyStockName').textContent = stockItem.name;
       document.getElementById('buyStockCode').textContent = stockItem.code;
       document.getElementById('buyStockMarket').textContent = stockItem.market || 'KOSPI';
       document.getElementById('buyStockPrice').textContent = stockItem.current_price.toLocaleString() + '원';
 
-      // 소수점 가능 여부 뱃지 업데이트
+      // 소수점 가능 여부 뱃지
       const fracTag = document.getElementById('buyFractionalTag');
-      if (fracTag) {
-        if (isFractional) {
-          fracTag.className = 'text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold';
-          fracTag.textContent = '소수점 가능';
-          document.getElementById('buyCalcModeNotice').textContent = '(소수점 거래 가능 종목)';
-          document.getElementById('buyCalcModeNotice').className = 'text-[13px] text-[#30d158] block';
-        } else {
-          fracTag.className = 'text-[13px] px-1.5 py-0.5 rounded bg-[#ff9f0a]/20 text-[#ff9f0a] font-semibold';
-          fracTag.textContent = '1주 단위 일반종목';
-          document.getElementById('buyCalcModeNotice').textContent = '(1주 단위 매수)';
-          document.getElementById('buyCalcModeNotice').className = 'text-[13px] text-[#ff9f0a] block';
-        }
+      if (isFractional) {
+        fracTag.className = 'text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold';
+        fracTag.textContent = '소수점 가능';
+      } else {
+        fracTag.className = 'text-[13px] px-1.5 py-0.5 rounded bg-[#ff9f0a]/20 text-[#ff9f0a] font-semibold';
+        fracTag.textContent = '1주 단위 일반종목';
       }
-
-      document.getElementById('buyCashAvailableText').textContent = cash.toLocaleString();
-      document.getElementById('buyMaxQtyText').textContent = maxPossibleBuyQty;
 
       const changeEl = document.getElementById('buyStockChange');
       const isGain = stockItem.change_rate >= 0;
       changeEl.textContent = (isGain ? '+' : '') + stockItem.change_rate + '%';
       changeEl.className = isGain ? 'text-[13px] font-semibold text-[#ff6a60]' : 'text-[13px] font-semibold text-[#5aa9ff]';
 
-      // ── AI 등급 카드 렌더링 ──────────────────────────────
+      // ── AI 등급 카드 ──────────────────────────────
       const grade = stockItem.grade || 'N/A';
       const gradeScore = stockItem.grade_score || 0;
       const gradeReasons = stockItem.grade_reasons || [];
-
-      const gradeBadge = document.getElementById('gradeBadge');
-      const gradeScoreTag = document.getElementById('gradeScoreTag');
-      const gradeReasonsList = document.getElementById('gradeReasonsList');
-
       const style = GRADE_STYLES[grade] || GRADE_STYLES['N/A'];
 
-      gradeBadge.className = `w-12 h-12 rounded-full flex items-center justify-center text-xl font-black shrink-0 ${style.bg} ${style.text}`;
+      const gradeBadge = document.getElementById('gradeBadge');
+      gradeBadge.className = `w-8 h-8 rounded-full flex items-center justify-center text-base font-black shrink-0 ${style.bg} ${style.text}`;
       gradeBadge.textContent = grade;
-      gradeScoreTag.textContent = grade === 'N/A' ? style.label : `${gradeScore}점 · ${style.label}`;
-
-      gradeReasonsList.innerHTML = gradeReasons.map(r =>
+      document.getElementById('gradeScoreTag').textContent = grade === 'N/A' ? style.label : `${gradeScore}점 · ${style.label}`;
+      document.getElementById('gradeReasonsList').innerHTML = gradeReasons.map(r =>
         `<div class="text-[13px] text-[#ebebf5] leading-tight">· ${r}</div>`
       ).join('') || '<div class="text-[13px] text-[#a9aebf]">근거 없음</div>';
-
       document.getElementById('gradeCard').className =
-        `bg-[#0a0a0c] p-3.5 rounded-2xl border ${style.border} flex items-start gap-3`;
+        `rounded-xl border ${style.border} bg-black/35 overflow-hidden`;
+      // 이전에 펼쳐 둔 채 닫았어도 새로 열면 접힌 상태로 시작한다
+      document.getElementById('gradeReasonsList').classList.add('hidden');
+      document.getElementById('gradeToggleBtn').setAttribute('aria-expanded', 'false');
+      document.getElementById('gradeChevron').classList.remove('rotate-180');
 
-      // 포커스가 남아 있어도 이전 종목의 수량이 보이지 않도록 입력칸을 새 값으로 맞춘다
-      writeBuyQtyInput();
-
-      if (presetQty > 0) {
-        const r = normalizeBuyQty(presetQty, isFractional, maxPossibleBuyQty, maxPossibleBuyQtyFrac);
-        currentBuyQty = r.qty;
-        buyQtyMsg = { kind: r.kind, message: r.message };
-        setBuyMode('qty');
-      } else {
-        // 기본 탭은 금액 기준으로 설정
-        setBuyMode('amount');
-      }
+      document.getElementById('buySheetPanel').innerHTML = ibBoxHtml(stockItem);
       document.getElementById('buyModal').classList.remove('hidden');
+      document.getElementById('buyModalCloseBtn').focus(); // 숫자 칸이 아니라 닫기 버튼에 둔다(모바일 키보드가 저절로 뜨지 않게)
 
       if (stockItem.chart_data && stockItem.chart_data.prices && stockItem.chart_data.prices.length > 0) {
         setTimeout(() => {
@@ -1782,163 +1616,44 @@
       }
     }
 
-    // 입력칸 너비를 현재 글자 수에 맞춘다 ("주" 가 숫자 옆에 붙도록)
-    function fitBuyQtyInput() {
-      const input = document.getElementById('buyQtyInput');
-      if (input) input.style.width = buyQtyInputWidthCh(input.value) + 'ch';
-    }
-
-    // 수량 입력칸을 현재 수량으로 맞춘다 (버튼·최대 채우기·칸을 벗어날 때처럼 코드가 값을 바꾸는 경우)
-    function writeBuyQtyInput() {
-      const input = document.getElementById('buyQtyInput');
-      if (!input) return;
-      input.value = buyQtyFieldText(currentBuyQty, false);
-      fitBuyQtyInput();
-    }
-
-    function changeBuyQty(delta) {
-      if (!selectedRecForBuy) return;
-      const r = stepBuyQty(currentBuyQty, delta, maxPossibleBuyQty);
-      currentBuyQty = r.qty;
-      buyQtyMsg = { kind: r.kind, message: r.message };
-      writeBuyQtyInput();
-      updateBuyModalCalcs();
-    }
-
-    // 직접 입력: 입력 도중에는 칸의 글자를 건드리지 않고 적용 수량·안내만 갱신한다.
-    // 보정값은 칸을 벗어날 때(onBuyQtyBlur) 반영한다.
-    function onBuyQtyInput(raw) {
-      if (!selectedRecForBuy) return;
-      const r = normalizeBuyQty(raw, selectedRecForBuy.is_fractional === true, maxPossibleBuyQty, maxPossibleBuyQtyFrac);
-      currentBuyQty = r.qty;
-      buyQtyMsg = { kind: r.kind, message: r.message };
-      fitBuyQtyInput(); // 칸의 글자는 그대로 두고 너비만 맞춘다 (buyQtyFieldText(·, true) === null)
-      updateBuyModalCalcs();
-    }
-
-    function onBuyQtyBlur() {
-      if (!selectedRecForBuy) return;
-      writeBuyQtyInput();
-    }
-
-    function fillMaxBuyQty() {
-      if (!selectedRecForBuy) return;
-      if (maxPossibleBuyQty > 0) {
-        currentBuyQty = maxPossibleBuyQty;
-        buyQtyMsg = { kind: 'notice', message: `현금으로 살 수 있는 최대 ${maxPossibleBuyQty}주예요.` };
-      } else {
-        currentBuyQty = 0;
-        buyQtyMsg = { kind: 'error', message: '잔여 현금이 부족해요.' };
-      }
-      writeBuyQtyInput();
-      updateBuyModalCalcs();
-    }
-
-    // 수량 영역의 표시 상태(입력값 동기화, 안내문, 오류 테두리, −/+ 활성 여부)
-    function renderBuyQtyControls() {
-      const input = document.getElementById('buyQtyInput');
-      if (!input || !selectedRecForBuy) return;
-      if (document.activeElement !== input) writeBuyQtyInput();
-
-      document.getElementById('buyQtyField').style.borderColor =
-        buyQtyMsg.kind === 'error' ? 'rgba(255,69,58,0.6)' : '';
-
-      const isFrac = selectedRecForBuy.is_fractional === true;
-      const defaultHelp = isFrac
-        ? '숫자를 눌러 직접 입력할 수 있어요. 이 종목은 소수점 거래가 가능해서 0.0001주 단위까지 입력됩니다.'
-        : '소수점 거래가 안 되는 종목이라 1주 단위로만 살 수 있어요.';
-      const help = document.getElementById('buyQtyHelp');
-      help.textContent = buyQtyMsg.message || defaultHelp;
-      const tone = buyQtyMsg.kind === 'error' ? 'text-[#ff6a60]' : (buyQtyMsg.kind === 'notice' ? 'text-[#30d158]' : 'text-[#a9aebf]');
-      help.className = `text-[13px] leading-relaxed border-t border-[#1c1c1e] pt-2 ${tone}`;
-
-      const minusOff = currentBuyQty <= 1;
-      const plusOff = !(maxPossibleBuyQty > 0) || (Math.floor(currentBuyQty + 1e-9) + 1 > maxPossibleBuyQty);
-      [['buyQtyMinusBtn', minusOff], ['buyQtyPlusBtn', plusOff]].forEach(([id, off]) => {
-        const btn = document.getElementById(id);
-        btn.disabled = off;
-        btn.classList.toggle('opacity-[0.35]', off);
-      });
-    }
-
-    function updateBuyModalCalcs() {
-      const price = selectedRecForBuy ? selectedRecForBuy.current_price : 0;
-      const cash = currentPortfolio ? currentPortfolio.cash_balance : 100000;
-      const t = buyTotals(price, currentBuyQty, cash);
-      const totalCost = t.gross;
-      const totalRequired = t.total;
-      const remaining = t.remaining;
-      const ratio = currentPortfolio && currentPortfolio.total_asset > 0 ? ((totalCost / currentPortfolio.total_asset) * 100).toFixed(1) : 0;
-
-      const qtyDisplayStr = (currentBuyQty > 0) ? `${currentBuyQty}` : '0';
-      renderBuyQtyControls();
-      document.getElementById('buyCalcQtyResult').textContent = `${qtyDisplayStr}주`;
-
-      document.getElementById('buyBudgetRatio').textContent = `내 자산의 ${ratio}%`;
-      document.getElementById('buyTotalCost').textContent = totalRequired.toLocaleString() + '원';
-      document.getElementById('buyRemainingCash').textContent = remaining.toLocaleString() + '원';
-
-      const confirmBtn = document.getElementById('confirmBuyBtn');
-      const confirmBtnText = document.getElementById('confirmBuyBtnText');
-
-      if (currentBuyQty <= 0 || totalRequired > cash) {
-        confirmBtn.disabled = true;
-        confirmBtn.className = 'w-full py-3.5 rounded-xl bg-[#2c2c2e] text-[#a9aebf] font-extrabold text-sm flex items-center justify-center gap-2 cursor-not-allowed';
-        confirmBtnText.textContent = totalRequired > cash ? '잔여 현금 부족' : '매수 수량 0';
-      } else {
-        confirmBtn.disabled = false;
-        const isGradeC = selectedRecForBuy && selectedRecForBuy.grade === 'C';
-        if (isGradeC) {
-          confirmBtn.className = 'w-full py-3.5 rounded-xl bg-[#48484a] hover:bg-[#636366] text-white font-extrabold text-sm tap-press flex items-center justify-center gap-2 transition';
-          confirmBtnText.textContent = `비추천 종목 ${qtyDisplayStr}주 매수`;
-        } else {
-          confirmBtn.className = 'w-full py-3.5 rounded-xl bg-[#ff453a] hover:bg-[#ff3b30] text-white font-extrabold text-sm shadow-lg shadow-[#ff453a]/25 tap-press flex items-center justify-center gap-2 transition';
-          confirmBtnText.textContent = `${qtyDisplayStr}주 매수 주문 실행 (${totalCost.toLocaleString()}원)`;
-        }
-      }
+    // AI 진단 근거 문장을 펼치고 접는다(시트 높이를 아끼려고 기본은 접힘)
+    function toggleGradeReasons() {
+      const open = document.getElementById('gradeReasonsList').classList.toggle('hidden') === false;
+      document.getElementById('gradeToggleBtn').setAttribute('aria-expanded', open ? 'true' : 'false');
+      document.getElementById('gradeChevron').classList.toggle('rotate-180', open);
     }
 
     function closeBuyModal() {
-      document.getElementById('buyModal').classList.add('hidden');
-      selectedRecForBuy = null;
+      const modal = document.getElementById('buyModal');
+      if (!modal || modal.classList.contains('hidden')) return;
+      modal.classList.add('hidden');
+      buySheetItem = null;
+      if (buySheetReturnFocus && buySheetReturnFocus.isConnected && buySheetReturnFocus.focus) buySheetReturnFocus.focus();
+      buySheetReturnFocus = null;
+    }
+
+    // Tab 이 시트 밖으로 나가지 않게 시트 안의 조작 가능한 요소 사이를 돈다. 확인창·초기화 창이 위에 있으면 그쪽이 맡는다
+    function trapBuySheetFocus(e) {
+      const modal = document.getElementById('buyModal');
+      if (!modal || modal.classList.contains('hidden')) return;
+      const dialogOpen = ['tradeModal', 'resetModal'].some(id => {
+        const el = document.getElementById(id);
+        return el && !el.classList.contains('hidden');
+      });
+      if (dialogOpen) return;
+      const items = [...modal.querySelectorAll('button, input, a[href]')].filter(el => !el.disabled && el.offsetParent !== null);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const inside = items.includes(document.activeElement);
+      if (e.shiftKey && (!inside || document.activeElement === first)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (!inside || document.activeElement === last)) { e.preventDefault(); first.focus(); }
     }
 
     function openBuyModal(idx) {
       const item = currentRecs[idx];
       if (item) {
-        openCustomBuyModal(item, item.sizing ? item.sizing.recommended_quantity : 0);
-      }
-    }
-
-    async function executeSelectedBuy() {
-      if (!selectedRecForBuy || currentBuyQty <= 0) return;
-
-      const confirmBtn = document.getElementById('confirmBuyBtn');
-      const confirmBtnText = document.getElementById('confirmBuyBtnText');
-      const originalText = confirmBtnText.textContent;
-
-      confirmBtn.disabled = true;
-      confirmBtnText.innerHTML = '<i data-icon="loader-circle" class="animate-spin"></i> 주문 체결 중...';
-
-      try {
-        const data = await api('/api/buy', {
-          method: 'POST',
-          body: {
-            code: selectedRecForBuy.code,
-            quantity: currentBuyQty,
-            target_price: selectedRecForBuy.target_price,
-            stop_loss_price: selectedRecForBuy.stop_loss_price,
-            max_hold_days: selectedRecForBuy.max_hold_days || 5
-          }
-        });
-        closeBuyModal();
-        showToast(data.message || '매수가 체결되었습니다!', 'success');
-        await refreshData();
-        switchTab('holdings');
-      } catch (err) {
-        if (err.status !== 401) showToast(err.status ? err.message : '서버 통신 오류가 발생했습니다.', 'error');
-        confirmBtn.disabled = false;
-        confirmBtnText.textContent = originalText;
+        openCustomBuyModal(item); // 추천 수량이 있으면 수량 방식으로 연다(인라인 패널의 시작 규칙)
       }
     }
 
@@ -2130,8 +1845,16 @@
       document.getElementById('menuBtn').setAttribute('aria-expanded', 'false');
     }
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { closeMenu(); closeResetModal(); closeTradeModal(); }
-      if (e.key === 'Tab') { trapResetFocus(e); trapTradeFocus(e); }
+      if (e.key === 'Escape') {
+        // 맨 위에 떠 있는 것 하나만 닫는다: 확인창·초기화 창이 열려 있으면 시트는 그대로 둔다
+        const dialogOpen = ['tradeModal', 'resetModal'].some(id => {
+          const el = document.getElementById(id);
+          return el && !el.classList.contains('hidden');
+        });
+        closeMenu(); closeResetModal(); closeTradeModal();
+        if (!dialogOpen) closeBuyModal();
+      }
+      if (e.key === 'Tab') { trapResetFocus(e); trapTradeFocus(e); trapBuySheetFocus(e); }
     });
     let recsLoaded = false;   // 추천을 한 번이라도 받았는지 (빈 목록 문구 구분용)
     let recsFailed = false;   // 마지막 추천 요청이 실패했는지 (받아 둔 목록이 없을 때 오류 화면의 기준)
@@ -2434,10 +2157,11 @@
             <div role="button" tabindex="0" ${isPcLayout() ? `aria-pressed="${isSelected}"` : `aria-expanded="${isExpanded}"`} onclick="toggleHolding(${idx})" ${rowKeyAttr(`toggleHolding(${idx})`)}
                  class="min-h-[64px] py-2.5 flex items-center justify-between gap-3 cursor-pointer tap-press ${pcRowClass(isPcLayout(), isSelected)}">
               <div class="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 items-center">
-                <div class="row-span-2">${logoHtml(h.code, h.name, 36)}</div>
+                <div class="row-span-2">${logoHtml(h.code, h.name, 36, h.logo_url)}</div>
                 <div class="flex flex-wrap items-center gap-1.5">
                   <h4 class="font-bold text-[15px] text-white">${h.name}</h4>
                   <span class="text-[13px] text-[#a9aebf]">${h.code}</span>
+                  ${securityTagHtml(h.security_type)}
                 </div>
                 <div class="text-[13px] text-[#a9aebf] mt-0.5">${qtyFormatted}주 · 평단 ${h.avg_price.toLocaleString()}원</div>
               </div>
@@ -2513,13 +2237,13 @@
                 <div class="w-6 h-6 shrink-0 rounded-full bg-[#1c1c1e] text-[#a9aebf] text-[13px] font-bold flex items-center justify-center">
                   ${idx + 1}
                 </div>
-                ${logoHtml(item.code, item.name, 36)}
+                ${logoHtml(item.code, item.name, 36, item.logo_url)}
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-1.5">
                     <h3 class="font-bold text-[15px] text-white tracking-tight">${item.name}</h3>
                     <span class="text-[13px] text-[#a9aebf]">${item.market}</span>
                     <span class="text-[13px] font-black px-1.5 rounded ${gradeStyle.bg} ${gradeStyle.text}" title="${gradeStyle.label}">${gradeLabel}</span>
-                    ${item.is_fractional === true ? '<span class="text-[13px] px-1.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>' : ''}
+                    ${securityTagHtml(item.security_type)}
                   </div>
                   <div class="text-[13px] text-[#a9aebf] mt-0.5">
                     <span class="text-white font-medium">${s.recommended_quantity}주 매수 추천</span><span class="hidden sm:inline"> · </span><span class="block sm:inline whitespace-nowrap">약 ${s.total_cost.toLocaleString()}원</span>
@@ -2874,10 +2598,11 @@
         <div class="space-y-4 pb-4">
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 items-center">
-              <div class="row-span-2">${logoHtml(item.code, item.name, 52)}</div>
+              <div class="row-span-2">${logoHtml(item.code, item.name, 52, item.logo_url)}</div>
               <h2 class="text-2xl font-bold tracking-tight text-white">${item.name}</h2>
               <div class="flex flex-wrap items-center gap-2 mt-1.5 text-[13px] text-[#a9aebf]">
                 <span>${item.market} ${item.code || ''}</span>
+                ${securityTagHtml(item.security_type)}
                 ${item.is_fractional === true ? '<span class="px-1.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>' : ''}
               </div>
             </div>
@@ -2941,10 +2666,11 @@
         <div class="space-y-4 pb-4">
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 items-center">
-              <div class="row-span-2">${logoHtml(h.code, h.name, 52)}</div>
+              <div class="row-span-2">${logoHtml(h.code, h.name, 52, h.logo_url)}</div>
               <h2 class="text-2xl font-bold tracking-tight text-white">${h.name}</h2>
               <div class="flex flex-wrap items-center gap-2 mt-1.5 text-[13px] text-[#a9aebf]">
                 <span>${h.code} · 보유 중 · ${h.hold_days}일차</span>
+                ${securityTagHtml(h.security_type)}
                 ${badge}
               </div>
             </div>
@@ -3003,10 +2729,11 @@
         <div class="space-y-4 pb-4">
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 items-center">
-              <div class="row-span-2">${logoHtml(stock.code, stock.name, 52)}</div>
+              <div class="row-span-2">${logoHtml(stock.code, stock.name, 52, stock.logo_url)}</div>
               <h2 class="text-2xl font-bold tracking-tight text-white">${stock.name}</h2>
               <div class="flex flex-wrap items-center gap-2 mt-1.5 text-[13px] text-[#a9aebf]">
                 <span>${stock.market ? stock.market + ' ' : ''}${stock.code}</span>
+                ${securityTagHtml(stock.security_type)}
                 ${stock.is_fractional === true ? '<span class="px-1.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>' : ''}
               </div>
             </div>
@@ -3514,6 +3241,7 @@
 
     function ibItemOf(code) {
       return (currentRecs || []).find(r => r.code === code)
+        || (buySheetItem && buySheetItem.code === code ? buySheetItem : null)
         || (searchStock && !searchStock.loading && searchStock.code === code ? searchStock : null);
     }
 
@@ -3743,6 +3471,7 @@
           body: { code: item.code, quantity: qty, target_price: tg.target, stop_loss_price: tg.stop, max_hold_days: tg.holdDays }
         });
         delete ibSel[code];
+        closeBuyModal(); // 모바일 시트에서 샀다면 시트도 닫는다(실패하면 throw 라서 여기에 오지 않는다)
         showToast(data.message || '매수가 체결되었습니다!', 'success');
         await refreshData();
         switchTab('holdings');

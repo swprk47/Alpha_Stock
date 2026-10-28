@@ -1,7 +1,8 @@
 """종목 로고 표시 검증.
 
-로고 주소는 종목코드로만 만든다(저장된 logo_url 은 보유 종목에서 비어 있을 수 있다).
-이미지가 없거나(ETF 등) 불러오지 못하면 이름 첫 글자 원으로 대신하고, 한 번 실패한 코드는 기억해
+로고 주소는 서버가 내려준 logo_url(네이버 시세 응답: 주식은 종목 로고, ETF 는 운용사 로고)을 쓰되,
+네이버 로고 주소(https://ssl.pstatic.net/imgstock/…)만 받는다. 없거나 허용되지 않으면 종목코드로 만든 주식 로고 주소,
+그것도 안 되면(잘못된 코드) 이름 첫 글자 원이다. 불러오지 못해도 첫 글자 원으로 대신하고, 한 번 실패한 주소는 기억해
 목록을 다시 그릴 때마다 404 요청을 되풀이하지 않는다.
 """
 import json
@@ -33,6 +34,10 @@ def _logic():
     m = re.search(r"// <logo-logic>\r?\n(.*?)// </logo-logic>", _html(), re.S)
     assert m, "index.html 에 logo-logic 구간이 없습니다"
     return m.group(1)
+
+
+ETF_URL = "https://ssl.pstatic.net/imgstock/fn/real/logo/png/etf/StockKRETFKODEX.png"
+STOCK_URL = "https://ssl.pstatic.net/imgstock/fn/real/logo/png/stock/Stock035720.png"
 
 
 @pytest.fixture
@@ -74,8 +79,9 @@ def test_logo_html_has_image_size_and_fallback_hook(run):
     # 네이버 로고는 이미 원형·투명 이미지라 회색 원과 여백이 없어야 로고가 크게 보인다
     assert "background" not in html and "bg-[#2c2c2e]" not in html and "padding" not in html
     assert 'alt=""' in html  # 이름이 바로 옆에 있으니 스크린리더가 두 번 읽지 않게
-    assert "logoImgFailed(this, '035720')" in html
+    assert "logoImgFailed(this)" in html
     assert 'data-initial="카"' in html
+    assert f'data-src="{STOCK_URL}"' in html
 
 
 @needs_node
@@ -115,12 +121,12 @@ def test_initial_keeps_a_whole_character(run):
 def test_failed_image_swaps_to_initial_and_is_remembered(run):
     out = run("""(() => {
       const parent = { textContent: '<img>', style: {} };
-      const img = { dataset: { initial: '라' }, parentElement: parent };
-      logoImgFailed(img, '360750');
+      const img = { dataset: { initial: '라', src: 'https://ssl.pstatic.net/imgstock/fn/real/logo/png/stock/Stock360750.png' }, parentElement: parent };
+      logoImgFailed(img);
       return {
         text: parent.textContent,
         bg: parent.style.background,
-        remembered: logoFailed.has('360750'),
+        remembered: logoFailed.has(img.dataset.src),
         next: logoHtml('360750', 'TIGER 미국S&P500', 36),
         other: logoHtml('035720', '카카오', 36),
       };
@@ -134,7 +140,59 @@ def test_failed_image_swaps_to_initial_and_is_remembered(run):
 
 @needs_node
 def test_failed_handler_is_safe_without_a_parent(run):
-    assert run("(() => { logoImgFailed({ dataset: {}, parentElement: null }, '069500'); return logoFailed.has('069500'); })()") is True
+    assert run("(() => { logoImgFailed({ dataset: { src: 'x' }, parentElement: null }); return logoFailed.has('x'); })()") is True
+
+
+@needs_node
+def test_server_logo_is_used_so_etfs_show_the_manager_logo(run):
+    html = run(f"logoHtml('069500', 'KODEX 200', 36, {json.dumps(ETF_URL)})")
+    assert f'src="{ETF_URL}"' in html
+    assert "StockKRETFKODEX" in html and "Stock069500" not in html  # 코드로 만든 주소(404)가 아니다
+
+
+BAD_URLS = [
+    "https://evil.example.com/a.png",
+    "http://ssl.pstatic.net/imgstock/a.png",
+    "javascript:alert(1)",
+    "https://ssl.pstatic.net.evil.com/imgstock/a.png",
+    'https://ssl.pstatic.net/imgstock/a.png" onerror="alert(1)',
+    "https://ssl.pstatic.net/imgstock/a b.png",
+    "",
+]
+
+
+@needs_node
+@pytest.mark.parametrize("bad", BAD_URLS)
+def test_logo_url_outside_the_naver_address_is_ignored(run, bad):
+    html = run(f"logoHtml('035720', '카카오', 36, {json.dumps(bad)})")
+    assert f'src="{STOCK_URL}"' in html  # 코드로 만든 주소로 돌아간다
+    assert "evil" not in html and "javascript" not in html and "alert(1)" not in html
+
+
+@needs_node
+@pytest.mark.parametrize("missing", ["null", "undefined", "123"])
+def test_missing_or_non_string_logo_url_uses_the_code_address(run, missing):
+    assert f'src="{STOCK_URL}"' in run(f"logoHtml('035720', '카카오', 36, {missing})")
+
+
+@needs_node
+def test_server_logo_works_even_without_a_valid_code(run):
+    html = run(f"logoHtml(null, '무엇', 36, {json.dumps(ETF_URL)})")
+    assert f'src="{ETF_URL}"' in html
+
+
+@needs_node
+def test_failed_logo_is_remembered_by_address_so_shared_logos_are_requested_once(run):
+    out = run(f"""(() => {{
+      const img = {{ dataset: {{ initial: 'K', src: {json.dumps(ETF_URL)} }}, parentElement: {{ textContent: '', style: {{}} }} }};
+      logoImgFailed(img);
+      return {{
+        sameLogoOtherEtf: logoHtml('360750', 'KODEX 미국S&P500', 36, {json.dumps(ETF_URL)}),
+        otherLogo: logoHtml('035720', '카카오', 36, {json.dumps(STOCK_URL)}),
+      }};
+    }})()""")
+    assert "<img" not in out["sameLogoOtherEtf"]  # KODEX 로고를 쓰는 다른 종목도 다시 요청하지 않는다
+    assert "<img" in out["otherLogo"]
 
 
 # ── 화면에 붙인 곳 (시안: 제목줄 52px · 목록 행 36px · 검색 드롭다운 28px · 모바일 매수 창 40px) ──
@@ -143,7 +201,7 @@ def test_failed_handler_is_safe_without_a_parent(run):
 def test_detail_headers_use_the_shared_52px_logo():
     for name in ("recDetailHtml", "holdingDetailHtml", "searchDetailHtml"):
         body = _func(name)
-        assert re.search(r"logoHtml\([^)]*\b52\)", body), name
+        assert re.search(r"logoHtml\([^)]*\b52, \w+\.logo_url\)", body), name
 
 
 def test_search_detail_skeleton_reserves_the_logo_space():
@@ -154,8 +212,8 @@ def test_search_detail_skeleton_reserves_the_logo_space():
 
 
 def test_list_rows_use_the_36px_logo():
-    assert re.search(r"logoHtml\([^)]*\b36\)", _func("renderRecommendations"))
-    assert re.search(r"logoHtml\([^)]*\b36\)", _func("renderHoldings"))
+    assert re.search(r"logoHtml\([^)]*\b36, \w+\.logo_url\)", _func("renderRecommendations"))
+    assert re.search(r"logoHtml\([^)]*\b36, \w+\.logo_url\)", _func("renderHoldings"))
 
 
 def test_rec_row_keeps_the_rank_circle_before_the_logo():
@@ -165,13 +223,13 @@ def test_rec_row_keeps_the_rank_circle_before_the_logo():
 
 def test_search_dropdown_uses_the_shared_logo_not_the_stored_url():
     body = _func("renderSearchResults")
-    assert re.search(r"logoHtml\([^)]*\b28\)", body)
-    assert "logo_url" not in body
-    assert "charAt(0)" not in body  # 이름을 그대로 끼워 넣던 인라인 onerror 제거
+    assert "logoHtml(item.code, item.name, 28, item.logo_url)" in body
+    assert "<img src" not in body  # 이름을 그대로 끼워 넣던 인라인 이미지·onerror 제거
+    assert "charAt(0)" not in body
 
 
 def test_mobile_search_buy_modal_shows_a_40px_logo():
     s = _html()
     assert 'id="buyStockLogo"' in s
     body = _func("openCustomBuyModal")
-    assert re.search(r"buyStockLogo[^\n]*logoHtml\([^)]*\b40\)", body)
+    assert re.search(r"buyStockLogo[^\n]*logoHtml\([^)]*\b40, stockItem\.logo_url\)", body)

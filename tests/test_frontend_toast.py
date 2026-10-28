@@ -91,5 +91,5 @@ def test_show_toast_uses_the_duration_and_cancels_the_previous_timer():
 def test_every_trade_result_uses_the_shared_toast():
     # 체결 알림은 모두 showToast 를 거친다(성공 문구는 서버 응답 message)
     s = _html()
-    for name in ("executeSell", "executeInlineBuy", "executeSelectedBuy"):
+    for name in ("executeSell", "executeInlineBuy"):
         assert "showToast(data.message" in _func(name), name

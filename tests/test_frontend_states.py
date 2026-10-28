@@ -266,7 +266,8 @@ def test_reset_modal_lists_what_gets_erased():
 
 def test_reset_modal_keyboard_and_focus():
     s = _html()
-    assert re.search(r"'Escape'\)[^\n]*closeResetModal\(\)", s)  # Esc 로 닫기
+    keydown = re.search(r"document\.addEventListener\('keydown'.*?\n    \}\);", s, re.S).group(0)
+    assert "'Escape'" in keydown and "closeResetModal()" in keydown  # Esc 로 닫기
     assert "resetCancelBtn" in _func("openResetModal") and ".focus()" in _func("openResetModal")  # 안전한 쪽(취소)에 초점
     assert "closeResetModal()" in _tag(s, 'id="resetModal"') or "resetBackdrop" in s  # 바깥을 눌러 닫기
 
