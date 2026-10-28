@@ -315,3 +315,15 @@ def test_order_code_is_untouched_by_this_feature():
     for name in ("executeSelectedBuy", "updateBuyModalCalcs", "calculateQtyFromAmount", "confirmReset"):
         for token in ("summarySeg", "tradeStats", "summaryPanelsHtml"):
             assert token not in _func(name), (name, token)
+
+
+def test_bars_keep_a_slim_fixed_width_on_wide_screens():
+    # 막대 폭이 칸 폭 100%라서 전체화면에서 거래가 두세 건이면 막대가 큰 블록처럼 퍼졌다.
+    # 막대는 칸 가운데에 최대 56px, 제목과 차트는 한 블록(최대 600px)으로 묶어 오른쪽(최신 쪽)에 붙인다
+    bars = _func("pnlBarsHtml")
+    assert "max-w-[56px]" in bars and "left-1/2" in bars and "-translate-x-1/2" in bars
+    assert not re.search(r"absolute inset-x-0 \$\{b\.up", bars)  # 칸 폭을 그대로 쓰던 막대
+    assert "w-full" in bars.split("max-w-[56px]")[0].split("<div")[-1]  # 좁은 화면에서는 칸 폭을 따른다(상한 안에서)
+    account = _func("accountPanelHtml")
+    block = account[account.index("최근 매도 거래별 실현 손익") - 400:account.index("pnlBarsHtml(")]
+    assert "max-w-[600px]" in block and "ml-auto" in block  # 제목도 같은 블록 안에 있어 차트와 떨어지지 않는다

@@ -560,7 +560,8 @@
 
       <!-- 종목 기본 정보 및 시세 -->
       <div class="bg-[#0a0a0c] p-3.5 rounded-2xl border border-[#2c2c2e] flex justify-between items-center">
-        <div>
+        <div class="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 items-center">
+          <div id="buyStockLogo" class="row-span-2"></div>
           <div class="flex items-center gap-1.5">
             <h4 id="buyStockName" class="font-bold text-base text-white">종목명</h4>
             <span id="buyStockCode" class="text-[13px] text-[#a9aebf]">000000</span>
@@ -1040,6 +1041,88 @@
     }
     // </trade-dialog>
 
+    // <chart-logic>
+    // 차트 끝점의 실시간 닷과 모바일 차트 블록(DOM 을 쓰지 않는 함수. tests/test_frontend_chart_dot.py 가 이 구간을 그대로 실행한다)
+    function pulseDotHtml(isGain) {
+      const color = isGain ? 'bg-[#ff453a]' : 'bg-[#0a84ff]'; // 이 앱은 상승이 빨강, 하락이 파랑이다
+      return `<span class="relative flex h-3.5 w-3.5"><span class="animate-ping motion-reduce:animate-none absolute inline-flex h-full w-full rounded-full ${color} opacity-75"></span><span class="relative inline-flex rounded-full h-3.5 w-3.5 ${color} border-2 border-white"></span></span>`;
+    }
+
+    // 닷 위치: 그림 좌표(drawW×drawH)를 화면에 보이는 캔버스 크기로 환산하고, 바깥 칸 안에서 캔버스가 시작하는 위치(offsetLeft/Top)를 더한다
+    function pulsePosition(box, drawW, drawH, pt) {
+      const sx = drawW > 0 && box.clientWidth > 0 ? box.clientWidth / drawW : 1;
+      const sy = drawH > 0 && box.clientHeight > 0 ? box.clientHeight / drawH : 1;
+      return { left: box.offsetLeft + pt.x * sx, top: box.offsetTop + pt.y * sy };
+    }
+
+    // 차트 가격 범위: 가격들과 함께 보여줄 값(보유 종목의 평단)을 모두 덮는다. 0 이하·숫자가 아닌 값은 무시한다
+    function chartRange(prices, extra) {
+      const vals = prices.concat((extra || []).filter(v => typeof v === 'number' && isFinite(v) && v > 0));
+      return { min: Math.min(...vals), max: Math.max(...vals) };
+    }
+
+    function avgLabelText(avg) { return '평단 ' + avg.toLocaleString() + '원'; }
+
+    // 최고/최저 라벨 글자("최고 23,900원"). 가격 선의 그 점에 작은 점을 찍고 바로 위(최고)/아래(최저)에 적는다
+    function extremeText(kind, price) { return (kind === 'high' ? '최고 ' : '최저 ') + price.toLocaleString() + '원'; }
+
+    // 점 라벨의 가로 정렬: 가운데가 기본, 차트 왼쪽/오른쪽 끝에 닿으면 안쪽으로 펼친다 (x: 점, w: 글자 폭, left/right: 차트 한계)
+    function extremeLabelAlign(x, w, left, right) {
+      if (x - w / 2 < left) return { anchor: 'start', tx: x - 4 };
+      if (x + w / 2 > right) return { anchor: 'end', tx: x + 4 };
+      return { anchor: 'middle', tx: x };
+    }
+
+    // 라벨이 차지하는 영역(글자 위 13px ~ 아래 4px). 다른 라벨이 피할 때 쓴다
+    function labelRect(anchor, tx, w, base) {
+      const x1 = anchor === 'start' ? tx : (anchor === 'end' ? tx - w : tx - w / 2);
+      return { x1: x1, x2: x1 + w, y1: base - 13, y2: base + 4 };
+    }
+
+    // 평단 라벨 자리: 왼쪽 선 위가 기본(최고/최저 점 라벨은 점에 붙어 있어서 대개 비어 있다). 다른 라벨과 겹치면 왼쪽 선 아래 → 오른쪽 선 위 → 오른쪽 선 아래,
+    // 갈 곳이 없으면 기본 자리. 선이 현재 점 가까이 지나가도 왼쪽은 보통 비어 있다
+    function avgLabelPlacement(avgY, w, obstacles, left, right) {
+      const cands = [
+        { x: left + 2, y: avgY - 4, anchor: 'start' }, { x: left + 2, y: avgY + 14, anchor: 'start' },
+        { x: right - 2, y: avgY - 4, anchor: 'end' }, { x: right - 2, y: avgY + 14, anchor: 'end' },
+      ];
+      const hits = c => {
+        const x1 = c.anchor === 'start' ? c.x : c.x - w;
+        return obstacles.some(o => x1 < o.x2 && x1 + w > o.x1 && c.y - 13 < o.y2 && c.y + 4 > o.y1);
+      };
+      return cands.find(c => !hits(c)) || cands[0];
+    }
+
+    // 차트가 마지막으로 그려진 크기(drawn.w/h)와 지금 보이는 크기가 달라졌으면 다시 그려야 한다.
+    // 숨겨진 동안(크기 0)은 그리지 않고, 못 그렸던 차트가 보이게 되면 그린다. 1px 미만 흔들림은 무시한다
+    function chartNeedsRedraw(drawn, w, h) {
+      if (!(w > 0 && h > 0)) return false;
+      return !drawn || Math.abs(drawn.w - w) >= 1 || Math.abs(drawn.h - h) >= 1;
+    }
+
+    // 크기 변화 알림을 받았을 때 할 일: 'forget'(화면에서 사라졌거나 같은 id 의 새 캔버스가 이미 등록됨) | 'redraw' | 'skip'
+    function chartResizeAction(reg, el, connected, w, h) {
+      if (!reg || reg.el !== el || !connected) return 'forget';
+      return chartNeedsRedraw(reg, w, h) ? 'redraw' : 'skip';
+    }
+
+    // 모바일 아코디언 안의 시세 차트 블록(추천·보유 공통): 제목 · 현재가/날짜 안내 · 터치 탐색 차트(높이 208px) · 끝점 닷 자리
+    function mobileChartBlockHtml(o) {
+      return `
+        <div class="flex justify-between items-baseline">
+          <div>
+            <span class="text-[13px] font-semibold text-[#a9aebf]">최근 30일 시세 흐름</span>
+            <div id="${o.priceId}" class="text-lg font-black text-white mt-0.5">${o.priceText}</div>
+          </div>
+          <div id="${o.dateId}" class="text-[13px] text-[#a9aebf] font-medium">터치하여 탐색</div>
+        </div>
+        <div class="w-full h-52 relative touch-none select-none bg-black/35 rounded-xl p-2 border border-white/10">
+          <canvas id="${o.canvasId}" class="w-full h-full block"></canvas>
+          <div id="${o.pulseId}" class="absolute pointer-events-none hidden" style="transform: translate(-50%, -50%);"></div>
+        </div>`;
+    }
+    // </chart-logic>
+
     // ===== 증권사 알약 (표시 전용. 전환 기능은 증권사가 더 추가될 때) =====
     const CURRENT_BROKER = 'miraeasset'; // backend/fractional.py 의 DEFAULT_BROKER 키와 같다
     const BROKER_LABELS = { miraeasset: '미래에셋' };
@@ -1067,6 +1150,10 @@
     let sellPreviewSeq = 0; // 늦게 온 응답을 버리기 위한 순번
     let sellMsg = {};       // 종목 코드 → 입력 안내 { kind: 'notice'|'error', message }
     const sellPreviewTimers = {};
+    const chartRegistry = {};  // 캔버스 id → { el, args(마지막 그리기 인자), w, h(마지막으로 그린 크기) }. 창 크기가 바뀌면 이 인자로 다시 그린다
+    let chartObserver = null;
+    let chartFrame = 0;
+    const chartPending = new Set();
     let ibSel = {};         // 종목 코드 → PC 인라인 매수 패널 상태 { mode: 'amount'|'qty', qty, amount, msg }
     let activeTab = 'recs';
     let summarySeg = 'pnl';  // 요약의 내 계좌 패널 보기: 'pnl'(거래별 손익) | 'trades'(거래 내역)
@@ -1362,9 +1449,7 @@
         return `
           <div onclick="selectSearchResult('${item.code}', '${String(item.market || '').replace(/[^A-Za-z]/g, '')}')" class="p-3 flex items-center justify-between hover:bg-[#2c2c2e] cursor-pointer tap-press transition">
             <div class="flex items-center gap-2.5">
-              <div class="w-7 h-7 rounded-full bg-[#2c2c2e] overflow-hidden flex items-center justify-center p-1">
-                <img src="${item.logo_url}" onerror="this.parentElement.innerHTML='<span class=\\'text-[13px] text-white font-bold\\'>${item.name.charAt(0)}</span>'" class="w-full h-full object-contain">
-              </div>
+              ${logoHtml(item.code, item.name, 28)}
               <div>
                 <div class="flex items-center gap-1.5">
                   <h4 class="font-bold text-[13px] text-white">${item.name}</h4>
@@ -1420,6 +1505,40 @@
       searchStock = null;
       renderDetailPane();
     }
+
+    // <logo-logic>
+    // 종목 로고: 주소는 종목코드로만 만든다(보유 종목에는 저장된 logo_url 이 비어 있을 수 있다).
+    // 이미지가 없거나(ETF 등) 불러오지 못하면 이름 첫 글자 원으로 대신하고, 실패한 코드는 기억해 다시 요청하지 않는다
+    const LOGO_CODE_PATTERN = /^[0-9A-Z]{6}$/; // schemas.CODE_PATTERN 과 같은 규칙
+    const logoFailed = new Set();
+    function logoUrl(code) {
+      return LOGO_CODE_PATTERN.test(code) ? `https://ssl.pstatic.net/imgstock/fn/real/logo/png/stock/Stock${code}.png` : '';
+    }
+    function logoEsc(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    function logoInitial(name) {
+      return Array.from(String(name == null ? '' : name).trim())[0] || '?'; // 이모지 등을 반으로 자르지 않는다
+    }
+    function logoHtml(code, name, size) {
+      const initial = logoInitial(name);
+      const box = `width: ${size}px; height: ${size}px; font-size: ${Math.round(size * 0.42)}px`;
+      const cls = 'shrink-0 rounded-full overflow-hidden flex items-center justify-center text-white font-bold';
+      const url = logoFailed.has(code) ? '' : logoUrl(code);
+      // 네이버 로고는 이미 원형·투명 이미지라 배경 없이 그대로 보인다. 글자로 대신할 때만 회색 원을 둔다
+      if (url) {
+        return `<div class="${cls}" style="${box}"><img src="${url}" alt="" data-initial="${logoEsc(initial)}" onerror="logoImgFailed(this, '${code}')" class="w-full h-full object-contain"></div>`;
+      }
+      return `<div class="${cls} bg-[#2c2c2e]" style="${box}">${logoEsc(initial)}</div>`;
+    }
+    function logoImgFailed(img, code) {
+      logoFailed.add(code);
+      const p = img.parentElement;
+      if (!p) return;
+      p.textContent = (img.dataset && img.dataset.initial) || '?';
+      p.style.background = '#2c2c2e';
+    }
+    // </logo-logic>
 
     // ===== 💡 수량 조절 매수 모달 로직 =====
     // <toast-logic>
@@ -1585,6 +1704,7 @@
       document.getElementById('buyAmountInput').value = currentBuyAmount;
       calculateQtyFromAmount();
 
+      document.getElementById('buyStockLogo').innerHTML = logoHtml(stockItem.code, stockItem.name, 40);
       document.getElementById('buyStockName').textContent = stockItem.name;
       document.getElementById('buyStockCode').textContent = stockItem.code;
       document.getElementById('buyStockMarket').textContent = stockItem.market || 'KOSPI';
@@ -1913,6 +2033,22 @@
       openAuthModal();
     }
 
+    // 모바일 아코디언에서 펼쳐진 보유 종목 차트(PC 는 오른쪽 패널의 차트가 따로 그려진다). 탭이 보일 때도 다시 부른다
+    function drawExpandedHoldingChart() {
+      const cur = ((currentPortfolio && currentPortfolio.holdings) || [])[expandedHoldingIndex];
+      if (isPcLayout() || !cur || !cur.chart_data || !cur.chart_data.prices || cur.chart_data.prices.length === 0) return;
+      const i = expandedHoldingIndex;
+      setTimeout(() => drawInteractiveChart(`holdingChart_${i}`, cur.chart_data.prices, cur.chart_data.dates, cur.pnl_pct >= 0, `holdingTipPrice_${i}`, `holdingTipDate_${i}`, `holdingPulse_${i}`, { avgPrice: cur.avg_price }), 50);
+    }
+
+    // 모바일 아코디언에서 펼쳐진 추천 종목 차트
+    function drawExpandedRecChart() {
+      const i = expandedCardIndex;
+      const cur = (currentRecs || [])[i];
+      if (isPcLayout() || i < 0 || !cur || !cur.chart_data || !cur.chart_data.prices || cur.chart_data.prices.length === 0) return;
+      setTimeout(() => drawInteractiveChart(`stockChart_${i}`, cur.chart_data.prices, cur.chart_data.dates, cur.change_rate >= 0, `chartTooltipPrice_${i}`, `chartTooltipDate_${i}`, `livePulse_${i}`), 50);
+    }
+
     function switchTab(tab) {
       searchStock = null; // 탭을 바꾸면 검색 종목 패널은 닫고 그 탭의 선택을 보인다
       activeTab = tab;
@@ -1936,6 +2072,9 @@
       secSummary.classList.toggle('hidden', tab !== 'summary');
       renderBottomBar();
       renderDetailPane();
+      // 숨겨져 있던 탭 안의 차트는 크기 0 으로 그려지지 못했으니 보이게 된 지금 다시 그린다
+      if (tab === 'holdings') drawExpandedHoldingChart();
+      if (tab === 'recs') drawExpandedRecChart();
     }
 
     function toggleAccordion(index) {
@@ -2294,7 +2433,8 @@
           <div class="py-1">
             <div role="button" tabindex="0" ${isPcLayout() ? `aria-pressed="${isSelected}"` : `aria-expanded="${isExpanded}"`} onclick="toggleHolding(${idx})" ${rowKeyAttr(`toggleHolding(${idx})`)}
                  class="min-h-[64px] py-2.5 flex items-center justify-between gap-3 cursor-pointer tap-press ${pcRowClass(isPcLayout(), isSelected)}">
-              <div class="min-w-0">
+              <div class="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 items-center">
+                <div class="row-span-2">${logoHtml(h.code, h.name, 36)}</div>
                 <div class="flex flex-wrap items-center gap-1.5">
                   <h4 class="font-bold text-[15px] text-white">${h.name}</h4>
                   <span class="text-[13px] text-[#a9aebf]">${h.code}</span>
@@ -2313,9 +2453,7 @@
             ${isExpanded ? `
               <div class="mb-2 p-3.5 rounded-2xl bg-black/35 border border-white/10 space-y-3">
                 ${statusBadge ? `<div>${statusBadge}</div>` : ''}
-                <div class="w-full h-36 bg-black/35 rounded-xl border border-white/10 p-2 relative">
-                  <canvas id="holdingChart_${idx}" class="w-full h-full"></canvas>
-                </div>
+                ${mobileChartBlockHtml({ canvasId: `holdingChart_${idx}`, priceId: `holdingTipPrice_${idx}`, dateId: `holdingTipDate_${idx}`, pulseId: `holdingPulse_${idx}`, priceText: `${h.current_price.toLocaleString()}원` })}
                 <div class="grid grid-cols-2 gap-2">
                   ${statCell('보유 수량', `${qtyFormatted}주`)}
                   ${statCell('평균 매입가', `${h.avg_price.toLocaleString()}원`)}
@@ -2330,11 +2468,7 @@
         `;
       }).join('');
 
-      // 펼쳐진 보유 종목 차트
-      const cur = holdings[expandedHoldingIndex];
-      if (!isPcLayout() && cur && cur.chart_data && cur.chart_data.prices && cur.chart_data.prices.length > 0) {
-        setTimeout(() => drawInteractiveChart(`holdingChart_${expandedHoldingIndex}`, cur.chart_data.prices, cur.chart_data.dates, cur.pnl_pct >= 0), 50);
-      }
+      drawExpandedHoldingChart();
       renderDetailPane();
     }
 
@@ -2375,10 +2509,11 @@
             <!-- 1. 행(Row) 헤더: 모바일은 누르면 펼침/접힘, PC 는 선택/선택 해제 -->
             <div role="button" tabindex="0" ${isPcLayout() ? `aria-pressed="${isSelected}"` : `aria-expanded="${isExpanded}"`} onclick="toggleAccordion(${idx})" ${rowKeyAttr(`toggleAccordion(${idx})`)}
                  class="min-h-[64px] py-2.5 flex items-center justify-between gap-3 cursor-pointer tap-press ${pcRowClass(isPcLayout(), isSelected)}">
-              <div class="flex items-center gap-3 min-w-0">
+              <div class="flex items-center gap-2.5 min-w-0">
                 <div class="w-6 h-6 shrink-0 rounded-full bg-[#1c1c1e] text-[#a9aebf] text-[13px] font-bold flex items-center justify-center">
                   ${idx + 1}
                 </div>
+                ${logoHtml(item.code, item.name, 36)}
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-1.5">
                     <h3 class="font-bold text-[15px] text-white tracking-tight">${item.name}</h3>
@@ -2387,7 +2522,7 @@
                     ${item.is_fractional === true ? '<span class="text-[13px] px-1.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>' : ''}
                   </div>
                   <div class="text-[13px] text-[#a9aebf] mt-0.5">
-                    <span class="text-white font-medium">${s.recommended_quantity}주 매수 추천</span> · 약 ${s.total_cost.toLocaleString()}원
+                    <span class="text-white font-medium">${s.recommended_quantity}주 매수 추천</span><span class="hidden sm:inline"> · </span><span class="block sm:inline whitespace-nowrap">약 ${s.total_cost.toLocaleString()}원</span>
                   </div>
                 </div>
               </div>
@@ -2404,28 +2539,7 @@
             <!-- 2. 펼침 영역: 차트 → 핵심 수치 2×2 → AI 진단 (매수는 화면 아래 고정 바) -->
             ${isExpanded ? `
               <div class="mb-2 p-3.5 space-y-3 rounded-2xl bg-black/35 border border-white/10">
-                <div class="flex justify-between items-baseline">
-                  <div>
-                    <span class="text-[13px] font-semibold text-[#a9aebf]">최근 30일 시세 흐름</span>
-                    <div id="chartTooltipPrice_${idx}" class="text-lg font-black text-white mt-0.5">
-                      ${item.current_price.toLocaleString()}원
-                    </div>
-                  </div>
-                  <div id="chartTooltipDate_${idx}" class="text-[13px] text-[#a9aebf] font-medium">
-                    터치하여 탐색
-                  </div>
-                </div>
-
-                <div class="w-full h-52 relative touch-none select-none bg-black/35 rounded-xl p-2 border border-white/10">
-                  <canvas id="stockChart_${idx}" class="w-full h-full block"></canvas>
-                  <!-- 실시간 끝점 펄스 인디케이터 (JS에서 위치 동적 계산) -->
-                  <div id="livePulse_${idx}" class="absolute pointer-events-none hidden" style="transform: translate(-50%, -50%);">
-                    <span class="relative flex h-3.5 w-3.5">
-                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full ${isGain ? 'bg-[#ff453a]' : 'bg-[#0a84ff]'} opacity-75"></span>
-                      <span class="relative inline-flex rounded-full h-3.5 w-3.5 ${isGain ? 'bg-[#ff453a]' : 'bg-[#0a84ff]'} border-2 border-white"></span>
-                    </span>
-                  </div>
-                </div>
+                ${mobileChartBlockHtml({ canvasId: `stockChart_${idx}`, priceId: `chartTooltipPrice_${idx}`, dateId: `chartTooltipDate_${idx}`, pulseId: `livePulse_${idx}`, priceText: `${item.current_price.toLocaleString()}원` })}
 
                 <div class="grid grid-cols-2 gap-2">
                   ${recStatCellsHtml(s)}
@@ -2438,23 +2552,7 @@
         `;
       }).join('');
 
-      // 펼쳐진 카드에 인터랙티브 차트 그리기
-      if (!isPcLayout() && expandedCardIndex >= 0 && list[expandedCardIndex]) {
-        const cur = list[expandedCardIndex];
-        if (cur.chart_data && cur.chart_data.prices && cur.chart_data.prices.length > 0) {
-          setTimeout(() => {
-            drawInteractiveChart(
-              `stockChart_${expandedCardIndex}`,
-              cur.chart_data.prices,
-              cur.chart_data.dates,
-              cur.change_rate >= 0,
-              `chartTooltipPrice_${expandedCardIndex}`,
-              `chartTooltipDate_${expandedCardIndex}`,
-              `livePulse_${expandedCardIndex}`
-            );
-          }, 50);
-        }
-      }
+      drawExpandedRecChart();
 
       renderDetailPane();
       renderBottomBar();
@@ -2550,6 +2648,8 @@
     }
 
     // 거래별 실현 손익 막대(이익 빨강·손실 파랑). 막대마다 부호·금액을 적어 색에만 의존하지 않는다
+    // 막대는 칸 가운데에 최대 56px(좁은 화면에서는 칸 폭). 제목과 함께 최대 600px 블록으로 묶는 것은 호출하는 쪽(accountPanelHtml)이 한다.
+    // 전체화면에서 거래가 두세 건뿐일 때 막대가 큰 블록처럼 퍼지거나 막대 사이가 멀어지지 않게 한다
     function pnlBarsHtml(recent, mobile) {
       const half = mobile ? 34 : 44;
       const bars = barSpecs(recent.map(r => r.pnl), half);
@@ -2558,7 +2658,7 @@
       const cells = bars.map((b, i) => {
         const r = recent[i];
         const bar = b.h === 0 ? ''
-          : `<div class="absolute inset-x-0 ${b.up ? 'rounded-t' : 'rounded-b'}" style="${b.up ? 'bottom' : 'top'}: ${half}px; height: ${b.h}px; background: ${b.up ? '#ff453a' : '#0a84ff'}"></div>`;
+          : `<div class="absolute left-1/2 -translate-x-1/2 w-full max-w-[56px] ${b.up ? 'rounded-t' : 'rounded-b'}" style="${b.up ? 'bottom' : 'top'}: ${half}px; height: ${b.h}px; background: ${b.up ? '#ff453a' : '#0a84ff'}"></div>`;
         return `
           <div class="flex flex-col items-center min-w-0">
             <div class="relative w-full" style="height: ${half * 2}px">${bar}</div>
@@ -2602,7 +2702,8 @@
       } else if (ts.sells === 0) {
         content = sumEmpty('매도 거래가 쌓이면 여기에 보여요');
       } else {
-        content = `<div class="flex justify-between text-[13px] text-[#a9aebf]"><span>최근 매도 거래별 실현 손익</span><span>단위 원</span></div>${pnlBarsHtml(ts.recent, mobile)}`;
+        // 제목과 차트를 한 블록(최대 600px)으로 묶어 오른쪽에 붙인다. 전체화면에서 제목과 차트가 멀리 떨어지지 않는다
+        content = `<div class="ml-auto w-full max-w-[600px] space-y-2"><div class="flex justify-between text-[13px] text-[#a9aebf]"><span>최근 매도 거래별 실현 손익</span><span>단위 원</span></div>${pnlBarsHtml(ts.recent, mobile)}</div>`;
       }
       return sumPanel(`
         <div class="flex items-center justify-between gap-2">${sumTitle('chart-column', '내 계좌')}${segHtml(summarySeg, mobile)}</div>
@@ -2751,15 +2852,16 @@
           </div>
           <div id="pcTipDate" class="text-[13px] text-[#a9aebf] font-medium">마우스를 올려 탐색</div>
         </div>
-        <div class="w-full h-48 relative select-none bg-black/35 rounded-xl p-2 border border-white/10 mt-3">
+        <div class="w-full h-96 relative select-none bg-black/35 rounded-xl p-2 border border-white/10 mt-3">
           <canvas id="pcChartCanvas" class="w-full h-full block"></canvas>
           <div id="pcPulse" class="absolute pointer-events-none hidden" style="transform: translate(-50%, -50%);"></div>
         </div>`);
     }
 
-    function drawPcChart(chart, isGain) {
+    // avgPrice: 보유 종목이면 평균 매입가(평단선), 아니면 생략
+    function drawPcChart(chart, isGain, avgPrice) {
       if (!chart || !chart.prices || chart.prices.length === 0) return;
-      setTimeout(() => drawInteractiveChart('pcChartCanvas', chart.prices, chart.dates, isGain, 'pcTipPrice', 'pcTipDate', 'pcPulse'), 50);
+      setTimeout(() => drawInteractiveChart('pcChartCanvas', chart.prices, chart.dates, isGain, 'pcTipPrice', 'pcTipDate', 'pcPulse', { avgPrice: avgPrice }), 50);
     }
 
     // 추천 상세: 헤더 → 차트 → 핵심 수치 4칸 → AI 진단 → 매수 (매수는 기존 모달을 연다)
@@ -2771,7 +2873,8 @@
       return `
         <div class="space-y-4 pb-4">
           <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0">
+            <div class="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 items-center">
+              <div class="row-span-2">${logoHtml(item.code, item.name, 52)}</div>
               <h2 class="text-2xl font-bold tracking-tight text-white">${item.name}</h2>
               <div class="flex flex-wrap items-center gap-2 mt-1.5 text-[13px] text-[#a9aebf]">
                 <span>${item.market} ${item.code || ''}</span>
@@ -2837,7 +2940,8 @@
       return `
         <div class="space-y-4 pb-4">
           <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0">
+            <div class="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 items-center">
+              <div class="row-span-2">${logoHtml(h.code, h.name, 52)}</div>
               <h2 class="text-2xl font-bold tracking-tight text-white">${h.name}</h2>
               <div class="flex flex-wrap items-center gap-2 mt-1.5 text-[13px] text-[#a9aebf]">
                 <span>${h.code} · 보유 중 · ${h.hold_days}일차</span>
@@ -2885,7 +2989,7 @@
         return `
           <div aria-busy="true" class="space-y-4 pb-4">
             <div class="flex items-start justify-between gap-4">
-              <div class="space-y-2"><div class="sk w-48 h-7"></div><div class="sk w-32 h-4"></div></div>
+              <div class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-2 items-center"><div class="row-span-2 w-[52px] h-[52px] rounded-full sk"></div><div class="sk w-48 h-7"></div><div class="sk w-32 h-4"></div></div>
               ${closeBtn}
             </div>
             ${pcPanel('<div class="sk h-56"></div>')}
@@ -2898,7 +3002,8 @@
       return `
         <div class="space-y-4 pb-4">
           <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0">
+            <div class="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 items-center">
+              <div class="row-span-2">${logoHtml(stock.code, stock.name, 52)}</div>
               <h2 class="text-2xl font-bold tracking-tight text-white">${stock.name}</h2>
               <div class="flex flex-wrap items-center gap-2 mt-1.5 text-[13px] text-[#a9aebf]">
                 <span>${stock.market ? stock.market + ' ' : ''}${stock.code}</span>
@@ -2950,7 +3055,7 @@
         drawPcChart(st.item.chart_data, st.item.change_rate >= 0);
       } else if (st.mode === 'holding') {
         pane.innerHTML = holdingDetailHtml(st.item);
-        drawPcChart(st.item.chart_data, st.item.pnl_pct >= 0);
+        drawPcChart(st.item.chart_data, st.item.pnl_pct >= 0, st.item.avg_price);
       } else {
         pane.innerHTML = summaryPaneHtml();
       }
@@ -2961,14 +3066,52 @@
      * - 세련된 반투명 그라데이션 영역 채우기
      * - 실시간 터치/드래그 시 십자선(Crosshair) 및 가격/날짜 실시간 피드백
      */
-    function drawInteractiveChart(canvasId, prices, dates, isGain, priceTooltipId = null, dateTooltipId = null, pulseId = null) {
+    // 캔버스 크기를 감시한다. 크기가 바뀌면(창 크기·화면 회전·레이아웃 변화) 한 프레임에 모아서 마지막 인자로 다시 그린다.
+    // 목록이 다시 그려져 캔버스가 사라지면 감시와 등록을 같이 지운다
+    function watchChartSize(canvas) {
+      if (typeof ResizeObserver === 'undefined') return;
+      if (!chartObserver) {
+        chartObserver = new ResizeObserver(entries => {
+          entries.forEach(e => chartPending.add(e.target));
+          if (chartFrame) return;
+          chartFrame = requestAnimationFrame(() => {
+            chartFrame = 0;
+            const targets = Array.from(chartPending);
+            chartPending.clear();
+            targets.forEach(cv => {
+              const reg = chartRegistry[cv.id];
+              const action = chartResizeAction(reg, cv, cv.isConnected, cv.clientWidth, cv.clientHeight);
+              if (action === 'forget') {
+                chartObserver.unobserve(cv);
+                if (reg && reg.el === cv) delete chartRegistry[cv.id];
+              } else if (action === 'redraw') {
+                drawInteractiveChart(...reg.args);
+              }
+            });
+          });
+        });
+      }
+      chartObserver.observe(canvas);
+    }
+
+    // opts.avgPrice: 보유 종목의 평균 매입가(있으면 주황 점선과 라벨로 그린다)
+    function drawInteractiveChart(canvasId, prices, dates, isGain, priceTooltipId = null, dateTooltipId = null, pulseId = null, opts = {}) {
       const canvas = document.getElementById(canvasId);
       if (!canvas) return;
+      // 마지막 인자와 그린 크기를 기억하고 크기 변화를 감시한다(창 크기가 바뀌면 글자·선·닷이 늘어나지 않게 같은 인자로 다시 그린다).
+      // 숨겨진 캔버스도 먼저 등록해 둬야 보이게 될 때 감시자가 그린다
+      const reg = chartRegistry[canvasId] = { el: canvas, args: [canvasId, prices, dates, isGain, priceTooltipId, dateTooltipId, pulseId, opts], w: 0, h: 0 };
+      watchChartSize(canvas);
+      // 숨겨진 탭 안의 캔버스는 크기가 0 이라 임시 크기로 그리면 닷·터치 위치가 어긋난다. 보일 때 다시 그린다
+      if (!canvas.clientWidth || !canvas.clientHeight) return;
 
       const ctx = canvas.getContext('2d');
       const dpr = window.devicePixelRatio || 1;
-      const width = canvas.parentElement.clientWidth || 320;
-      const height = canvas.parentElement.clientHeight || 208;
+      // 그림 크기는 화면에 보이는 캔버스 크기와 같게 한다(바깥 칸의 크기를 쓰면 여백만큼 줄어들어 보여서 닷·터치 위치가 어긋난다)
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      reg.w = width;
+      reg.h = height;
 
       canvas.width = width * dpr;
       canvas.height = height * dpr;
@@ -2982,9 +3125,10 @@
       const chartW = width - paddingLeft - paddingRight;
       const chartH = height - paddingTop - paddingBottom;
 
-      const min = Math.min(...prices);
-      const max = Math.max(...prices);
-      const range = (max - min) || 1;
+      // 세로 눈금은 가격과 평단을 모두 덮는 범위로 잡는다(최고/최저 라벨은 실제 가격의 최고·최저점에 붙는다)
+      const avgPrice = opts && opts.avgPrice > 0 ? opts.avgPrice : 0;
+      const scale = chartRange(prices, [avgPrice]);
+      const range = (scale.max - scale.min) || 1;
 
       const strokeColor = isGain ? '#ff453a' : '#0a84ff';
       const gradStart = isGain ? 'rgba(255, 69, 58, 0.28)' : 'rgba(10, 132, 255, 0.28)';
@@ -2993,7 +3137,7 @@
       // 각 데이터 포인트의 좌표 계산
       const points = prices.map((p, i) => {
         const x = paddingLeft + (i / (prices.length - 1)) * chartW;
-        const y = height - paddingBottom - ((p - min) / range) * chartH;
+        const y = height - paddingBottom - ((p - scale.min) / range) * chartH;
         return { x, y, price: p, date: dates[i] || '' };
       });
 
@@ -3009,11 +3153,29 @@
         const lastPt = points[points.length - 1];
         const pulseEl = document.getElementById(pulseId);
         if (pulseEl) {
-          pulseEl.style.left = `${lastPt.x}px`;
-          pulseEl.style.top = `${lastPt.y}px`;
+          const pos = pulsePosition(canvas, width, height, lastPt);
+          pulseEl.innerHTML = pulseDotHtml(isGain); // PC·모바일 모두 같은 닷 모양(호출하는 쪽은 빈 요소만 둔다)
+          pulseEl.style.left = `${pos.left}px`;
+          pulseEl.style.top = `${pos.top}px`;
           pulseEl.classList.remove('hidden');
         }
       }
+
+      const avgY = avgPrice ? height - paddingBottom - ((avgPrice - scale.min) / range) * chartH : null;
+
+      // 최고/최저 점 라벨(최고는 점 위, 최저는 점 아래)과 평단 라벨의 자리. 글자 폭은 실제 글꼴로 잰다
+      ctx.font = '13px -apple-system, sans-serif';
+      const extremes = [['high', maxIdx, -9], ['low', minIdx, 17]].map(([kind, idx, dy]) => {
+        const pt = points[idx];
+        const text = extremeText(kind, prices[idx]);
+        const w = ctx.measureText(text).width;
+        const al = extremeLabelAlign(pt.x, w, 4, width - 4);
+        const base = pt.y + dy;
+        return { text: text, anchor: al.anchor, tx: al.tx, x: pt.x, y: pt.y, base: base, isLast: idx === points.length - 1, rect: labelRect(al.anchor, al.tx, w, base) };
+      });
+      const avgText = avgPrice ? avgLabelText(avgPrice) : '';
+      ctx.font = '600 13px -apple-system, sans-serif';
+      const avgSpot = avgPrice ? avgLabelPlacement(avgY, ctx.measureText(avgText).width, extremes.map(e => e.rect), paddingLeft, width - paddingRight) : null;
 
       let activeIndex = -1;
 
@@ -3021,31 +3183,6 @@
         ctx.clearRect(0, 0, width, height);
 
         if (points.length < 2) return;
-
-        // 1. 최고가(MAX) & 최저가(MIN) 점선 가이드라인 및 텍스트
-        ctx.save();
-        ctx.setLineDash([2, 4]);
-        ctx.strokeStyle = '#2c2c2e';
-        ctx.lineWidth = 1;
-
-        // 최고가 라인
-        ctx.beginPath();
-        ctx.moveTo(paddingLeft, points[maxIdx].y);
-        ctx.lineTo(width - paddingRight, points[maxIdx].y);
-        ctx.stroke();
-
-        // 최저가 라인
-        ctx.beginPath();
-        ctx.moveTo(paddingLeft, points[minIdx].y);
-        ctx.lineTo(width - paddingRight, points[minIdx].y);
-        ctx.stroke();
-        ctx.restore();
-
-        // 최고/최저 라벨 텍스트
-        ctx.font = '13px -apple-system, sans-serif';
-        ctx.fillStyle = '#a9aebf';
-        ctx.fillText(`최고 ${max.toLocaleString()}원`, paddingLeft + 2, points[maxIdx].y - 4);
-        ctx.fillText(`최저 ${min.toLocaleString()}원`, paddingLeft + 2, points[minIdx].y + 12);
 
         // 2. 하단 그라데이션 영역 채우기 (각진 폴리곤 채우기)
         const gradient = ctx.createLinearGradient(0, paddingTop, 0, height);
@@ -3063,6 +3200,19 @@
         ctx.fillStyle = gradient;
         ctx.fill();
 
+        // 평단선: 내 평균 매입가의 높이(보유 종목 차트만). 흰색 점선, 지금 가격이 선 위인지 아래인지가 바로 보인다
+        if (avgY !== null) {
+          ctx.save();
+          ctx.setLineDash([2, 4]);
+          ctx.strokeStyle = 'rgba(245, 245, 247, 0.65)';
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          ctx.moveTo(paddingLeft, avgY);
+          ctx.lineTo(width - paddingRight, avgY);
+          ctx.stroke();
+          ctx.restore();
+        }
+
         // 3. 각이 살아있는 전문 트레이딩 꺾은선 (Polyline)
         ctx.beginPath();
         ctx.moveTo(points[0].x, points[0].y);
@@ -3073,6 +3223,35 @@
         ctx.lineWidth = 2.4;
         ctx.lineJoin = 'miter'; // 꺾이는 지점을 선명하게 각지게 표현
         ctx.stroke();
+
+        // 최고/최저: 그 점에 작은 점(마지막 점이면 실시간 닷이 대신한다)과 바로 위/아래 라벨. 점선은 쓰지 않는다
+        ctx.save();
+        ctx.font = '13px -apple-system, sans-serif';
+        extremes.forEach(e => {
+          if (!e.isLast) {
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, 3.5, 0, Math.PI * 2);
+            ctx.fillStyle = '#a9aebf';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+          ctx.fillStyle = '#a9aebf';
+          ctx.textAlign = e.anchor === 'middle' ? 'center' : e.anchor; // 캔버스에서는 가운데 정렬이 'center'
+          ctx.fillText(e.text, e.tx, e.base);
+        });
+        ctx.restore();
+
+        // 평단 라벨: 최고/최저와 같은 글꼴(조금 굵게), 흰색
+        if (avgSpot) {
+          ctx.save();
+          ctx.font = '600 13px -apple-system, sans-serif';
+          ctx.fillStyle = '#f5f5f7';
+          ctx.textAlign = avgSpot.anchor;
+          ctx.fillText(avgText, avgSpot.x, avgSpot.y);
+          ctx.restore();
+        }
 
         // 4. 실시간 터치/드래그 시 크로스헤어 & 툴팁 점
         if (activeIndex >= 0 && activeIndex < points.length) {

@@ -232,10 +232,10 @@ def test_stat_cells_become_visible_glass_cells_on_pc():
 
 
 def test_pc_detail_puts_the_buy_panel_next_to_the_ai_diagnosis():
-    # 시안 S1: AI 진단(1fr) | 매수 패널(360px) 2열. 차트는 낮게(h-48) 둔다
+    # 시안 S1: AI 진단(1fr) | 매수 패널(360px) 2열. 차트는 가로로 길고 납작하지 않게 h-96(384px)으로 둔다
     # (800px 높이에서는 매수 버튼까지 스크롤이 필요하다. 높이가 충분하면 첫 화면에 들어온다)
     body = _func("pcChartPanel")
-    assert "h-48" in body and "h-64" not in body
+    assert "h-96" in body and "h-72" not in body and "h-48" not in body
     rec = _func("recDetailHtml")
     assert "ibBoxHtml(" in rec.split("const buy")[1].split("return")[0]
     assert "grid-cols-[minmax(0,1fr)_360px]" in rec and rec.index("recAiHtml(") < rec.index("${buy}")
