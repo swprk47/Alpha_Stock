@@ -3,6 +3,7 @@ market_data.py
 한국 주식 시장(KOSPI, KOSDAQ) 실시간 시세 및 캔들 데이터 수집 모듈
 네이버 증권 공식 모바일 API 및 차트 API 연동
 """
+import re
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -121,9 +122,19 @@ def get_stock_daily_candles(code, count=60):
         print(f"Error fetching daily candles for {code}: {e}")
         return None
 
+LOGO_URL_PREFIX = "https://ssl.pstatic.net/imgstock/"
+_LOGO_URL_RE = re.compile(r"https://ssl\.pstatic\.net/imgstock/[A-Za-z0-9._/-]+")  # 프론트 LOGO_URL_PATTERN 과 같은 규칙
+
+
+def safe_logo_url(url) -> str:
+    """네이버 로고 주소만 통과시킨다(화면이 img src 로 그대로 쓰므로). 그 밖의 값은 빈 문자열."""
+    return url if isinstance(url, str) and _LOGO_URL_RE.fullmatch(url) else ""
+
+
 def get_realtime_stock_info(code):
     """
     단일 종목 실시간 상세 시세 정보 조회
+    logo_url: 응답의 itemLogoPngUrl. 주식은 종목 로고, ETF·ETN 은 운용사·증권사 로고다(코드로 만든 주소는 ETF 에서 404)
     """
     url = f"https://m.stock.naver.com/api/stock/{code}/basic"
     try:
@@ -137,7 +148,8 @@ def get_realtime_stock_info(code):
                 "change_rate": float(data.get("fluctuationsRatio", 0.0)),
                 "high_price": int(data.get("highPrice", "0").replace(",", "")),
                 "low_price": int(data.get("lowPrice", "0").replace(",", "")),
-                "volume": int(data.get("accumulatedTradingVolume", "0").replace(",", ""))
+                "volume": int(data.get("accumulatedTradingVolume", "0").replace(",", "")),
+                "logo_url": safe_logo_url(data.get("itemLogoPngUrl"))
             }
     except Exception:
         pass
@@ -193,7 +205,8 @@ def search_stocks(query: str):
                 "change_rate": change_rate,
                 "budget_status": budget_status,
                 "budget_desc": budget_desc,
-                "logo_url": f"https://ssl.pstatic.net/imgstock/fn/real/logo/png/stock/Stock{code}.png"
+                # 시세 응답의 로고(ETF 는 운용사 로고)를 우선하고, 없을 때만 코드로 만든 주식 로고 주소
+                "logo_url": (info or {}).get("logo_url") or f"{LOGO_URL_PREFIX}fn/real/logo/png/stock/Stock{code}.png"
             })
 
         return results
@@ -244,6 +257,7 @@ def get_stock_detail_with_chart(code: str, budget: int = 100000):
         "high_price": info.get("high_price", 0),
         "low_price": info.get("low_price", 0),
         "volume": info.get("volume", 0),
+        "logo_url": info.get("logo_url", ""),
         "chart_data": chart_data,
         "is_fractional": is_fractional,
         "fractional_desc": fractional_desc,

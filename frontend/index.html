@@ -1449,7 +1449,7 @@
         return `
           <div onclick="selectSearchResult('${item.code}', '${String(item.market || '').replace(/[^A-Za-z]/g, '')}')" class="p-3 flex items-center justify-between hover:bg-[#2c2c2e] cursor-pointer tap-press transition">
             <div class="flex items-center gap-2.5">
-              ${logoHtml(item.code, item.name, 28)}
+              ${logoHtml(item.code, item.name, 28, item.logo_url)}
               <div>
                 <div class="flex items-center gap-1.5">
                   <h4 class="font-bold text-[13px] text-white">${item.name}</h4>
@@ -1507,12 +1507,17 @@
     }
 
     // <logo-logic>
-    // 종목 로고: 주소는 종목코드로만 만든다(보유 종목에는 저장된 logo_url 이 비어 있을 수 있다).
-    // 이미지가 없거나(ETF 등) 불러오지 못하면 이름 첫 글자 원으로 대신하고, 실패한 코드는 기억해 다시 요청하지 않는다
+    // 종목 로고: 서버가 내려준 logo_url(네이버 시세 응답. 주식은 종목 로고, ETF 는 운용사 로고)을 쓰되 네이버 로고 주소만 받는다.
+    // 없거나 허용되지 않으면 종목코드로 만든 주식 로고 주소, 그것도 안 되면(잘못된 코드) 이름 첫 글자 원이다.
+    // 불러오지 못해도 첫 글자 원으로 대신하고, 실패한 주소는 기억해 목록을 다시 그릴 때 요청을 되풀이하지 않는다
     const LOGO_CODE_PATTERN = /^[0-9A-Z]{6}$/; // schemas.CODE_PATTERN 과 같은 규칙
+    const LOGO_URL_PATTERN = /^https:\/\/ssl\.pstatic\.net\/imgstock\/[A-Za-z0-9._\/-]+$/; // 서버 market_data.LOGO_URL_PREFIX 와 같은 호스트
     const logoFailed = new Set();
     function logoUrl(code) {
       return LOGO_CODE_PATTERN.test(code) ? `https://ssl.pstatic.net/imgstock/fn/real/logo/png/stock/Stock${code}.png` : '';
+    }
+    function logoSrc(code, url) {
+      return typeof url === 'string' && LOGO_URL_PATTERN.test(url) ? url : logoUrl(code);
     }
     function logoEsc(s) {
       return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1520,19 +1525,19 @@
     function logoInitial(name) {
       return Array.from(String(name == null ? '' : name).trim())[0] || '?'; // 이모지 등을 반으로 자르지 않는다
     }
-    function logoHtml(code, name, size) {
+    function logoHtml(code, name, size, url) {
       const initial = logoInitial(name);
       const box = `width: ${size}px; height: ${size}px; font-size: ${Math.round(size * 0.42)}px`;
       const cls = 'shrink-0 rounded-full overflow-hidden flex items-center justify-center text-white font-bold';
-      const url = logoFailed.has(code) ? '' : logoUrl(code);
+      const src = logoSrc(code, url);
       // 네이버 로고는 이미 원형·투명 이미지라 배경 없이 그대로 보인다. 글자로 대신할 때만 회색 원을 둔다
-      if (url) {
-        return `<div class="${cls}" style="${box}"><img src="${url}" alt="" data-initial="${logoEsc(initial)}" onerror="logoImgFailed(this, '${code}')" class="w-full h-full object-contain"></div>`;
+      if (src && !logoFailed.has(src)) {
+        return `<div class="${cls}" style="${box}"><img src="${src}" alt="" data-src="${src}" data-initial="${logoEsc(initial)}" onerror="logoImgFailed(this)" class="w-full h-full object-contain"></div>`;
       }
       return `<div class="${cls} bg-[#2c2c2e]" style="${box}">${logoEsc(initial)}</div>`;
     }
-    function logoImgFailed(img, code) {
-      logoFailed.add(code);
+    function logoImgFailed(img) {
+      if (img.dataset && img.dataset.src) logoFailed.add(img.dataset.src);
       const p = img.parentElement;
       if (!p) return;
       p.textContent = (img.dataset && img.dataset.initial) || '?';
@@ -1704,7 +1709,7 @@
       document.getElementById('buyAmountInput').value = currentBuyAmount;
       calculateQtyFromAmount();
 
-      document.getElementById('buyStockLogo').innerHTML = logoHtml(stockItem.code, stockItem.name, 40);
+      document.getElementById('buyStockLogo').innerHTML = logoHtml(stockItem.code, stockItem.name, 40, stockItem.logo_url);
       document.getElementById('buyStockName').textContent = stockItem.name;
       document.getElementById('buyStockCode').textContent = stockItem.code;
       document.getElementById('buyStockMarket').textContent = stockItem.market || 'KOSPI';
@@ -2434,7 +2439,7 @@
             <div role="button" tabindex="0" ${isPcLayout() ? `aria-pressed="${isSelected}"` : `aria-expanded="${isExpanded}"`} onclick="toggleHolding(${idx})" ${rowKeyAttr(`toggleHolding(${idx})`)}
                  class="min-h-[64px] py-2.5 flex items-center justify-between gap-3 cursor-pointer tap-press ${pcRowClass(isPcLayout(), isSelected)}">
               <div class="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 items-center">
-                <div class="row-span-2">${logoHtml(h.code, h.name, 36)}</div>
+                <div class="row-span-2">${logoHtml(h.code, h.name, 36, h.logo_url)}</div>
                 <div class="flex flex-wrap items-center gap-1.5">
                   <h4 class="font-bold text-[15px] text-white">${h.name}</h4>
                   <span class="text-[13px] text-[#a9aebf]">${h.code}</span>
@@ -2513,7 +2518,7 @@
                 <div class="w-6 h-6 shrink-0 rounded-full bg-[#1c1c1e] text-[#a9aebf] text-[13px] font-bold flex items-center justify-center">
                   ${idx + 1}
                 </div>
-                ${logoHtml(item.code, item.name, 36)}
+                ${logoHtml(item.code, item.name, 36, item.logo_url)}
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-1.5">
                     <h3 class="font-bold text-[15px] text-white tracking-tight">${item.name}</h3>
@@ -2874,7 +2879,7 @@
         <div class="space-y-4 pb-4">
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 items-center">
-              <div class="row-span-2">${logoHtml(item.code, item.name, 52)}</div>
+              <div class="row-span-2">${logoHtml(item.code, item.name, 52, item.logo_url)}</div>
               <h2 class="text-2xl font-bold tracking-tight text-white">${item.name}</h2>
               <div class="flex flex-wrap items-center gap-2 mt-1.5 text-[13px] text-[#a9aebf]">
                 <span>${item.market} ${item.code || ''}</span>
@@ -2941,7 +2946,7 @@
         <div class="space-y-4 pb-4">
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 items-center">
-              <div class="row-span-2">${logoHtml(h.code, h.name, 52)}</div>
+              <div class="row-span-2">${logoHtml(h.code, h.name, 52, h.logo_url)}</div>
               <h2 class="text-2xl font-bold tracking-tight text-white">${h.name}</h2>
               <div class="flex flex-wrap items-center gap-2 mt-1.5 text-[13px] text-[#a9aebf]">
                 <span>${h.code} · 보유 중 · ${h.hold_days}일차</span>
@@ -3003,7 +3008,7 @@
         <div class="space-y-4 pb-4">
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 items-center">
-              <div class="row-span-2">${logoHtml(stock.code, stock.name, 52)}</div>
+              <div class="row-span-2">${logoHtml(stock.code, stock.name, 52, stock.logo_url)}</div>
               <h2 class="text-2xl font-bold tracking-tight text-white">${stock.name}</h2>
               <div class="flex flex-wrap items-center gap-2 mt-1.5 text-[13px] text-[#a9aebf]">
                 <span>${stock.market ? stock.market + ' ' : ''}${stock.code}</span>

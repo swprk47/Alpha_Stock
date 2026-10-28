@@ -135,11 +135,12 @@ def me(user: dict = Depends(get_current_user)):
 def get_portfolio(user: dict = Depends(get_current_user)):
     user_id = user["user_id"]
     user_data = portfolio_mgr.get_or_create_user(user_id)
-    current_prices, chart_data_map = {}, {}
+    current_prices, chart_data_map, logo_map = {}, {}, {}
     for code in user_data["holdings"].keys():
         info = get_realtime_stock_info(code)
         if info and info.get("current_price", 0) > 0:
             current_prices[code] = info["current_price"]
+            logo_map[code] = info.get("logo_url", "")
         candles = get_stock_daily_candles(code, count=30)
         if candles is not None and len(candles) > 0:
             chart_data_map[code] = {
@@ -151,6 +152,7 @@ def get_portfolio(user: dict = Depends(get_current_user)):
     for h in summary["holdings"]:
         h["chart_data"] = chart_data_map.get(h["code"], {"dates": [], "prices": []})
         h["price_stale"] = h["code"] not in current_prices
+        h["logo_url"] = logo_map.get(h["code"], "")  # 시세 응답의 로고(ETF 는 운용사 로고). 시세 실패·없음이면 빈 값 → 화면이 코드 주소·첫 글자로 대신
         h["is_fractional"] = orders._is_fractional(h["code"])  # 매도 화면의 소수 수량 입력 허용 여부(목록 조회, 실패하면 정수만)
     return {"success": True, "portfolio": summary}
 
