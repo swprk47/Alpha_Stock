@@ -47,7 +47,9 @@ def _compute_bucket(bucket_budget):
     candidates = get_market_candidate_stocks(max_price=bucket_budget, min_trading_value_m=2000)
     recs = get_recommendations(candidates[:30], get_stock_daily_candles,
                                budget=bucket_budget, top_n=CACHE_TOP_N)
-    return attach_diagnosis(recs, get_stock_daily_candles, budget=bucket_budget)
+    # 종목 종류(ETF 태그용)는 후보 목록에서 코드별로 이어 붙인다(strategy.py 는 바꾸지 않는다)
+    kinds = {c["code"]: c.get("security_type", "") for c in candidates}
+    return attach_diagnosis(recs, get_stock_daily_candles, budget=bucket_budget, security_types=kinds)
 
 rec_cache = RecommendationCache(_compute_bucket)
 forced_at = {}   # user_id -> 마지막 강제 갱신 시각
@@ -135,12 +137,13 @@ def me(user: dict = Depends(get_current_user)):
 def get_portfolio(user: dict = Depends(get_current_user)):
     user_id = user["user_id"]
     user_data = portfolio_mgr.get_or_create_user(user_id)
-    current_prices, chart_data_map, logo_map = {}, {}, {}
+    current_prices, chart_data_map, logo_map, kind_map = {}, {}, {}, {}
     for code in user_data["holdings"].keys():
         info = get_realtime_stock_info(code)
         if info and info.get("current_price", 0) > 0:
             current_prices[code] = info["current_price"]
             logo_map[code] = info.get("logo_url", "")
+            kind_map[code] = info.get("security_type", "")
         candles = get_stock_daily_candles(code, count=30)
         if candles is not None and len(candles) > 0:
             chart_data_map[code] = {
@@ -152,6 +155,7 @@ def get_portfolio(user: dict = Depends(get_current_user)):
     for h in summary["holdings"]:
         h["chart_data"] = chart_data_map.get(h["code"], {"dates": [], "prices": []})
         h["price_stale"] = h["code"] not in current_prices
+        h["security_type"] = kind_map.get(h["code"], "")  # stock/etf/etn, 시세 실패면 빈 값(모름 → 태그 없음)
         h["logo_url"] = logo_map.get(h["code"], "")  # 시세 응답의 로고(ETF 는 운용사 로고). 시세 실패·없음이면 빈 값 → 화면이 코드 주소·첫 글자로 대신
         h["is_fractional"] = orders._is_fractional(h["code"])  # 매도 화면의 소수 수량 입력 허용 여부(목록 조회, 실패하면 정수만)
     return {"success": True, "portfolio": summary}

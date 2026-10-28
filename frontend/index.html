@@ -568,6 +568,7 @@
           </div>
           <div class="flex items-center gap-1 mt-0.5">
             <span id="buyStockMarket" class="text-[13px] px-1.5 py-0.5 rounded bg-[#1c1c1e] text-[#a9aebf]">KOSPI</span>
+            <span id="buyKindTag"></span>
             <span id="buyFractionalTag" class="text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold">소수점 가능</span>
           </div>
         </div>
@@ -1456,7 +1457,7 @@
                   <span class="text-[13px] text-[#a9aebf]">${item.market}</span>
                   ${budgetBadge}
                 </div>
-                <div class="text-[13px] text-[#a9aebf]">${item.code}</div>
+                <div class="flex items-center gap-1.5 text-[13px] text-[#a9aebf]"><span>${item.code}</span>${securityTagHtml(item.security_type)}</div>
               </div>
             </div>
 
@@ -1544,6 +1545,16 @@
       p.style.background = '#2c2c2e';
     }
     // </logo-logic>
+
+    // <tag-logic>
+    // 종목 종류 태그(시안 '태그 C': 밝은 회색 채움). 서버가 주는 security_type 이 etf/etn 일 때만 그린다.
+    // 일반 주식·값 없음(시세 실패 등)·이상한 값이면 아무것도 그리지 않는다(모르는 종목에 틀리게 달지 않는다)
+    const SECURITY_TAG_LABELS = { etf: 'ETF', etn: 'ETN' };
+    function securityTagHtml(type) {
+      const label = typeof type === 'string' && Object.prototype.hasOwnProperty.call(SECURITY_TAG_LABELS, type) ? SECURITY_TAG_LABELS[type] : '';
+      return label ? `<span class="text-[13px] px-1.5 rounded bg-[#3a3a3c] text-[#f5f5f7] ring-1 ring-inset ring-white/20 font-semibold whitespace-nowrap">${label}</span>` : '';
+    }
+    // </tag-logic>
 
     // ===== 💡 수량 조절 매수 모달 로직 =====
     // <toast-logic>
@@ -1709,6 +1720,7 @@
       document.getElementById('buyAmountInput').value = currentBuyAmount;
       calculateQtyFromAmount();
 
+      document.getElementById('buyKindTag').innerHTML = securityTagHtml(stockItem.security_type);
       document.getElementById('buyStockLogo').innerHTML = logoHtml(stockItem.code, stockItem.name, 40, stockItem.logo_url);
       document.getElementById('buyStockName').textContent = stockItem.name;
       document.getElementById('buyStockCode').textContent = stockItem.code;
@@ -2443,6 +2455,7 @@
                 <div class="flex flex-wrap items-center gap-1.5">
                   <h4 class="font-bold text-[15px] text-white">${h.name}</h4>
                   <span class="text-[13px] text-[#a9aebf]">${h.code}</span>
+                  ${securityTagHtml(h.security_type)}
                 </div>
                 <div class="text-[13px] text-[#a9aebf] mt-0.5">${qtyFormatted}주 · 평단 ${h.avg_price.toLocaleString()}원</div>
               </div>
@@ -2524,7 +2537,7 @@
                     <h3 class="font-bold text-[15px] text-white tracking-tight">${item.name}</h3>
                     <span class="text-[13px] text-[#a9aebf]">${item.market}</span>
                     <span class="text-[13px] font-black px-1.5 rounded ${gradeStyle.bg} ${gradeStyle.text}" title="${gradeStyle.label}">${gradeLabel}</span>
-                    ${item.is_fractional === true ? '<span class="text-[13px] px-1.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>' : ''}
+                    ${securityTagHtml(item.security_type)}
                   </div>
                   <div class="text-[13px] text-[#a9aebf] mt-0.5">
                     <span class="text-white font-medium">${s.recommended_quantity}주 매수 추천</span><span class="hidden sm:inline"> · </span><span class="block sm:inline whitespace-nowrap">약 ${s.total_cost.toLocaleString()}원</span>
@@ -2883,6 +2896,7 @@
               <h2 class="text-2xl font-bold tracking-tight text-white">${item.name}</h2>
               <div class="flex flex-wrap items-center gap-2 mt-1.5 text-[13px] text-[#a9aebf]">
                 <span>${item.market} ${item.code || ''}</span>
+                ${securityTagHtml(item.security_type)}
                 ${item.is_fractional === true ? '<span class="px-1.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>' : ''}
               </div>
             </div>
@@ -2950,6 +2964,7 @@
               <h2 class="text-2xl font-bold tracking-tight text-white">${h.name}</h2>
               <div class="flex flex-wrap items-center gap-2 mt-1.5 text-[13px] text-[#a9aebf]">
                 <span>${h.code} · 보유 중 · ${h.hold_days}일차</span>
+                ${securityTagHtml(h.security_type)}
                 ${badge}
               </div>
             </div>
@@ -3012,6 +3027,7 @@
               <h2 class="text-2xl font-bold tracking-tight text-white">${stock.name}</h2>
               <div class="flex flex-wrap items-center gap-2 mt-1.5 text-[13px] text-[#a9aebf]">
                 <span>${stock.market ? stock.market + ' ' : ''}${stock.code}</span>
+                ${securityTagHtml(stock.security_type)}
                 ${stock.is_fractional === true ? '<span class="px-1.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>' : ''}
               </div>
             </div>

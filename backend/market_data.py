@@ -78,7 +78,8 @@ def get_market_candidate_stocks(max_price=50000, min_price=1000, min_trading_val
                             "trading_value_m": trading_value_m,
                             "volume": s.get("accumulatedTradingVolumeRaw", 0),
                             "market": market,
-                            "logo_url": s.get("itemLogoPngUrl", "") or s.get("itemLogoUrl", "")
+                            "logo_url": s.get("itemLogoPngUrl", "") or s.get("itemLogoUrl", ""),
+                            "security_type": safe_security_type(s.get("stockEndType"))
                         })
             except Exception as e:
                 print(f"Error fetching {market} page {page}: {e}")
@@ -131,6 +132,14 @@ def safe_logo_url(url) -> str:
     return url if isinstance(url, str) and _LOGO_URL_RE.fullmatch(url) else ""
 
 
+SECURITY_TYPES = ("stock", "etf", "etn")
+
+
+def safe_security_type(value) -> str:
+    """종목 종류(네이버 stockEndType). stock/etf/etn 만 통과, 그 밖의 값·없음은 빈 문자열(= 모름, 화면은 태그를 달지 않는다)."""
+    return value if isinstance(value, str) and value in SECURITY_TYPES else ""
+
+
 def get_realtime_stock_info(code):
     """
     단일 종목 실시간 상세 시세 정보 조회
@@ -149,7 +158,8 @@ def get_realtime_stock_info(code):
                 "high_price": int(data.get("highPrice", "0").replace(",", "")),
                 "low_price": int(data.get("lowPrice", "0").replace(",", "")),
                 "volume": int(data.get("accumulatedTradingVolume", "0").replace(",", "")),
-                "logo_url": safe_logo_url(data.get("itemLogoPngUrl"))
+                "logo_url": safe_logo_url(data.get("itemLogoPngUrl")),
+                "security_type": safe_security_type(data.get("stockEndType"))
             }
     except Exception:
         pass
@@ -206,7 +216,9 @@ def search_stocks(query: str):
                 "budget_status": budget_status,
                 "budget_desc": budget_desc,
                 # 시세 응답의 로고(ETF 는 운용사 로고)를 우선하고, 없을 때만 코드로 만든 주식 로고 주소
-                "logo_url": (info or {}).get("logo_url") or f"{LOGO_URL_PREFIX}fn/real/logo/png/stock/Stock{code}.png"
+                "logo_url": (info or {}).get("logo_url") or f"{LOGO_URL_PREFIX}fn/real/logo/png/stock/Stock{code}.png",
+                # 자동완성 응답은 ETF 도 stock 으로 분류하므로 시세 응답의 종류를 쓴다(시세 실패면 모름)
+                "security_type": (info or {}).get("security_type", "")
             })
 
         return results
@@ -258,6 +270,7 @@ def get_stock_detail_with_chart(code: str, budget: int = 100000):
         "low_price": info.get("low_price", 0),
         "volume": info.get("volume", 0),
         "logo_url": info.get("logo_url", ""),
+        "security_type": info.get("security_type", ""),
         "chart_data": chart_data,
         "is_fractional": is_fractional,
         "fractional_desc": fractional_desc,
@@ -266,10 +279,10 @@ def get_stock_detail_with_chart(code: str, budget: int = 100000):
         "grade_reasons": grade_result["grade_reasons"]
     }
 
-def attach_diagnosis(recs, candles_provider, budget: int = 100000):
+def attach_diagnosis(recs, candles_provider, budget: int = 100000, security_types=None):
     """
     추천 목록의 각 항목에 AI 진단 등급(grade, grade_score, grade_reasons)과
-    소수점 판별(is_fractional, fractional_desc)을 덧붙인 새 목록을 반환합니다.
+    소수점 판별(is_fractional, fractional_desc), 종목 종류(security_type, 코드→종류 dict 로 받으며 없으면 "")를 덧붙인 새 목록을 반환합니다.
     상세 조회(get_stock_detail_with_chart)와 같은 get_stock_grade 기준을 사용하며 strategy.py는 바꾸지 않습니다.
     일봉 조회가 실패하거나 25일 미만이면 등급은 N/A, 소수점 판별(네트워크 없음)은 그대로 유지합니다.
     """
@@ -294,6 +307,7 @@ def attach_diagnosis(recs, candles_provider, budget: int = 100000):
             "grade_reasons": grade_result["grade_reasons"],
             "is_fractional": is_fractional,
             "fractional_desc": fractional_desc,
+            "security_type": (security_types or {}).get(rec["code"], rec.get("security_type", "")),
         })
     return result
 
