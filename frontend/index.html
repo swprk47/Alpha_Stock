@@ -579,7 +579,10 @@
     <div role="dialog" aria-modal="true" aria-labelledby="buyModalTitle" class="sheet-panel glass-modal w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 flex flex-col gap-2.5 max-h-[95vh] overflow-y-auto [&>*]:shrink-0">
       <div class="flex justify-between items-center">
         <div>
-          <h3 id="buyModalTitle" class="font-bold text-base text-white">종목 매수</h3>
+          <div class="flex items-center gap-2">
+            <h3 id="buyModalTitle" class="font-bold text-base text-white">종목 매수</h3>
+            <span id="buyMarketTag"></span>
+          </div>
           <span id="buyModalSubtitle" class="text-[13px] text-[#a9aebf]">시드머니 맞춤 매수 시뮬레이션</span>
         </div>
         <button id="buyModalCloseBtn" type="button" onclick="closeBuyModal()" aria-label="닫기" class="text-[#a9aebf] hover:text-white text-lg w-11 h-11 -mr-2 flex items-center justify-center">
@@ -1476,6 +1479,15 @@
       const label = typeof type === 'string' && Object.prototype.hasOwnProperty.call(SECURITY_TAG_LABELS, type) ? SECURITY_TAG_LABELS[type] : '';
       return label ? `<span class="text-[13px] px-1.5 rounded bg-[#3a3a3c] text-[#f5f5f7] ring-1 ring-inset ring-white/20 font-semibold whitespace-nowrap">${label}</span>` : '';
     }
+
+    // 장 상태 태그(버튼): 누르면 "장 시간 안내" 팝업. sessionTag·MARKET_COLORS·MARKET_TAG_TEXT 는 market-logic 에 있다.
+    // 색과 글자를 함께 쓰고, 모르는 값이면 태그를 달지 않는다(빈 문자열)
+    function marketTagHtml(ms) {
+      const tag = sessionTag(ms);
+      if (!tag) return '';
+      const color = MARKET_COLORS[tag.tone];
+      return `<button type="button" aria-label="장 시간 안내 열기" onclick="openMarketHours('${tag.tone}', ${ms.nxt_listed === true})" class="inline-flex items-center gap-1.5 text-[13px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap tap-press" style="background:${color}33;color:${MARKET_TAG_TEXT[tag.tone]}"><span class="w-1.5 h-1.5 rounded-full" style="background:${color}"></span>${tag.label}<span aria-hidden="true" class="text-[13px] opacity-80">ⓘ</span></button>`;
+    }
     // </tag-logic>
 
     // <stale-logic>
@@ -1520,6 +1532,7 @@
     // 여기서는 그 결과 {state: regular|pre|after|closed|unknown, nxt_listed}만 쓴다. 시계는 팝업의 현재 시각(V) 표시에만 쓰고 판단에 쓰지 않는다
     // (공휴일을 모르므로). 시간표는 공식 확인된 값만 넣는다: NXT 세 구간(nextrade.co.kr), KRX 정규장. KRX 장전·장후 시각은 추후 확인.
     const MARKET_COLORS = { pre: '#64d2ff', regular: '#30d158', after: '#bf5af2', closed: '#8e8e93' };
+    const MARKET_TAG_TEXT = { pre: '#8fdcff', regular: '#5fe08a', after: '#d8a0ff', closed: '#c7c7cc' }; // 어두운 바탕에서 읽히는 글자색(점·막대는 MARKET_COLORS)
     const MARKET_TAG_LABELS = { pre: '프리마켓', regular: '정규장', after: '애프터마켓', closed: '장 마감' };
     const MARKET_AXIS = { from: 480, to: 1200 }; // 막대 축 08:00~20:00 (분)
     const MARKET_HOURS = {
@@ -1680,6 +1693,7 @@
       const isFractional = stockItem.is_fractional === true; // 서버 판별값만 신뢰 (없으면 정수만)
 
       document.getElementById('buyKindTag').innerHTML = securityTagHtml(stockItem.security_type);
+      document.getElementById('buyMarketTag').innerHTML = marketTagHtml(stockItem.market_state); // 제목줄(카드 안 칩 줄은 이미 빽빽하다)
       document.getElementById('buyStockLogo').innerHTML = logoHtml(stockItem.code, stockItem.name, 40, stockItem.logo_url);
       document.getElementById('buyStockName').textContent = stockItem.name;
       document.getElementById('buyStockCode').textContent = stockItem.code;
@@ -2743,6 +2757,7 @@
                 <span>${item.market} ${item.code || ''}</span>
                 ${securityTagHtml(item.security_type)}
                 ${item.is_fractional === true ? '<span class="px-1.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>' : ''}
+                ${marketTagHtml(item.market_state)}
               </div>
             </div>
             <div class="text-right shrink-0">
@@ -2813,6 +2828,7 @@
                 <span>${h.code} · 보유 중 · ${h.hold_days}일차</span>
                 ${securityTagHtml(h.security_type)}
                 ${badge}
+                ${marketTagHtml(h.market_state)}
               </div>
             </div>
             <div class="text-right shrink-0">
@@ -2876,6 +2892,7 @@
                 <span>${stock.market ? stock.market + ' ' : ''}${stock.code}</span>
                 ${securityTagHtml(stock.security_type)}
                 ${stock.is_fractional === true ? '<span class="px-1.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>' : ''}
+                ${marketTagHtml(stock.market_state)}
               </div>
             </div>
             <div class="flex items-start gap-3">
