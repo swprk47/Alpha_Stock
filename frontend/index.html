@@ -1622,6 +1622,16 @@
       return '장 상태를 확인하지 못했어요. 체결가는 주문 시점 시세로 정해져요.';
     }
 
+    // 화면이 들고 있는 상태는 묵을 수 있다(추천 캐시, 한 번 받은 검색 상세·매수 시트, 백그라운드 PWA). 정규장이 아닌 상태로 막거나 경고하기 직전에만
+    // 그 종목의 상태를 새로 받아 판단한다. 못 받거나 모양이 이상하면 가지고 있던 값을 쓴다(서버가 주문 시점 시세로 최종 판단한다)
+    async function freshMarketState(ms, fetchState) {
+      try {
+        const fresh = await fetchState();
+        if (fresh && typeof fresh === 'object' && typeof fresh.state === 'string') return fresh;
+      } catch (_) {}
+      return ms;
+    }
+
     // 설정이 "차단"(allowClosed === false)이고 정규장이 아니면(pre/after/closed) 서버와 같은 안내를 돌려준다. 그 밖에는 null(unknown 도 막지 않는다)
     const MARKET_BLOCK_MESSAGE = '장 마감 중에는 주문하지 않도록 설정돼 있어요. 내 메뉴에서 바꿀 수 있어요.';
     function orderBlock(ms, allowClosed) {
@@ -3414,11 +3424,13 @@
       if (!h) return;
       const qty = sellQtyOf(h);
       if (!(qty > 0)) return;
-      const block = orderBlock(h.market_state, userSettings.allow_closed_trading); // 매수와 같은 규칙(서버가 최종)
+      let ms = h.market_state; // 매수와 같은 규칙(서버가 최종)
+      if (orderBlock(ms, false)) ms = await freshMarketState(ms, async () => (await api(`/api/stock/${h.code}`)).stock.market_state);
+      const block = orderBlock(ms, userSettings.allow_closed_trading);
       if (block) { showToast(block, 'error'); return; }
       const full = isFullSell(qty, h.quantity);
       const est = await sellConfirmEst(h, qty);
-      openTradeConfirm(sellConfirmCfg(h.name, qty, full, est, marketWarning(h.market_state, h.current_price)), async () => {
+      openTradeConfirm(sellConfirmCfg(h.name, qty, full, est, marketWarning(ms, h.current_price)), async () => {
         const data = await api('/api/sell', { method: 'POST', body: sellRequestBody(code, qty, h.quantity) });
         delete sellSel[code];
         delete sellPreview[code];
@@ -3660,9 +3672,11 @@
       const t = buyTotals(item.current_price, qty, ibCash());
       if (!(qty > 0) || t.short) return;
       // 설정이 "차단"이고 정규장이 아니면 확인창 없이 안내한다(서버가 최종 판단: 409). unknown 은 막지 않는다
-      const block = orderBlock(item.market_state, userSettings.allow_closed_trading);
+      let ms = item.market_state;
+      if (orderBlock(ms, false)) ms = await freshMarketState(ms, async () => (await api(`/api/stock/${item.code}`)).stock.market_state); // 묵은 pre/closed 로 정규장 주문을 막지 않는다
+      const block = orderBlock(ms, userSettings.allow_closed_trading);
       if (block) { showToast(block, 'error'); return; }
-      openTradeConfirm(buyConfirmCfg(item.name, qty, t, marketWarning(item.market_state, item.current_price)), async () => {
+      openTradeConfirm(buyConfirmCfg(item.name, qty, t, marketWarning(ms, item.current_price)), async () => {
         const tg = swingTargets(item.current_price); // 목표가·손절가는 매수 모달이 저장하는 값과 같은 식
         const data = await api('/api/buy', {
           method: 'POST',

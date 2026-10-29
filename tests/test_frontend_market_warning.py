@@ -44,7 +44,7 @@ def run(tmp_path):
 
     def _run(expr):
         f = tmp_path / "t.js"
-        f.write_text(src + f"\nconsole.log(JSON.stringify({expr}));\n", encoding="utf-8")
+        f.write_text(src + f"\n(async () => console.log(JSON.stringify(await ({expr}))))();\n", encoding="utf-8")  # async 함수도 기다린다
         out = subprocess.run(["node", str(f)], capture_output=True, text=True, encoding="utf-8", timeout=30)
         assert out.returncode == 0, out.stderr
         return json.loads(out.stdout)
@@ -137,13 +137,30 @@ def test_trade_modal_has_a_warn_slot_between_lead_and_summary():
     assert "tradeWarn" in body and "v.warn" in body
 
 
-def test_execute_buy_and_sell_check_the_block_first_and_pass_the_warning():
-    for func, item, var in (("executeInlineBuy", "item", "item"), ("executeSell", "h", "h")):
+def test_execute_buy_and_sell_refresh_a_non_regular_state_before_blocking_or_warning():
+    # 화면이 들고 있는 상태는 묵을 수 있다(추천 캐시 5분, 검색 상세·매수 시트는 한 번 받은 뒤 그대로, 백그라운드 PWA).
+    # 묵은 pre/closed 로 정규장 주문을 막거나 틀린 경고를 보이지 않도록, 정규장이 아닌 상태일 때만 그 종목의 상태를 새로 받아 판단한다
+    for func, item in (("executeInlineBuy", "item"), ("executeSell", "h")):
         body = _func(func)
-        assert f"orderBlock({item}.market_state, userSettings.allow_closed_trading)" in body
-        assert body.index("orderBlock(") < body.index("openTradeConfirm(")
+        assert f"let ms = {item}.market_state;" in body
+        assert re.search(r"if \(orderBlock\(ms, false\)\)\s*ms = await freshMarketState\(ms, ", body)
+        assert f"`/api/stock/${{{item}.code}}`" in body
+        assert "orderBlock(ms, userSettings.allow_closed_trading)" in body
+        assert body.index("freshMarketState(") < body.index("orderBlock(ms, userSettings") < body.index("openTradeConfirm(")
         assert re.search(r"showToast\(block, 'error'\);\s*return;", body)
-        assert f"marketWarning({item}.market_state, {item}.current_price)" in body
+        assert f"marketWarning(ms, {item}.current_price)" in body
+
+
+@needs_node
+def test_fresh_state_replaces_a_stale_one_and_falls_back_when_it_cannot_be_had(run):
+    stale = _ms("closed")
+    assert run(f"freshMarketState({stale}, async () => ({_ms('regular')}))") == {"state": "regular", "nxt_listed": True}
+    # 새로 받은 값이 unknown 이어도 그것이 더 신선하다
+    assert run(f"freshMarketState({stale}, async () => ({_ms('unknown')}))")["state"] == "unknown"
+    # 못 받거나(예외) 모양이 이상하면 가지고 있던 값을 쓴다
+    assert run(f"freshMarketState({stale}, async () => {{ throw new Error('x'); }})")["state"] == "closed"
+    for bad in ("null", "undefined", "{}", "'after'", "{state: 3}"):
+        assert run(f"freshMarketState({stale}, async () => ({bad}))")["state"] == "closed"
 
 
 @needs_node
