@@ -76,6 +76,7 @@ def get_market_candidate_stocks(max_price=50000, min_price=1000, min_trading_val
                             "name": s.get("stockName", ""),
                             "current_price": price,
                             "change_rate": change_rate,
+                            "change_amount": parse_change_amount(s.get("compareToPreviousClosePrice"), change_rate),
                             "trading_value_m": trading_value_m,
                             "volume": s.get("accumulatedTradingVolumeRaw", 0),
                             "market": market,
@@ -141,6 +142,34 @@ def safe_security_type(value) -> str:
     return value if isinstance(value, str) and value in SECURITY_TYPES else ""
 
 
+def parse_change_amount(raw, rate):
+    """
+    전일 대비 금액(네이버 compareToPreviousClosePrice, 부호 붙은 문자열 예 "-13,000")을 정수로 바꾼다.
+    값이 없거나 이상하면 None(0 으로 꾸미지 않는다). 등락률(rate)과 부호가 어긋나면 부호를 추측해 뒤집지 않고 None 이다
+    (오른 종목은 양수, 내린 종목은 음수, 보합은 0 이어야 한다).
+    """
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        value = raw
+    elif isinstance(raw, str):
+        cleaned = raw.replace(",", "").strip()
+        if not re.fullmatch(r"[+-]?\d+", cleaned):
+            return None
+        value = int(cleaned)
+    else:
+        return None
+    try:
+        rate = float(rate)
+    except (TypeError, ValueError):
+        return None
+    if rate != rate:  # NaN
+        return None
+    if (rate > 0 and value <= 0) or (rate < 0 and value >= 0) or (rate == 0 and value != 0):
+        return None
+    return value
+
+
 def get_realtime_stock_info(code):
     """
     단일 종목 실시간 상세 시세 정보 조회
@@ -151,11 +180,13 @@ def get_realtime_stock_info(code):
         res = requests.get(url, headers=HEADERS, timeout=4)
         if res.status_code == 200:
             data = res.json()
+            change_rate = float(data.get("fluctuationsRatio", 0.0))
             return {
                 "code": code,
                 "name": data.get("stockName", ""),
                 "current_price": int(data.get("closePrice", "0").replace(",", "")),
-                "change_rate": float(data.get("fluctuationsRatio", 0.0)),
+                "change_rate": change_rate,
+                "change_amount": parse_change_amount(data.get("compareToPreviousClosePrice"), change_rate),
                 "high_price": int(data.get("highPrice", "0").replace(",", "")),
                 "low_price": int(data.get("lowPrice", "0").replace(",", "")),
                 "volume": int(data.get("accumulatedTradingVolume", "0").replace(",", "")),
@@ -217,6 +248,7 @@ def search_stocks(query: str):
             info = get_realtime_stock_info(code)
             current_price = info["current_price"] if info else 0
             change_rate = info["change_rate"] if info else 0.0
+            change_amount = info.get("change_amount") if info else None
 
             # 10만원 예산 적합성 진단
             # 5만원 이하: 분산 매수 적합 (FIT_SPLIT)
@@ -238,6 +270,7 @@ def search_stocks(query: str):
                 "market": market,
                 "current_price": current_price,
                 "change_rate": change_rate,
+                "change_amount": change_amount,
                 "budget_status": budget_status,
                 "budget_desc": budget_desc,
                 # 시세 응답의 로고(ETF 는 운용사 로고)를 우선하고, 없을 때만 코드로 만든 주식 로고 주소
@@ -291,6 +324,7 @@ def get_stock_detail_with_chart(code: str, budget: int = 100000):
         "name": info["name"],
         "current_price": info["current_price"],
         "change_rate": info["change_rate"],
+        "change_amount": info.get("change_amount"),
         "high_price": info.get("high_price", 0),
         "low_price": info.get("low_price", 0),
         "volume": info.get("volume", 0),
@@ -304,10 +338,11 @@ def get_stock_detail_with_chart(code: str, budget: int = 100000):
         "grade_reasons": grade_result["grade_reasons"]
     }
 
-def attach_diagnosis(recs, candles_provider, budget: int = 100000, security_types=None):
+def attach_diagnosis(recs, candles_provider, budget: int = 100000, security_types=None, change_amounts=None):
     """
     추천 목록의 각 항목에 AI 진단 등급(grade, grade_score, grade_reasons)과
-    소수점 판별(is_fractional, fractional_desc), 종목 종류(security_type, 코드→종류 dict 로 받으며 없으면 "")를 덧붙인 새 목록을 반환합니다.
+    소수점 판별(is_fractional, fractional_desc), 종목 종류(security_type, 코드→종류 dict 로 받으며 없으면 "")와
+    전일 대비 금액(change_amount, 코드→금액 dict 로 받으며 없으면 None)을 덧붙인 새 목록을 반환합니다.
     상세 조회(get_stock_detail_with_chart)와 같은 get_stock_grade 기준을 사용하며 strategy.py는 바꾸지 않습니다.
     일봉 조회가 실패하거나 25일 미만이면 등급은 N/A, 소수점 판별(네트워크 없음)은 그대로 유지합니다.
     """
@@ -333,6 +368,7 @@ def attach_diagnosis(recs, candles_provider, budget: int = 100000, security_type
             "is_fractional": is_fractional,
             "fractional_desc": fractional_desc,
             "security_type": (security_types or {}).get(rec["code"], rec.get("security_type", "")),
+            "change_amount": (change_amounts or {}).get(rec["code"], rec.get("change_amount")),
         })
     return result
 

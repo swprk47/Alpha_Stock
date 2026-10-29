@@ -576,14 +576,12 @@
       <div class="rounded-2xl border border-white/10 bg-black/35 p-3 flex justify-between items-center gap-3">
         <div class="min-w-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 items-center">
           <div id="buyStockLogo" class="row-span-2"></div>
-          <div class="flex items-center gap-1.5">
-            <h4 id="buyStockName" class="font-bold text-base text-white">종목명</h4>
+          <h4 id="buyStockName" class="font-bold text-base text-white">종목명</h4>
+          <div class="flex flex-wrap items-center gap-1 mt-0.5">
             <span id="buyStockCode" class="text-[13px] text-[#a9aebf]">000000</span>
-          </div>
-          <div class="flex items-center gap-1 mt-0.5">
             <span id="buyStockMarket" class="text-[13px] px-1.5 py-0.5 rounded bg-[#1c1c1e] text-[#a9aebf]">KOSPI</span>
             <span id="buyKindTag"></span>
-            <span id="buyFractionalTag" class="text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold">소수점 가능</span>
+            <span id="buyFractionalTag" class="text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>
           </div>
         </div>
         <div class="text-right shrink-0">
@@ -1345,7 +1343,6 @@
 
       dropdown.innerHTML = results.map(item => {
         const isGain = item.change_rate >= 0;
-        const changeSign = isGain ? '+' : '';
         const changeClass = isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]';
 
         let budgetBadge = '';
@@ -1373,7 +1370,7 @@
             </div>
             <div class="text-right shrink-0 whitespace-nowrap">
               <div class="text-[13px] font-bold text-white">${item.current_price.toLocaleString()}원</div>
-              <div class="text-[13px] font-semibold ${changeClass}">${changeSign}${item.change_rate}%</div>
+              <div class="text-[13px] font-semibold ${changeClass}">${changeText(item.change_rate, item.change_amount)}</div>
             </div>
           </div>
         `;
@@ -1492,6 +1489,17 @@
     function staleExcludedText(n) { return n > 0 ? `시세를 못 받은 ${n}종목은 뺐어요` : ''; }
     // </stale-logic>
 
+    // <change-logic>
+    // 오늘 등락률 문구. 서버의 change_amount(전일 대비 금액, 부호 포함 정수)가 있으면 "+4.2% (5,000원)"(금액은 부호 없이), 없거나 정수가 아니면 지금처럼 "+4.2%".
+    // 퍼센트 부분은 예전 식(`${isGain ? '+' : ''}${rate}%`)과 같다: 0 도 "+0%". DOM 을 쓰지 않는 순수 함수(tests/test_frontend_change_amount.py).
+    // sep: 퍼센트와 금액 사이(기본 공백, 좁은 칸은 '\n' 로 줄을 나눈다)
+    function changeText(rate, amount, sep = ' ') {
+      const pct = `${rate >= 0 ? '+' : ''}${rate}%`;
+      if (typeof amount !== 'number' || !Number.isInteger(amount)) return pct;
+      return `${pct}${sep}(${Math.abs(amount).toLocaleString()}원)`; // 방향은 퍼센트 앞의 부호가 말하므로 금액에는 부호를 달지 않는다
+    }
+    // </change-logic>
+
     // ===== 💡 수량 조절 매수 모달 로직 =====
     // <toast-logic>
     // 상단 알림이 떠 있는 시간(ms): 종류별 기본 시간에 글자가 길면 조금 더 얹는다(상한 12초). 체결 알림을 읽을 시간이 필요하다
@@ -1593,20 +1601,18 @@
       document.getElementById('buyStockMarket').textContent = stockItem.market || 'KOSPI';
       document.getElementById('buyStockPrice').textContent = stockItem.current_price.toLocaleString() + '원';
 
-      // 소수점 가능 여부 뱃지
+      // 소수점이 되는 종목에만 칩(PC 헤더와 같은 규칙). 안 되는 종목은 칩 없이 아래 매수 패널의 안내 문장으로 알린다
+      // (예전에 안 되는 종목에 붙이던 긴 주황 칩은 좁은 폭에서 두 줄로 접혀 이름 칸을 구겼다)
       const fracTag = document.getElementById('buyFractionalTag');
-      if (isFractional) {
-        fracTag.className = 'text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold';
-        fracTag.textContent = '소수점 가능';
-      } else {
-        fracTag.className = 'text-[13px] px-1.5 py-0.5 rounded bg-[#ff9f0a]/20 text-[#ff9f0a] font-semibold';
-        fracTag.textContent = '1주 단위 일반종목';
-      }
+      fracTag.className = isFractional
+        ? 'text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap'
+        : 'hidden';
+      fracTag.textContent = '소수점 가능';
 
       const changeEl = document.getElementById('buyStockChange');
       const isGain = stockItem.change_rate >= 0;
-      changeEl.textContent = (isGain ? '+' : '') + stockItem.change_rate + '%';
-      changeEl.className = isGain ? 'text-[13px] font-semibold text-[#ff6a60]' : 'text-[13px] font-semibold text-[#5aa9ff]';
+      changeEl.textContent = changeText(stockItem.change_rate, stockItem.change_amount, '\n');
+      changeEl.className = isGain ? 'text-[13px] font-semibold whitespace-pre-line text-[#ff6a60]' : 'text-[13px] font-semibold whitespace-pre-line text-[#5aa9ff]';
 
       // ── AI 등급 카드 ──────────────────────────────
       const grade = stockItem.grade || 'N/A';
@@ -2649,7 +2655,7 @@
             </div>
             <div class="text-right shrink-0">
               <div class="text-[28px] font-bold tracking-tight text-white">${item.current_price.toLocaleString()}원</div>
-              <div class="text-[13px] font-semibold ${isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]'}">${isGain ? '+' : ''}${item.change_rate}%</div>
+              <div class="text-[13px] font-semibold ${isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]'}">${changeText(item.change_rate, item.change_amount)}</div>
             </div>
           </div>
           ${pcChartPanel(`${item.current_price.toLocaleString()}원`)}
@@ -2783,7 +2789,7 @@
             <div class="flex items-start gap-3">
               <div class="text-right shrink-0">
                 <div class="text-[28px] font-bold tracking-tight text-white">${stock.current_price.toLocaleString()}원</div>
-                <div class="text-[13px] font-semibold ${isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]'}">${isGain ? '+' : ''}${stock.change_rate}%</div>
+                <div class="text-[13px] font-semibold ${isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]'}">${changeText(stock.change_rate, stock.change_amount)}</div>
                 ${stock.fetchedAt ? `<div class="text-[13px] text-[#a9aebf]">${stock.fetchedAt} 기준</div>` : ''}
               </div>
               ${closeBtn}
