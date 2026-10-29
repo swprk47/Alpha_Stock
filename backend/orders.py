@@ -24,6 +24,18 @@ def fetch_live_quote(code: str) -> dict:
     return info
 
 
+MARKET_BLOCK_MESSAGE = "장 마감 중에는 주문하지 않도록 설정돼 있어요. 내 메뉴에서 바꿀 수 있어요."
+_NOT_REGULAR = ("pre", "after", "closed")
+
+
+def enforce_market_policy(mgr: MultiUserPortfolioManager, user_id: str, quote: dict) -> None:
+    """설정이 "차단"이고 이 주문의 시세가 정규장이 아니면(pre/after/closed) 409 로 거절한다.
+    regular 는 항상 허용, unknown(모르는 값·키 없음)은 막지 않는다(연습을 막지 않는 쪽). 판단은 주문 시점에 받은 시세로 한다."""
+    state = ((quote or {}).get("market_state") or {}).get("state", "unknown")
+    if state in _NOT_REGULAR and not mgr.get_settings(user_id).get("allow_closed_trading", True):
+        raise HTTPException(status_code=409, detail=MARKET_BLOCK_MESSAGE)
+
+
 def _is_fractional(code: str) -> bool:
     try:
         ok, _ = market_data.is_stock_fractional_tradable(code)
@@ -34,6 +46,7 @@ def _is_fractional(code: str) -> bool:
 
 def place_buy(mgr: MultiUserPortfolioManager, user_id: str, req: BuyRequest) -> dict:
     quote = fetch_live_quote(req.code)
+    enforce_market_policy(mgr, user_id, quote)
     price = quote["current_price"]
     target = req.target_price or int(price * DEFAULT_TARGET_RATIO)
     stop = req.stop_loss_price or int(price * DEFAULT_STOP_RATIO)
@@ -66,6 +79,7 @@ def place_sell(mgr: MultiUserPortfolioManager, user_id: str, req: SellRequest) -
     if mgr.get_holding_quantity(user_id, req.code) <= 0:
         raise HTTPException(status_code=400, detail="보유하고 있지 않은 종목입니다.")
     quote = fetch_live_quote(req.code)
+    enforce_market_policy(mgr, user_id, quote)
     _check_sell_quantity(mgr, user_id, req.code, req.quantity)
     try:
         return mgr.sell(user_id=user_id, code=req.code, price=quote["current_price"], quantity=req.quantity)

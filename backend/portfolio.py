@@ -14,6 +14,8 @@ from storage import UserStore
 
 SCHEMA_VERSION = 1
 QTY_EPS = 1e-6
+# 사용자별 설정과 기본값. 파일에 settings 키가 없는 옛 사용자도 기본값으로 읽는다(마이그레이션 없음)
+DEFAULT_SETTINGS = {"allow_closed_trading": True}
 
 
 class OrderError(Exception):
@@ -75,6 +77,24 @@ class MultiUserPortfolioManager:
                 data["name"] = name
                 self.store.save(user_id, data)
             return data
+
+    def get_settings(self, user_id: str) -> dict:
+        """저장된 설정 위에 기본값을 깔아 항상 모든 키를 가진 dict 를 돌려준다."""
+        with self.store.locked(user_id):
+            data = self._load_or_new(user_id)
+        saved = data.get("settings")
+        return {**DEFAULT_SETTINGS, **(saved if isinstance(saved, dict) else {})}
+
+    def set_setting(self, user_id: str, key: str, value) -> dict:
+        """설정 하나를 저장하고 전체 설정을 돌려준다. 알 수 없는 키는 거부한다. reset() 은 설정을 건드리지 않는다."""
+        if key not in DEFAULT_SETTINGS:
+            raise OrderError("알 수 없는 설정입니다.")
+        with self.store.locked(user_id):
+            data = self._load_or_new(user_id)
+            saved = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+            data["settings"] = {**saved, key: value}
+            self.store.save(user_id, data)
+            return {**DEFAULT_SETTINGS, **data["settings"]}
 
     def set_user_budget(self, user_id: str, new_budget: int):
         """시드 예산 변경 (PR-B에서 입출금 원장으로 대체 예정)."""

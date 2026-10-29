@@ -26,7 +26,8 @@ import config
 import orders
 from auth import (clear_session_cookie, create_session_token, dev_user_id,
                   get_current_user, set_session_cookie)
-from schemas import CODE_PATTERN, BuyRequest, DevLoginRequest, SellPreviewQuery, SellRequest, SetBudgetRequest
+from schemas import (CODE_PATTERN, BuyRequest, DevLoginRequest, SellPreviewQuery, SellRequest, SetBudgetRequest,
+                     SetSettingsRequest)
 
 config.validate_runtime()
 
@@ -138,7 +139,15 @@ def logout(response: Response):
 @app.get("/api/me")
 def me(user: dict = Depends(get_current_user)):
     return {"success": True, "user": {"name": user["name"], "dev": user["user_id"].startswith("dev:")},
-            "dev_login_enabled": config.ALLOW_DEV_LOGIN}
+            "dev_login_enabled": config.ALLOW_DEV_LOGIN,
+            "settings": portfolio_mgr.get_settings(user["user_id"])}
+
+
+@app.post("/api/settings")
+def set_settings(req: SetSettingsRequest, user: dict = Depends(get_current_user)):
+    """사용자별 설정 저장(지금은 allow_closed_trading 하나). 주문 강제는 orders.enforce_market_policy 가 한다."""
+    settings = portfolio_mgr.set_setting(user["user_id"], "allow_closed_trading", req.allow_closed_trading)
+    return {"success": True, "settings": settings}
 
 
 # ---------- 계좌 (모두 세션 사용자 기준) ----------
