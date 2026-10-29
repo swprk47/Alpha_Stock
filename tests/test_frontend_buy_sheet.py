@@ -207,3 +207,52 @@ def test_opening_the_sheet_starts_collapsed_and_still_fills_the_reasons():
 
 def test_old_spinner_hiding_rule_for_the_removed_input_is_gone():
     assert "#buyQtyInput" not in _html()
+
+
+# ── 소수점 칩: 소수점이 되는 종목에만(PC 헤더와 같은 규칙) ──
+
+
+def test_fractional_chip_is_shown_only_for_fractional_stocks_and_never_wraps():
+    # 좁은 폭에서 주황 "1주 단위 일반종목" 칩이 두 줄로 접혀 이름 칸을 구겼다. 안 되는 종목은 칩 없이
+    # 아래 매수 패널의 안내 문장("소수점 거래가 안 되는 종목이라 1주 단위로만 살 수 있어요.")으로 알린다
+    body = _func("openCustomBuyModal")
+    assert "1주 단위 일반종목" not in body and "bg-[#ff9f0a]/20" not in body
+    tag = body[body.index("buyFractionalTag"):body.index("const changeEl")]
+    assert re.search(r"isFractional\s*\?\s*'[^']*whitespace-nowrap[^']*'\s*:\s*'hidden'", tag)
+    assert "bg-[#30d158]/20" in tag
+
+
+def test_fractional_chip_slot_still_exists_with_the_green_default():
+    m = _sheet_markup()
+    slot = m[m.index('id="buyFractionalTag"'):]
+    slot = slot[:slot.index("</span>")]
+    assert "소수점 가능" in slot and "bg-[#30d158]/20" in slot and "whitespace-nowrap" in slot
+
+
+def test_the_not_fractional_explanation_stays_in_the_buy_panel():
+    assert "소수점 거래가 안 되는 종목이라 1주 단위로만 살 수 있어요." in _html()
+
+
+# ── 헤더 배치: 이름 줄에는 이름만, 종목코드는 아래 메타 줄(시장·종류·소수점 칩과 함께) ──
+
+
+def test_name_line_holds_only_the_name_and_the_code_moves_to_the_meta_line():
+    # 긴 ETF 이름이 코드 때문에 칸이 좁아져 3줄로 꺾였다. 이름이 칸 폭을 다 쓰도록 코드를 아래 줄로 옮긴다
+    m = _sheet_markup()
+    order = [m.index(i) for i in ('id="buyStockName"', 'id="buyStockCode"', 'id="buyStockMarket"', 'id="buyKindTag"', 'id="buyFractionalTag"')]
+    assert order == sorted(order)
+    name_tag = re.search(r'<h4 id="buyStockName"[^>]*>[^<]*</h4>', m)
+    assert name_tag
+    after_name = m[name_tag.end():]
+    assert re.match(r'\s*<div class="[^"]*flex-wrap[^"]*"[^>]*>\s*<span id="buyStockCode"', after_name)
+    # 이름 바로 옆(같은 flex 줄)에 코드가 없다
+    before_name = m[:name_tag.start()]
+    assert not before_name.rstrip().endswith('gap-1.5">')
+
+
+def test_meta_line_wraps_so_the_fractional_chip_never_overlaps_the_price_column():
+    # 소수점 가능 종목은 "005930 KOSPI 소수점 가능"이 한 줄에 안 들어가 가격 칸을 덮었다 → 모자라면 칩이 다음 줄로
+    m = _sheet_markup()
+    meta = re.search(r'<div class="([^"]*)">\s*<span id="buyStockCode"', m)
+    assert meta and "flex-wrap" in meta.group(1) and "gap-" in meta.group(1)
+    assert "whitespace-nowrap" in m[m.index('id="buyFractionalTag"'):m.index("</span>", m.index('id="buyFractionalTag"'))]  # 칩 자체는 접히지 않는다
