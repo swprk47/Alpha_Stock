@@ -256,7 +256,7 @@
       </div>
 
       <!-- 실시간 검색 결과 드롭다운 팝업 -->
-      <div id="searchDropdown" class="absolute top-full left-0 right-0 lg:left-auto lg:w-[400px] mt-1.5 bg-[#1c1c1e] border border-[#2c2c2e] rounded-2xl shadow-2xl overflow-hidden hidden divide-y divide-[#2c2c2e] max-h-80 overflow-y-auto">
+      <div id="searchDropdown" class="absolute top-full left-0 right-0 lg:left-auto lg:w-[400px] mt-1.5 bg-[#1c1c1e] border border-[#2c2c2e] rounded-2xl shadow-2xl overflow-hidden hidden divide-y divide-[#2c2c2e] max-h-[70vh] lg:max-h-80 overflow-y-auto">
         <!-- 동적 삽입 -->
       </div>
     </div>
@@ -1348,28 +1348,28 @@
 
         let budgetBadge = '';
         if (item.budget_status === 'FIT_SPLIT') {
-          budgetBadge = '<span class="text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/15 text-[#30d158] font-bold">10만원 적합</span>';
+          budgetBadge = '<span class="text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/15 text-[#30d158] font-bold whitespace-nowrap">10만원 적합</span>';
         } else if (item.budget_status === 'FIT_SINGLE') {
-          budgetBadge = '<span class="text-[13px] px-1.5 py-0.5 rounded bg-[#ffd60a]/15 text-[#ffd60a] font-bold">1주 가능</span>';
+          budgetBadge = '<span class="text-[13px] px-1.5 py-0.5 rounded bg-[#ffd60a]/15 text-[#ffd60a] font-bold whitespace-nowrap">1주 가능</span>';
         } else {
-          budgetBadge = '<span class="text-[13px] px-1.5 py-0.5 rounded bg-[#86868b]/20 text-[#a9aebf]">10만 초과</span>';
+          budgetBadge = '<span class="text-[13px] px-1.5 py-0.5 rounded bg-[#86868b]/20 text-[#a9aebf] whitespace-nowrap">10만 초과</span>';
         }
 
+        // 이름은 최대 두 줄, 코드·시장·종류 칩·뱃지는 아래 한 줄(모자라면 줄바꿈), 오른쪽 가격은 줄어들지도 줄바꿈되지도 않는다
+        // (이름이 긴 ETF 가 뱃지와 가격을 밀어 "10만원 적합"·"원"이 줄바꿈되던 문제를 막는다)
         return `
-          <div onclick="selectSearchResult('${item.code}', '${String(item.market || '').replace(/[^A-Za-z]/g, '')}')" class="p-3 flex items-center justify-between hover:bg-[#2c2c2e] cursor-pointer tap-press transition">
-            <div class="flex items-center gap-2.5">
-              ${logoHtml(item.code, item.name, 28, item.logo_url)}
-              <div>
-                <div class="flex items-center gap-1.5">
-                  <h4 class="font-bold text-[13px] text-white">${item.name}</h4>
-                  <span class="text-[13px] text-[#a9aebf]">${item.market}</span>
-                  ${budgetBadge}
-                </div>
-                <div class="flex items-center gap-1.5 text-[13px] text-[#a9aebf]"><span>${item.code}</span>${securityTagHtml(item.security_type)}</div>
+          <div onclick="selectSearchResult('${item.code}', '${String(item.market || '').replace(/[^A-Za-z]/g, '')}')" class="p-3 flex items-center gap-2.5 hover:bg-[#2c2c2e] cursor-pointer tap-press transition">
+            ${logoHtml(item.code, item.name, 28, item.logo_url)}
+            <div class="min-w-0 flex-1">
+              <h4 class="font-bold text-[13px] text-white line-clamp-2 break-words">${item.name}</h4>
+              <div class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[13px] text-[#a9aebf]">
+                <span>${item.code}</span>
+                <span>${item.market}</span>
+                ${securityTagHtml(item.security_type)}
+                ${budgetBadge}
               </div>
             </div>
-
-            <div class="text-right">
+            <div class="text-right shrink-0 whitespace-nowrap">
               <div class="text-[13px] font-bold text-white">${item.current_price.toLocaleString()}원</div>
               <div class="text-[13px] font-semibold ${changeClass}">${changeSign}${item.change_rate}%</div>
             </div>
