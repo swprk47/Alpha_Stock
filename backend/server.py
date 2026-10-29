@@ -17,6 +17,7 @@ from market_data import (
     attach_diagnosis
 )
 from strategy import get_recommendations
+from symbol_index import MAX_QUERY_LEN, symbol_index
 from recommendation_cache import CACHE_TOP_N, RecommendationCache, recs_for_budget
 from portfolio import MultiUserPortfolioManager, OrderError
 import config
@@ -56,11 +57,13 @@ forced_at = {}   # user_id -> 마지막 강제 갱신 시각
 
 @app.on_event("startup")
 def startup_event():
+    symbol_index.refresh_async()  # 종목 색인은 백그라운드로 만든다(추천 계산과 함께 진행되고, 끝나기 전 검색은 자동완성만 쓴다)
     rec_cache.get(config.DEFAULT_INITIAL_BALANCE)
 
 @app.get("/api/search")
-def search_stock_api(q: str = Query(..., min_length=1)):
-    """실시간 종목 자동완성 검색"""
+def search_stock_api(q: str = Query(..., min_length=1, max_length=MAX_QUERY_LEN)):
+    """종목 검색: 종목 색인(이름 가운데 글자·코드 앞부분) + 네이버 자동완성"""
+    symbol_index.ensure_fresh()  # 색인이 없거나 오래됐으면 백그라운드로 갱신을 시작한다(검색은 기다리지 않는다)
     results = search_stocks(q)
     return {"success": True, "results": results}
 

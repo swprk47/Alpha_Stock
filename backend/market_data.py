@@ -5,6 +5,7 @@ market_data.py
 """
 import re
 import requests
+from symbol_index import MAX_QUERY_LEN, symbol_index
 from bs4 import BeautifulSoup
 import pandas as pd
 from datetime import datetime
@@ -165,29 +166,53 @@ def get_realtime_stock_info(code):
         pass
     return None
 
+SEARCH_LIMIT = 6  # 검색 결과(후보) 최대 개수
+
+
+def _autocomplete_candidates(query: str):
+    """네이버 자동완성 후보 [(code, name, market)]. 이름 앞부분 일치만 되고, 색인에 아직 없는 신규 상장 등을 보완한다. 실패하면 빈 목록."""
+    try:
+        # 검색어는 params 로 보낸다: 주소에 끼워 넣으면 "S&P500" 의 & 가 요청을 깨뜨린다
+        res = requests.get("https://ac.stock.naver.com/ac", params={"q": query, "target": "stock"},
+                           headers=HEADERS, timeout=4)
+        if res.status_code != 200:
+            return []
+        out = []
+        for item in res.json().get("items", []):
+            code, name = item.get("code"), item.get("name")
+            if code and name:
+                out.append((code, name, item.get("typeCode") or "KOSPI"))
+        return out
+    except Exception as e:
+        print(f"Autocomplete error: {e}")
+        return []
+
+
 def search_stocks(query: str):
     """
-    네이버 증권 공식 자동완성 API(ac.stock.naver.com)를 활용하여
-    코스피/코스닥 종목을 실시간으로 검색합니다.
+    종목 검색. 후보는 두 곳에서 모은다.
+    1) 종목 색인(symbol_index): 이름 가운데 글자·코드 앞부분 일치 (거래대금이 큰 종목 먼저)
+    2) 네이버 자동완성(ac.stock.naver.com): 색인에 없던 후보(신규 상장 등)를 뒤에 덧붙인다
+    코드 기준으로 중복을 없애고 최대 SEARCH_LIMIT 개까지 남긴 뒤, 후보마다 **실시간 시세**로 가격·등락·로고·종류를 채운다.
+    색인은 읽기만 한다(갱신은 서버가 백그라운드로 시작한다). 한쪽이 실패하면 다른 쪽 결과만 돌려준다.
     """
     if not query or len(query.strip()) < 1:
         return []
+    q = query.strip()[:MAX_QUERY_LEN]
 
-    url = f"https://ac.stock.naver.com/ac?q={query.strip()}&target=stock"
+    candidates, seen = [], set()
+    for sym in symbol_index.search(q, SEARCH_LIMIT):
+        seen.add(sym.code)
+        candidates.append((sym.code, sym.name, sym.market))
+    for code, name, market in _autocomplete_candidates(q):
+        if code not in seen:
+            seen.add(code)
+            candidates.append((code, name, market))
+    candidates = candidates[:SEARCH_LIMIT]
+
     try:
-        res = requests.get(url, headers=HEADERS, timeout=4)
-        if res.status_code != 200:
-            return []
-
-        data = res.json()
-        items = data.get("items", [])
         results = []
-
-        for item in items[:6]:  # 상위 6개 결과
-            code = item.get("code")
-            name = item.get("name")
-            market = item.get("typeCode", "KOSPI")
-
+        for code, name, market in candidates:
             # 실시간 현재가 및 등락률 조회
             info = get_realtime_stock_info(code)
             current_price = info["current_price"] if info else 0
