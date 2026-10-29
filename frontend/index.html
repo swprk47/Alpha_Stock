@@ -1343,7 +1343,6 @@
 
       dropdown.innerHTML = results.map(item => {
         const isGain = item.change_rate >= 0;
-        const changeSign = isGain ? '+' : '';
         const changeClass = isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]';
 
         let budgetBadge = '';
@@ -1371,7 +1370,7 @@
             </div>
             <div class="text-right shrink-0 whitespace-nowrap">
               <div class="text-[13px] font-bold text-white">${item.current_price.toLocaleString()}원</div>
-              <div class="text-[13px] font-semibold ${changeClass}">${changeSign}${item.change_rate}%</div>
+              <div class="text-[13px] font-semibold ${changeClass}">${changeText(item.change_rate, item.change_amount)}</div>
             </div>
           </div>
         `;
@@ -1462,6 +1461,17 @@
       const label = typeof type === 'string' && Object.prototype.hasOwnProperty.call(SECURITY_TAG_LABELS, type) ? SECURITY_TAG_LABELS[type] : '';
       return label ? `<span class="text-[13px] px-1.5 rounded bg-[#3a3a3c] text-[#f5f5f7] ring-1 ring-inset ring-white/20 font-semibold whitespace-nowrap">${label}</span>` : '';
     }
+    // <change-logic>
+    // 오늘 등락률 문구. 서버의 change_amount(전일 대비 금액, 부호 포함 정수)가 있으면 "+4.2% (5,000원)"(금액은 부호 없이), 없거나 정수가 아니면 지금처럼 "+4.2%".
+    // 퍼센트 부분은 예전 식(`${isGain ? '+' : ''}${rate}%`)과 같다: 0 도 "+0%". DOM 을 쓰지 않는 순수 함수(tests/test_frontend_change_amount.py).
+    // sep: 퍼센트와 금액 사이(기본 공백, 좁은 칸은 '\n' 로 줄을 나눈다)
+    function changeText(rate, amount, sep = ' ') {
+      const pct = `${rate >= 0 ? '+' : ''}${rate}%`;
+      if (typeof amount !== 'number' || !Number.isInteger(amount)) return pct;
+      return `${pct}${sep}(${Math.abs(amount).toLocaleString()}원)`; // 방향은 퍼센트 앞의 부호가 말하므로 금액에는 부호를 달지 않는다
+    }
+    // </change-logic>
+
     // </tag-logic>
 
     // ===== 💡 수량 조절 매수 모달 로직 =====
@@ -1577,8 +1587,8 @@
 
       const changeEl = document.getElementById('buyStockChange');
       const isGain = stockItem.change_rate >= 0;
-      changeEl.textContent = (isGain ? '+' : '') + stockItem.change_rate + '%';
-      changeEl.className = isGain ? 'text-[13px] font-semibold text-[#ff6a60]' : 'text-[13px] font-semibold text-[#5aa9ff]';
+      changeEl.textContent = changeText(stockItem.change_rate, stockItem.change_amount, '\n');
+      changeEl.className = isGain ? 'text-[13px] font-semibold whitespace-pre-line text-[#ff6a60]' : 'text-[13px] font-semibold whitespace-pre-line text-[#5aa9ff]';
 
       // ── AI 등급 카드 ──────────────────────────────
       const grade = stockItem.grade || 'N/A';
@@ -2608,7 +2618,7 @@
             </div>
             <div class="text-right shrink-0">
               <div class="text-[28px] font-bold tracking-tight text-white">${item.current_price.toLocaleString()}원</div>
-              <div class="text-[13px] font-semibold ${isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]'}">${isGain ? '+' : ''}${item.change_rate}%</div>
+              <div class="text-[13px] font-semibold ${isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]'}">${changeText(item.change_rate, item.change_amount)}</div>
             </div>
           </div>
           ${pcChartPanel(`${item.current_price.toLocaleString()}원`)}
@@ -2740,7 +2750,7 @@
             <div class="flex items-start gap-3">
               <div class="text-right shrink-0">
                 <div class="text-[28px] font-bold tracking-tight text-white">${stock.current_price.toLocaleString()}원</div>
-                <div class="text-[13px] font-semibold ${isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]'}">${isGain ? '+' : ''}${stock.change_rate}%</div>
+                <div class="text-[13px] font-semibold ${isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]'}">${changeText(stock.change_rate, stock.change_amount)}</div>
                 ${stock.fetchedAt ? `<div class="text-[13px] text-[#a9aebf]">${stock.fetchedAt} 기준</div>` : ''}
               </div>
               ${closeBtn}

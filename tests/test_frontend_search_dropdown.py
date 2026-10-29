@@ -50,7 +50,7 @@ ITEMS = [
 @pytest.fixture
 def render(tmp_path):
     """renderSearchResults 를 DOM 없이 실행해 만든 HTML 을 돌려준다(로고·종류 칩 함수는 실제 구간을 쓴다)."""
-    base = "\n".join([_section("logo-logic"), _section("tag-logic"), _func("renderSearchResults")])
+    base = "\n".join([_section("logo-logic"), _section("tag-logic"), _section("change-logic"), _func("renderSearchResults")])
 
     def _render(items):
         script = (
