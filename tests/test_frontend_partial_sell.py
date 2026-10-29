@@ -272,7 +272,7 @@ def test_execute_sell_refuses_an_empty_quantity():
 
 def test_confirm_dialog_names_the_quantity():
     body = _func("executeSell")
-    assert "openTradeConfirm(" in body and "sellConfirmCfg(h.name, qty, full, est)" in body  # 수량·전량 여부·예상 값을 확인창에 넘긴다
+    assert "openTradeConfirm(" in body and "sellConfirmCfg(h.name, qty, full, est, " in body  # 수량·전량 여부·예상 값(과 장 상태 경고)을 확인창에 넘긴다
 
 
 def test_preview_is_debounced_and_stale_responses_are_dropped():

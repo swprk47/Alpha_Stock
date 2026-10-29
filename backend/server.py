@@ -14,7 +14,9 @@ from market_data import (
     get_realtime_stock_info,
     search_stocks,
     get_stock_detail_with_chart,
-    attach_diagnosis
+    attach_diagnosis,
+    attach_market_state,
+    UNKNOWN_MARKET_STATE
 )
 from strategy import get_recommendations
 from symbol_index import MAX_QUERY_LEN, symbol_index
@@ -24,7 +26,8 @@ import config
 import orders
 from auth import (clear_session_cookie, create_session_token, dev_user_id,
                   get_current_user, set_session_cookie)
-from schemas import CODE_PATTERN, BuyRequest, DevLoginRequest, SellPreviewQuery, SellRequest, SetBudgetRequest
+from schemas import (CODE_PATTERN, BuyRequest, DevLoginRequest, SellPreviewQuery, SellRequest, SetBudgetRequest,
+                     SetSettingsRequest)
 
 config.validate_runtime()
 
@@ -52,7 +55,9 @@ def _compute_bucket(bucket_budget):
     kinds = {c["code"]: c.get("security_type", "") for c in candidates}
     # 전일 대비 금액도 같은 방식으로(없으면 None: 화면은 %만 보인다)
     amounts = {c["code"]: c.get("change_amount") for c in candidates}
-    return attach_diagnosis(recs, get_stock_daily_candles, budget=bucket_budget, security_types=kinds, change_amounts=amounts)
+    diagnosed = attach_diagnosis(recs, get_stock_daily_candles, budget=bucket_budget, security_types=kinds, change_amounts=amounts)
+    # 장 상태는 종목별 시세로 이어 붙인다(캐시 주기만큼 늦을 수 있어, 주문 강제는 주문 시점 시세로 다시 판단한다)
+    return attach_market_state(diagnosed, get_realtime_stock_info)
 
 rec_cache = RecommendationCache(_compute_bucket)
 forced_at = {}   # user_id -> 마지막 강제 갱신 시각
@@ -134,7 +139,15 @@ def logout(response: Response):
 @app.get("/api/me")
 def me(user: dict = Depends(get_current_user)):
     return {"success": True, "user": {"name": user["name"], "dev": user["user_id"].startswith("dev:")},
-            "dev_login_enabled": config.ALLOW_DEV_LOGIN}
+            "dev_login_enabled": config.ALLOW_DEV_LOGIN,
+            "settings": portfolio_mgr.get_settings(user["user_id"])}
+
+
+@app.post("/api/settings")
+def set_settings(req: SetSettingsRequest, user: dict = Depends(get_current_user)):
+    """사용자별 설정 저장(지금은 allow_closed_trading 하나). 주문 강제는 orders.enforce_market_policy 가 한다."""
+    settings = portfolio_mgr.set_setting(user["user_id"], "allow_closed_trading", req.allow_closed_trading)
+    return {"success": True, "settings": settings}
 
 
 # ---------- 계좌 (모두 세션 사용자 기준) ----------
@@ -142,13 +155,14 @@ def me(user: dict = Depends(get_current_user)):
 def get_portfolio(user: dict = Depends(get_current_user)):
     user_id = user["user_id"]
     user_data = portfolio_mgr.get_or_create_user(user_id)
-    current_prices, chart_data_map, logo_map, kind_map = {}, {}, {}, {}
+    current_prices, chart_data_map, logo_map, kind_map, state_map = {}, {}, {}, {}, {}
     for code in user_data["holdings"].keys():
         info = get_realtime_stock_info(code)
         if info and info.get("current_price", 0) > 0:
             current_prices[code] = info["current_price"]
             logo_map[code] = info.get("logo_url", "")
             kind_map[code] = info.get("security_type", "")
+            state_map[code] = info.get("market_state", dict(UNKNOWN_MARKET_STATE))
         candles = get_stock_daily_candles(code, count=30)
         if candles is not None and len(candles) > 0:
             chart_data_map[code] = {
@@ -161,6 +175,7 @@ def get_portfolio(user: dict = Depends(get_current_user)):
         h["chart_data"] = chart_data_map.get(h["code"], {"dates": [], "prices": []})
         h["price_stale"] = h["code"] not in current_prices
         h["security_type"] = kind_map.get(h["code"], "")  # stock/etf/etn, 시세 실패면 빈 값(모름 → 태그 없음)
+        h["market_state"] = state_map.get(h["code"], dict(UNKNOWN_MARKET_STATE))  # 장 상태 태그·확인창 경고용, 시세 실패면 unknown
         h["logo_url"] = logo_map.get(h["code"], "")  # 시세 응답의 로고(ETF 는 운용사 로고). 시세 실패·없음이면 빈 값 → 화면이 코드 주소·첫 글자로 대신
         h["is_fractional"] = orders._is_fractional(h["code"])  # 매도 화면의 소수 수량 입력 허용 여부(목록 조회, 실패하면 정수만)
     return {"success": True, "portfolio": summary}

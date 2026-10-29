@@ -170,6 +170,31 @@ def parse_change_amount(raw, rate):
     return value
 
 
+UNKNOWN_MARKET_STATE = {"state": "unknown", "nxt_listed": False}
+
+
+def market_session(status, session_type) -> str:
+    """
+    네이버 시세 응답의 marketStatus·marketSessionType 으로 장 상태를 판단한다: regular / pre / after / closed / unknown.
+    정확히 일치하는 문자열만 해석하고 그 밖(누락·이상한 값)은 추측하지 않고 unknown 이다.
+    프리마켓 값 preMarket 은 아직 관측하지 못한 가정이다(다음 거래일 아침에 확인).
+    """
+    if status == "CLOSE":
+        return "closed"
+    if status == "OPEN":
+        return {"regularMarket": "regular", "afterMarket": "after", "preMarket": "pre"}.get(session_type, "unknown") \
+            if isinstance(session_type, str) else "unknown"
+    return "unknown"
+
+
+def market_state_of(basic) -> dict:
+    """네이버 /basic 응답에서 {"state", "nxt_listed"} 를 만든다. nxt_listed 는 overMarketPriceInfo(시간외 정보)가 응답에 있는지다."""
+    if not isinstance(basic, dict):
+        return dict(UNKNOWN_MARKET_STATE)
+    return {"state": market_session(basic.get("marketStatus"), basic.get("marketSessionType")),
+            "nxt_listed": isinstance(basic.get("overMarketPriceInfo"), dict)}
+
+
 def get_realtime_stock_info(code):
     """
     단일 종목 실시간 상세 시세 정보 조회
@@ -191,7 +216,8 @@ def get_realtime_stock_info(code):
                 "low_price": int(data.get("lowPrice", "0").replace(",", "")),
                 "volume": int(data.get("accumulatedTradingVolume", "0").replace(",", "")),
                 "logo_url": safe_logo_url(data.get("itemLogoPngUrl")),
-                "security_type": safe_security_type(data.get("stockEndType"))
+                "security_type": safe_security_type(data.get("stockEndType")),
+                "market_state": market_state_of(data)
             }
     except Exception:
         pass
@@ -330,6 +356,7 @@ def get_stock_detail_with_chart(code: str, budget: int = 100000):
         "volume": info.get("volume", 0),
         "logo_url": info.get("logo_url", ""),
         "security_type": info.get("security_type", ""),
+        "market_state": info.get("market_state", dict(UNKNOWN_MARKET_STATE)),
         "chart_data": chart_data,
         "is_fractional": is_fractional,
         "fractional_desc": fractional_desc,
@@ -370,6 +397,23 @@ def attach_diagnosis(recs, candles_provider, budget: int = 100000, security_type
             "security_type": (security_types or {}).get(rec["code"], rec.get("security_type", "")),
             "change_amount": (change_amounts or {}).get(rec["code"], rec.get("change_amount")),
         })
+    return result
+
+
+def attach_market_state(recs, quote_provider):
+    """
+    추천 목록의 각 항목에 종목별 장 상태(market_state)를 덧붙인 새 목록을 반환합니다. quote_provider(code) 는 시세 dict(또는 None).
+    시세가 없거나 실패(예외)하면 unknown 이고, 원본 항목의 다른 키는 그대로입니다(strategy.py 는 바꾸지 않습니다).
+    """
+    result = []
+    for rec in recs:
+        try:
+            info = quote_provider(rec["code"])
+            state = (info or {}).get("market_state") or dict(UNKNOWN_MARKET_STATE)
+        except Exception as e:
+            print(f"Market state error for {rec.get('code')}: {e}")
+            state = dict(UNKNOWN_MARKET_STATE)
+        result.append({**rec, "market_state": state})
     return result
 
 

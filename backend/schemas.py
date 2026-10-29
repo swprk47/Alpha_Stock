@@ -4,7 +4,7 @@ schemas.py
 """
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 import config
 
@@ -38,6 +38,11 @@ class SellPreviewQuery(_Strict):
     """GET /api/sell/preview 쿼리. quantity 를 생략하면 보유 전량 기준."""
     code: str = Field(..., pattern=CODE_PATTERN)
     quantity: Optional[float] = Field(None, gt=0, le=config.MAX_ORDER_QUANTITY, allow_inf_nan=False)
+
+
+class SetSettingsRequest(_Strict):
+    # strict: "false" 같은 문자열·0·null 은 bool 로 바꾸지 않고 422
+    allow_closed_trading: StrictBool
 
 
 class SetBudgetRequest(_Strict):
