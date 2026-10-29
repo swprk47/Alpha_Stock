@@ -231,3 +231,28 @@ def test_fractional_chip_slot_still_exists_with_the_green_default():
 
 def test_the_not_fractional_explanation_stays_in_the_buy_panel():
     assert "소수점 거래가 안 되는 종목이라 1주 단위로만 살 수 있어요." in _html()
+
+
+# ── 헤더 배치: 이름 줄에는 이름만, 종목코드는 아래 메타 줄(시장·종류·소수점 칩과 함께) ──
+
+
+def test_name_line_holds_only_the_name_and_the_code_moves_to_the_meta_line():
+    # 긴 ETF 이름이 코드 때문에 칸이 좁아져 3줄로 꺾였다. 이름이 칸 폭을 다 쓰도록 코드를 아래 줄로 옮긴다
+    m = _sheet_markup()
+    order = [m.index(i) for i in ('id="buyStockName"', 'id="buyStockCode"', 'id="buyStockMarket"', 'id="buyKindTag"', 'id="buyFractionalTag"')]
+    assert order == sorted(order)
+    name_tag = re.search(r'<h4 id="buyStockName"[^>]*>[^<]*</h4>', m)
+    assert name_tag
+    after_name = m[name_tag.end():]
+    assert re.match(r'\s*<div class="[^"]*flex-wrap[^"]*"[^>]*>\s*<span id="buyStockCode"', after_name)
+    # 이름 바로 옆(같은 flex 줄)에 코드가 없다
+    before_name = m[:name_tag.start()]
+    assert not before_name.rstrip().endswith('gap-1.5">')
+
+
+def test_meta_line_wraps_so_the_fractional_chip_never_overlaps_the_price_column():
+    # 소수점 가능 종목은 "005930 KOSPI 소수점 가능"이 한 줄에 안 들어가 가격 칸을 덮었다 → 모자라면 칩이 다음 줄로
+    m = _sheet_markup()
+    meta = re.search(r'<div class="([^"]*)">\s*<span id="buyStockCode"', m)
+    assert meta and "flex-wrap" in meta.group(1) and "gap-" in meta.group(1)
+    assert "whitespace-nowrap" in m[m.index('id="buyFractionalTag"'):m.index("</span>", m.index('id="buyFractionalTag"'))]  # 칩 자체는 접히지 않는다
