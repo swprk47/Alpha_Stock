@@ -690,6 +690,7 @@
     let searchDebounceTimer = null;
     let searchStock = null;  // PC 오른쪽 패널에 띄운 검색 종목 ({loading: true, code} 또는 /api/stock 응답). 없으면 null
     let searchReq = 0;       // 검색 결과를 연달아 누를 때 마지막 요청만 반영하기 위한 번호
+    let searchFromHolding = ''; // 보유 종목의 "종목 정보"로 연 검색 상세의 종목코드. 닫으면(PC) 그 보유 종목 상세로 돌아간다. 검색 결과로 열면 ''
 
     // ===== 아이콘 (Lucide 원본 인라인 SVG, ISC 라이선스. 명세 8항. tests/test_frontend_foundation.py 가 이 구간을 검증) =====
     // <icons>
@@ -1407,8 +1408,10 @@
 
     // 검색 결과 선택: PC 는 오른쪽 패널에 상세를 띄우고(매수는 패널의 버튼이 모달을 연다), 모바일은 매수 시트를 연다.
     // /api/stock 응답에는 market 이 없어 검색 결과 항목의 값을 넘겨받는다
-    async function selectSearchResult(code, market = '') {
+    // fromHolding: 보유 종목의 "종목 정보"로 열었다면 그 종목코드(닫을 때 돌아갈 곳). 검색 결과로 열면 ''
+    async function selectSearchResult(code, market = '', fromHolding = '') {
       document.getElementById('searchDropdown').classList.add('hidden');
+      searchFromHolding = fromHolding;
       const req = ++searchReq; // 결과를 연달아 누르면 응답이 뒤바뀌어 도착할 수 있다. 마지막 요청만 반영한다
       if (isPcLayout()) {
         searchStock = { loading: true, code: code, market: market };
@@ -1436,9 +1439,21 @@
       }
     }
 
-    // 패널에서 검색 종목을 닫으면 요약으로 돌아간다
+    // 보유 종목에서 종목 정보 열기: 검색 결과를 눌렀을 때와 같은 화면(모바일은 매수 시트, PC 는 오른쪽 패널). 서버는 그대로 /api/stock
+    function openHoldingInfo(code) {
+      selectSearchResult(code, '', code);
+    }
+
+    // 패널에서 검색 종목을 닫으면 요약으로 돌아간다. 보유 종목에서 열었다면 방금 보던 그 보유 종목 상세로 돌아간다(이미 팔았다면 요약)
     function closeSearchStock() {
+      const back = holdingIndexByCode(currentPortfolio && currentPortfolio.holdings, searchFromHolding);
+      searchFromHolding = '';
       searchStock = null;
+      if (back >= 0 && isPcLayout()) {
+        expandedHoldingIndex = back;
+        renderHoldings(currentPortfolio); // 목록의 선택을 되돌리고 오른쪽 패널도 다시 그린다
+        return;
+      }
       renderDetailPane();
     }
 
@@ -1641,6 +1656,24 @@
     }
     // </market-logic>
 
+    // <holding-info-logic>
+    // 보유 종목에서 종목 정보(점수·AI 진단·차트)를 여는 "종목 정보 ›" 알약. 문자열·인덱스 계산만(DOM 없음, tests/test_frontend_holding_info.py).
+    // 종목코드는 schemas.CODE_PATTERN 과 같은 규칙(영숫자 대문자 6자리)만 받는다: onclick 문자열에 들어가므로 그 밖의 값은 알약을 만들지 않는다
+    const HOLDING_CODE_PATTERN = /^[0-9A-Z]{6}$/;
+    function holdingEsc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    function holdingInfoPillHtml(code, name, extraClass = '') {
+      if (typeof code !== 'string' || !HOLDING_CODE_PATTERN.test(code)) return '';
+      return `<button type="button" aria-label="${holdingEsc(name)} 종목 정보 보기" onclick="openHoldingInfo('${code}')" class="inline-flex items-center justify-center gap-1 text-[13px] font-bold px-2.5 rounded-full border border-white/30 bg-white/[0.07] text-white hover:bg-white/15 tap-press whitespace-nowrap ${extraClass}">종목 정보 <span aria-hidden="true" class="text-[#a9aebf]">›</span></button>`;
+    }
+    // 보유 목록에서 그 종목의 위치(없으면 -1)
+    function holdingIndexByCode(holdings, code) {
+      if (!Array.isArray(holdings) || typeof code !== 'string' || !code) return -1;
+      return holdings.findIndex(h => h && h.code === code);
+    }
+    // </holding-info-logic>
+
     // ===== 💡 수량 조절 매수 모달 로직 =====
     // <toast-logic>
     // 상단 알림이 떠 있는 시간(ms): 종류별 기본 시간에 글자가 길면 조금 더 얹는다(상한 12초). 체결 알림을 읽을 시간이 필요하다
@@ -1740,7 +1773,9 @@
       document.getElementById('buyStockLogo').innerHTML = logoHtml(stockItem.code, stockItem.name, 40, stockItem.logo_url);
       document.getElementById('buyStockName').textContent = stockItem.name;
       document.getElementById('buyStockCode').textContent = stockItem.code;
-      document.getElementById('buyStockMarket').textContent = stockItem.market || 'KOSPI';
+      const marketEl = document.getElementById('buyStockMarket');
+      marketEl.textContent = stockItem.market || '';
+      marketEl.classList.toggle('hidden', !stockItem.market); // 시장을 모르면(보유 종목에서 연 경우) 'KOSPI' 를 지어내지 않고 칩을 숨긴다
       document.getElementById('buyStockPrice').textContent = stockItem.current_price.toLocaleString() + '원';
 
       // 소수점이 되는 종목에만 칩(PC 헤더와 같은 규칙). 안 되는 종목은 칩 없이 아래 매수 패널의 안내 문장으로 알린다
@@ -2371,7 +2406,7 @@
 
             ${isExpanded ? `
               <div class="mb-2 p-3.5 rounded-2xl bg-black/35 border border-white/10 space-y-3">
-                ${statusBadge ? `<div>${statusBadge}</div>` : ''}
+                <div class="flex flex-wrap items-center gap-2">${holdingInfoPillHtml(h.code, h.name, "relative min-h-[30px] before:content-[''] before:absolute before:-inset-y-[7px] before:inset-x-0")}${statusBadge || ''}</div>
                 ${mobileChartBlockHtml({ canvasId: `holdingChart_${idx}`, priceId: `holdingTipPrice_${idx}`, dateId: `holdingTipDate_${idx}`, pulseId: `holdingPulse_${idx}`, priceText: holdingPriceText(h) })}
                 <div class="grid grid-cols-2 gap-2">
                   ${statCell('보유 수량', `${qtyFormatted}주`)}
@@ -2874,6 +2909,7 @@
                 ${securityTagHtml(h.security_type)}
                 ${badge}
                 ${marketTagHtml(h.market_state)}
+                ${holdingInfoPillHtml(h.code, h.name, 'min-h-[28px]')}
               </div>
             </div>
             <div class="text-right shrink-0">
