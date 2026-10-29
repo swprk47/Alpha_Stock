@@ -300,8 +300,9 @@
 
       <div class="flex justify-between text-[13px] text-[#a9aebf]">
         <div>현금 <span id="cashBalance" class="text-white font-medium ml-1">100,000원</span></div>
-        <div>주식 평가 <span id="stockEval" class="text-white font-medium ml-1">0원</span></div>
+        <div>주식 평가 <span id="stockEval" class="text-white font-medium ml-1">0원</span><span id="staleMark" aria-hidden="true" class="hidden text-[#ff9f0a] ml-0.5">*</span></div>
       </div>
+      <div id="staleNotice" role="status" class="hidden mt-1 text-right text-[13px] text-[#a9aebf]"></div>
       </div>
     </section>
 
@@ -1237,7 +1238,8 @@
     }
 
     function holdingsByPnl(holdings) {
-      return (Array.isArray(holdings) ? holdings : []).slice()
+      // 시세를 못 받은 종목(price_stale === true)은 현재가가 매입가라 손익이 의미 없어 뺀다(stale-logic 의 isPriceStale 과 같은 규칙)
+      return (Array.isArray(holdings) ? holdings : []).filter(h => !(h && h.price_stale === true))
         .sort((a, b) => b.pnl_pct - a.pnl_pct)
         .map(h => ({ name: h.name, pnlPct: h.pnl_pct }));
     }
@@ -1460,6 +1462,32 @@
       return label ? `<span class="text-[13px] px-1.5 rounded bg-[#3a3a3c] text-[#f5f5f7] ring-1 ring-inset ring-white/20 font-semibold whitespace-nowrap">${label}</span>` : '';
     }
     // </tag-logic>
+
+    // <stale-logic>
+    // 시세 조회에 실패한 보유 종목 표시. 서버(/api/portfolio)는 시세를 못 받으면 현재가를 평균 매입가로 대신하고
+    // price_stale: true 를 준다. 그 값으로 만든 평가 금액·손익이 실시간처럼 보이지 않게 한다(익절·손절 신호도 매입가 기준이라 확인할 수 없다).
+    // price_stale 이 없거나 false 면(옛 서버 포함) 모두 지금과 같다. DOM 을 쓰지 않는 순수 함수(tests/test_frontend_stale_price.py).
+    function isPriceStale(h) { return !!h && h.price_stale === true; }
+    function staleHoldingCount(holdings) { return Array.isArray(holdings) ? holdings.filter(isPriceStale).length : 0; }
+    function nonStaleHoldings(holdings) { return Array.isArray(holdings) ? holdings.filter(h => !isPriceStale(h)) : []; }
+    // 차트 제목 아래 가격 자리: 시세 실패면 비워 두되(호버하면 그 날짜의 가격이 채워진다) 높이는 유지한다
+    function holdingPriceText(h) { return isPriceStale(h) ? '&nbsp;' : `${h.current_price.toLocaleString()}원`; }
+    // 같은 말을 한 화면에 여러 번 하지 않는다: 행은 "—"+아이콘 "시세 없음", 상세 헤더도 "—"+아이콘 "시세 없음",
+    // 상세의 설명은 평가 금액·손익 자리의 칸 하나, 계좌 카드는 "*" 각주 한 줄
+    function staleRowPriceHtml() {
+      return '<div class="text-sm font-extrabold text-[#a9aebf]">—</div>'
+        + '<div class="text-[13px] font-bold text-[#ff9f0a] whitespace-nowrap flex items-center gap-1"><i data-icon="triangle-alert"></i> 시세 없음</div>';
+    }
+    function staleHeaderPriceHtml() {
+      return '<div class="text-xl font-bold text-[#a9aebf]">—</div><div class="text-[13px] font-bold text-[#ff9f0a] flex items-center justify-end gap-1"><i data-icon="triangle-alert"></i> 시세 없음</div>';
+    }
+    function staleCellHtml() {
+      return '<div class="stat-cell col-span-2 bg-black/35 p-2.5 rounded-xl"><div class="text-[13px] text-[#a9aebf]">평가 금액 · 손익</div>'
+        + '<div class="text-[13px] leading-relaxed text-[#ffcc80] mt-0.5 break-keep">현재가를 못 가져와 계산할 수 없어요. 익절·손절 경보도 이 종목은 멈춰 있어요.</div></div>';
+    }
+    function staleNoticeText(n) { return n > 0 ? `${n}종목은 매입가 기준` : ''; }
+    function staleExcludedText(n) { return n > 0 ? `시세를 못 받은 ${n}종목은 뺐어요` : ''; }
+    // </stale-logic>
 
     // <change-logic>
     // 오늘 등락률 문구. 서버의 change_amount(전일 대비 금액, 부호 포함 정수)가 있으면 "+4.2% (5,000원)"(금액은 부호 없이), 없거나 정수가 아니면 지금처럼 "+4.2%".
@@ -2083,6 +2111,15 @@
       document.getElementById('totalAsset').textContent = data.total_asset.toLocaleString();
       document.getElementById('cashBalance').textContent = data.cash_balance.toLocaleString() + '원';
       document.getElementById('stockEval').textContent = data.total_evaluation.toLocaleString() + '원';
+      // 시세를 못 받은 보유 종목은 매입가로 계산된 값이라 총 자산·수익률에 섞여 있다: 주식 평가 뒤 "*"와 각주 한 줄
+      const staleEl = document.getElementById('staleNotice');
+      const staleMarkEl = document.getElementById('staleMark');
+      const staleText = staleNoticeText(staleHoldingCount(data.holdings));
+      if (staleEl) {
+        staleEl.textContent = staleText ? `* ${staleText}` : '';
+        staleEl.classList.toggle('hidden', !staleText);
+      }
+      if (staleMarkEl) staleMarkEl.classList.toggle('hidden', !staleText);
 
       const seedLabel = document.getElementById('seedTargetLabel');
       if (seedLabel) {
@@ -2157,6 +2194,7 @@
         const isExpanded = isSelected && !isPcLayout(); // PC 는 펼치지 않고 오른쪽 패널에 보여준다
         const qtyFormatted = (typeof h.quantity === 'number') ? `${h.quantity}` : h.quantity;
         const statusBadge = holdingStatusBadge(h);
+        const stale = isPriceStale(h); // 시세를 못 받았으면 현재가·손익 자리에 실시간 값처럼 보이는 매입가 기준 값을 보이지 않는다
 
         return `
           <div class="py-1">
@@ -2173,8 +2211,8 @@
               </div>
               <div class="flex items-center gap-2 shrink-0">
                 <div class="flex flex-col items-end gap-1">
-                  <div class="text-sm font-extrabold text-white whitespace-nowrap">${h.current_price.toLocaleString()}원</div>
-                  <div class="${pillBg} text-white font-bold text-[13px] px-2 rounded-md min-w-[62px] text-center">${pnlSign}${h.pnl_pct}%</div>
+                  ${stale ? staleRowPriceHtml() : `<div class="text-sm font-extrabold text-white whitespace-nowrap">${h.current_price.toLocaleString()}원</div>
+                  <div class="${pillBg} text-white font-bold text-[13px] px-2 rounded-md min-w-[62px] text-center">${pnlSign}${h.pnl_pct}%</div>`}
                 </div>
                 ${isPcLayout() ? '' : `<i data-icon="chevron-down" class="text-xl text-[#a9aebf] transition-transform ${isExpanded ? 'rotate-180' : ''}"></i>`}
               </div>
@@ -2183,12 +2221,12 @@
             ${isExpanded ? `
               <div class="mb-2 p-3.5 rounded-2xl bg-black/35 border border-white/10 space-y-3">
                 ${statusBadge ? `<div>${statusBadge}</div>` : ''}
-                ${mobileChartBlockHtml({ canvasId: `holdingChart_${idx}`, priceId: `holdingTipPrice_${idx}`, dateId: `holdingTipDate_${idx}`, pulseId: `holdingPulse_${idx}`, priceText: `${h.current_price.toLocaleString()}원` })}
+                ${mobileChartBlockHtml({ canvasId: `holdingChart_${idx}`, priceId: `holdingTipPrice_${idx}`, dateId: `holdingTipDate_${idx}`, pulseId: `holdingPulse_${idx}`, priceText: holdingPriceText(h) })}
                 <div class="grid grid-cols-2 gap-2">
                   ${statCell('보유 수량', `${qtyFormatted}주`)}
                   ${statCell('평균 매입가', `${h.avg_price.toLocaleString()}원`)}
-                  ${statCell('평가 금액', `${h.eval_amount.toLocaleString()}원`)}
-                  ${statCell('평가 손익', `${pnlSign}${h.unrealized_pnl.toLocaleString()}원`, pnlText, '(매도 비용 반영)')}
+                  ${stale ? staleCellHtml() : `${statCell('평가 금액', `${h.eval_amount.toLocaleString()}원`)}
+                  ${statCell('평가 손익', `${pnlSign}${h.unrealized_pnl.toLocaleString()}원`, pnlText, '(매도 비용 반영)')}`}
                 </div>
                 <div class="text-[13px] text-[#a9aebf]">보유 ${h.hold_days}일차 · 목표 ${h.target_price.toLocaleString()}원 · 손절 ${h.stop_loss_price.toLocaleString()}원</div>
                 ${sellBoxHtml(h, true)}
@@ -2495,9 +2533,11 @@
 
     function holdingsPanelHtml(p, mobile) {
       const rows = holdingsByPnl(p.holdings);
+      const staleN = staleHoldingCount(p.holdings);
       let body;
       if (rows.length === 0) {
-        body = sumEmpty('보유 중인 종목이 없어요');
+        // 보유 종목이 있는데 전부 시세를 못 받았다면 "없어요"가 아니라 계산하지 못했다고 알린다
+        body = sumEmpty(staleN > 0 ? '시세를 못 받아 손익을 계산하지 못했어요' : '보유 중인 종목이 없어요');
       } else {
         body = `<div class="flex flex-col gap-2">${rows.slice(0, 5).map((r, i) => `
           <div class="flex items-center gap-2 text-[13px]">
@@ -2506,6 +2546,7 @@
             <span class="num shrink-0 font-semibold ${pnlTextClass(r.pnlPct)}">${r.pnlPct > 0 ? '+' : ''}${r.pnlPct}%</span>
           </div>`).join('')}</div>
           <div class="text-[13px] text-[#a9aebf]">손익은 예상 매도 수수료·세금을 뺀 값이에요.</div>
+          ${staleN > 0 ? `<div class="text-[13px] text-[#ff9f0a]">${staleExcludedText(staleN)}</div>` : ''}
           ${rows.length === 1 ? '<div class="text-[13px] text-[#a9aebf]">보유 종목이 늘어나면 손익 순으로 정렬돼요.</div>' : ''}`;
       }
       return sumPanel(`${sumTitle('chart-line', '보유 종목 손익')}${body}`, mobile);
@@ -2668,6 +2709,8 @@
       const vsAvg = (price) => h.avg_price > 0 ? ((price / h.avg_price - 1) * 100).toFixed(1) : '';
       const stopPct = vsAvg(h.stop_loss_price);
       const targetPct = vsAvg(h.target_price);
+      // 시세를 못 받았으면 현재가가 매입가라 기준선 위의 현재 위치를 그리지 않는다
+      const marker = isPriceStale(h) ? '' : `<div class="absolute -top-[5px] w-1 h-[18px] rounded-sm bg-[#f5f5f7]" style="left: ${pos}%"></div>`;
       return `
         <div class="space-y-4 pb-4">
           <div class="flex items-start justify-between gap-4">
@@ -2681,25 +2724,25 @@
               </div>
             </div>
             <div class="text-right shrink-0">
-              <div class="text-[28px] font-bold tracking-tight text-white">${h.current_price.toLocaleString()}원</div>
-              <div class="text-[13px] font-semibold ${pnlTextClass(h.pnl_pct)}">${pnlSign}${h.pnl_pct}%</div>
+              ${isPriceStale(h) ? staleHeaderPriceHtml() : `<div class="text-[28px] font-bold tracking-tight text-white">${h.current_price.toLocaleString()}원</div>
+              <div class="text-[13px] font-semibold ${pnlTextClass(h.pnl_pct)}">${pnlSign}${h.pnl_pct}%</div>`}
             </div>
           </div>
           <div class="grid grid-cols-4 gap-3">
             ${statCell('보유 수량', `${qty}주`)}
             ${statCell('평균 매입가', `${h.avg_price.toLocaleString()}원`)}
-            ${statCell('평가 금액', `${h.eval_amount.toLocaleString()}원`)}
-            ${statCell('평가 손익', signedWon(h.unrealized_pnl), pnlTextClass(h.unrealized_pnl), '(매도 비용 반영)')}
+            ${isPriceStale(h) ? staleCellHtml() : `${statCell('평가 금액', `${h.eval_amount.toLocaleString()}원`)}
+            ${statCell('평가 손익', signedWon(h.unrealized_pnl), pnlTextClass(h.unrealized_pnl), '(매도 비용 반영)')}`}
           </div>
-          ${pcChartPanel(`${h.current_price.toLocaleString()}원`)}
+          ${pcChartPanel(holdingPriceText(h))}
           ${pcPanel(`
             <div class="flex items-center gap-2 text-sm font-semibold text-white"><i data-icon="chart-line" class="text-[18px] text-[#a9aebf]"></i> 손절 · 익절 기준선</div>
             <div class="relative h-2 rounded-full mt-5 mb-2" style="background: linear-gradient(90deg, #0a84ff 0%, rgba(255,255,255,0.14) 30%, rgba(255,255,255,0.14) 70%, #ff453a 100%)">
-              <div class="absolute -top-[5px] w-1 h-[18px] rounded-sm bg-[#f5f5f7]" style="left: ${pos}%"></div>
+              ${marker}
             </div>
             <div class="flex justify-between text-[13px] text-[#a9aebf]">
               <span>손절 ${h.stop_loss_price.toLocaleString()}원${stopPct ? ` (${stopPct}%)` : ''}</span>
-              <span class="text-white font-semibold">현재 ${h.current_price.toLocaleString()}원</span>
+              ${isPriceStale(h) ? '' : `<span class="text-white font-semibold">현재 ${h.current_price.toLocaleString()}원</span>`}
               <span>익절 ${h.target_price.toLocaleString()}원${targetPct ? ` (+${targetPct}%)` : ''}</span>
             </div>`)}
           <div class="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4">
