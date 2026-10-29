@@ -50,7 +50,9 @@ def _compute_bucket(bucket_budget):
                                budget=bucket_budget, top_n=CACHE_TOP_N)
     # 종목 종류(ETF 태그용)는 후보 목록에서 코드별로 이어 붙인다(strategy.py 는 바꾸지 않는다)
     kinds = {c["code"]: c.get("security_type", "") for c in candidates}
-    return attach_diagnosis(recs, get_stock_daily_candles, budget=bucket_budget, security_types=kinds)
+    # 전일 대비 금액도 같은 방식으로(없으면 None: 화면은 %만 보인다)
+    amounts = {c["code"]: c.get("change_amount") for c in candidates}
+    return attach_diagnosis(recs, get_stock_daily_candles, budget=bucket_budget, security_types=kinds, change_amounts=amounts)
 
 rec_cache = RecommendationCache(_compute_bucket)
 forced_at = {}   # user_id -> 마지막 강제 갱신 시각
