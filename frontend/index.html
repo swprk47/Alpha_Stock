@@ -516,6 +516,21 @@
     </div>
   </div>
 
+  <!-- 장 시간 안내 팝업: 종목의 장 상태 태그를 누르면 열린다. NXT·KRX 탭, 시간대를 색으로 나눈 얇은 막대, 현재 시각은 V 아이콘 -->
+  <div id="marketHoursModal" onclick="if (event.target === this) closeMarketHours()" class="dlg-backdrop fixed inset-0 z-[65] flex items-center justify-center p-4 hidden">
+    <div role="dialog" aria-modal="true" aria-labelledby="marketHoursTitle" class="dlg-panel glass-modal w-full max-w-[440px] rounded-[20px] p-5 sm:p-6 flex flex-col gap-3.5">
+      <div class="flex items-center justify-between">
+        <h3 id="marketHoursTitle" class="text-[18px] font-bold text-white">장 시간 안내</h3>
+        <button id="marketHoursCloseBtn" type="button" onclick="closeMarketHours()" aria-label="닫기" class="text-[#a9aebf] hover:text-white text-lg w-11 h-11 -mr-2 flex items-center justify-center">
+          <i data-icon="x"></i>
+        </button>
+      </div>
+      <div id="marketHoursTabs" role="tablist" aria-label="거래소" class="grid gap-1 p-1 rounded-xl bg-[#1c1c1e]"></div>
+      <div id="marketHoursBody" role="tabpanel" class="flex flex-col gap-3.5"></div>
+      <div class="text-[13px] leading-relaxed text-[#a9aebf] border-t border-white/10 pt-3">모의 주문은 정규장 종가로 체결돼요.<br>공휴일·휴장일에는 열리지 않아요.<br><span id="marketHoursAsOf"></span></div>
+    </div>
+  </div>
+
   <!-- 💰 시드머니 예산 설정 모달 -->
   <div id="budgetModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
     <div class="glass-modal w-full max-w-sm rounded-t-3xl sm:rounded-2xl p-5 space-y-4">
@@ -1500,6 +1515,76 @@
     }
     // </change-logic>
 
+    // <market-logic>
+    // 장 상태 표시의 순수 함수(DOM 없음, tests/test_frontend_market_logic.py). 장 상태 판단은 서버(market_data.market_session)가 하고
+    // 여기서는 그 결과 {state: regular|pre|after|closed|unknown, nxt_listed}만 쓴다. 시계는 팝업의 현재 시각(V) 표시에만 쓰고 판단에 쓰지 않는다
+    // (공휴일을 모르므로). 시간표는 공식 확인된 값만 넣는다: NXT 세 구간(nextrade.co.kr), KRX 정규장. KRX 장전·장후 시각은 추후 확인.
+    const MARKET_COLORS = { pre: '#64d2ff', regular: '#30d158', after: '#bf5af2', closed: '#8e8e93' };
+    const MARKET_TAG_LABELS = { pre: '프리마켓', regular: '정규장', after: '애프터마켓', closed: '장 마감' };
+    const MARKET_AXIS = { from: 480, to: 1200 }; // 막대 축 08:00~20:00 (분)
+    const MARKET_HOURS = {
+      asOf: '2026.10.29', // 공식 개정일이 아니라 값을 확인한 날
+      nxt: {
+        segments: [
+          { key: 'pre', name: '프리마켓', text: '08:00 – 08:50', from: '08:00', to: '08:50' },
+          { key: 'regular', name: '정규장 (메인마켓)', text: '09:00:30 – 15:20', from: '09:00', to: '15:20' },
+          { key: 'after', name: '애프터마켓', text: '15:40 – 20:00', from: '15:40', to: '20:00' },
+        ],
+        breaks: '08:50–09:00 · 15:20–15:40',
+        note: '',
+      },
+      krx: {
+        segments: [{ key: 'regular', name: '정규장', text: '09:00 – 15:30', from: '09:00', to: '15:30' }],
+        breaks: '',
+        note: '그 밖의 시간(장전·장후 시간외, 프리·애프터마켓)은 확인 중이에요',
+      },
+    };
+
+    function marketMin(hhmm) { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; }
+    function marketAsOfText() { return `${MARKET_HOURS.asOf} 확인 · 시간은 바뀔 수 있어요.`; }
+
+    // 태그: 모르는 값·누락이면 null(태그를 달지 않는다)
+    function sessionTag(ms) {
+      const state = ms && typeof ms === 'object' ? ms.state : null;
+      return Object.prototype.hasOwnProperty.call(MARKET_TAG_LABELS, state) ? { label: MARKET_TAG_LABELS[state], tone: state } : null;
+    }
+
+    // NXT 탭은 시세 응답에 시간외 정보가 있을 때(nxt_listed === true)만
+    function availableTabs(ms) { return ms && ms.nxt_listed === true ? ['nxt', 'krx'] : ['krx']; }
+
+    // 한국 시각: 기기 시간대와 상관없이 Asia/Seoul
+    function kstClock(date) {
+      const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', weekday: 'short', hourCycle: 'h23' }).formatToParts(date);
+      const get = type => (parts.find(p => p.type === type) || {}).value;
+      const h = parseInt(get('hour'), 10) % 24;
+      const m = parseInt(get('minute'), 10);
+      const wd = get('weekday');
+      return { min: h * 60 + m, label: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`, weekend: wd === 'Sat' || wd === 'Sun' };
+    }
+
+    // 팝업 한 탭의 막대·범례·현재 시각. V 는 시간표 안이고 응답이 closed 가 아닐 때만(태그와 모순되지 않게)
+    function hoursModel(tab, ms, clock) {
+      const def = MARKET_HOURS[tab] || MARKET_HOURS.krx;
+      const span = MARKET_AXIS.to - MARKET_AXIS.from;
+      const segments = def.segments.map(s => {
+        const a = marketMin(s.from);
+        const b = marketMin(s.to);
+        return { key: s.key, name: s.name, text: s.text, left: (a - MARKET_AXIS.from) / span * 100, width: (b - a) / span * 100, color: MARKET_COLORS[s.key] };
+      });
+      const tag = sessionTag(ms);
+      const closed = !!tag && tag.tone === 'closed';
+      const min = clock && typeof clock.min === 'number' && !clock.weekend ? clock.min : null;
+      const inside = min !== null && min >= MARKET_AXIS.from && min <= MARKET_AXIS.to;
+      let marker = null;
+      if (inside && !closed) {
+        const left = (min - MARKET_AXIS.from) / span * 100;
+        marker = { left: left, label: `지금 ${clock.label}`, align: left < 12 ? 'start' : (left > 88 ? 'end' : 'center') };
+      }
+      const stateLine = marker === null ? '지금은 시간표 밖이에요' : (tag ? `지금은 ${tag.label}이에요` : '');
+      return { segments: segments, breaks: def.breaks, note: def.note, marker: marker, outside: marker === null, stateLine: stateLine };
+    }
+    // </market-logic>
+
     // ===== 💡 수량 조절 매수 모달 로직 =====
     // <toast-logic>
     // 상단 알림이 떠 있는 시간(ms): 종류별 기본 시간에 글자가 길면 조금 더 얹는다(상한 12초). 체결 알림을 읽을 시간이 필요하다
@@ -1670,7 +1755,7 @@
     function trapBuySheetFocus(e) {
       const modal = document.getElementById('buyModal');
       if (!modal || modal.classList.contains('hidden')) return;
-      const dialogOpen = ['tradeModal', 'resetModal'].some(id => {
+      const dialogOpen = ['tradeModal', 'resetModal', 'marketHoursModal'].some(id => {
         const el = document.getElementById(id);
         return el && !el.classList.contains('hidden');
       });
@@ -1881,14 +1966,21 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         // 맨 위에 떠 있는 것 하나만 닫는다: 확인창·초기화 창이 열려 있으면 시트는 그대로 둔다
-        const dialogOpen = ['tradeModal', 'resetModal'].some(id => {
+        const dialogOpen = ['tradeModal', 'resetModal', 'marketHoursModal'].some(id => {
           const el = document.getElementById(id);
           return el && !el.classList.contains('hidden');
         });
-        closeMenu(); closeResetModal(); closeTradeModal();
+        closeMenu(); closeResetModal(); closeTradeModal(); closeMarketHours();
         if (!dialogOpen) closeBuyModal();
       }
-      if (e.key === 'Tab') { trapResetFocus(e); trapTradeFocus(e); trapBuySheetFocus(e); }
+      // 장 시간 안내 팝업이 열려 있으면 좌우 화살표로 탭을 옮긴다
+      if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && marketHoursIsOpen()) {
+        const tabs = availableTabs(marketCtx);
+        const next = tabs[(tabs.indexOf(marketTab) + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+        e.preventDefault();
+        selectMarketTab(next);
+      }
+      if (e.key === 'Tab') { trapResetFocus(e); trapTradeFocus(e); trapMarketFocus(e); trapBuySheetFocus(e); }
     });
     let recsLoaded = false;   // 추천을 한 번이라도 받았는지 (빈 목록 문구 구분용)
     let recsFailed = false;   // 마지막 추천 요청이 실패했는지 (받아 둔 목록이 없을 때 오류 화면의 기준)
@@ -3605,6 +3697,88 @@
       const i = btns.indexOf(document.activeElement);
       const next = e.shiftKey ? (i <= 0 ? btns.length - 1 : i - 1) : (i === btns.length - 1 ? 0 : i + 1);
       btns[next].focus();
+    }
+
+    // ===== 장 시간 안내 팝업 =====
+    // 태그(openMarketHours)로 열고, 탭은 NXT(nxt_listed 일 때만)·KRX. 계산은 hoursModel(순수 함수), 여기서는 그리기만 한다
+    let marketTab = 'krx';
+    let marketCtx = { state: 'unknown', nxt_listed: false };
+    let marketReturnFocus = null;
+
+    function marketHoursIsOpen() {
+      const modal = document.getElementById('marketHoursModal');
+      return !!modal && !modal.classList.contains('hidden');
+    }
+
+    function openMarketHours(state, nxtListed) {
+      marketCtx = { state: state, nxt_listed: nxtListed === true };
+      const tabs = availableTabs(marketCtx);
+      marketTab = tabs.includes('krx') ? 'krx' : tabs[0]; // 기본 탭은 KRX(정규장 기준, 모의 체결가의 기준)
+      const active = document.activeElement;
+      marketReturnFocus = (active && active !== document.body && active.offsetParent !== null) ? active : null;
+      renderMarketHours();
+      document.getElementById('marketHoursModal').classList.remove('hidden');
+      const sel = document.querySelector('#marketHoursTabs [aria-selected="true"]');
+      (sel || document.getElementById('marketHoursCloseBtn')).focus();
+    }
+
+    function closeMarketHours() {
+      if (!marketHoursIsOpen()) return;
+      document.getElementById('marketHoursModal').classList.add('hidden');
+      if (marketReturnFocus && marketReturnFocus.focus) marketReturnFocus.focus();
+      marketReturnFocus = null;
+    }
+
+    function selectMarketTab(key) {
+      if (!availableTabs(marketCtx).includes(key)) return;
+      marketTab = key;
+      renderMarketHours();
+      const sel = document.querySelector('#marketHoursTabs [aria-selected="true"]');
+      if (sel) sel.focus();
+    }
+
+    function renderMarketHours() {
+      const tabs = availableTabs(marketCtx);
+      const names = { nxt: 'NXT 넥스트레이드', krx: 'KRX 한국거래소' };
+      const tabsEl = document.getElementById('marketHoursTabs');
+      tabsEl.style.gridTemplateColumns = `repeat(${tabs.length}, minmax(0, 1fr))`;
+      tabsEl.innerHTML = tabs.map(key => `<button type="button" role="tab" aria-selected="${key === marketTab}" tabindex="${key === marketTab ? 0 : -1}" onclick="selectMarketTab('${key}')" class="min-h-[40px] rounded-[9px] text-sm tap-press ${key === marketTab ? 'bg-[#f5f5f7] text-[#0b0d12] font-bold' : 'text-[#a9aebf] font-semibold'}">${names[key]}</button>`).join('');
+      const model = hoursModel(marketTab, marketCtx, kstClock(new Date()));
+      const tag = sessionTag(marketCtx);
+      let markerHtml = '<div class="h-[36px]"></div>';
+      if (model.marker) {
+        const m = model.marker;
+        const pos = m.align === 'start' ? 'left:0' : (m.align === 'end' ? 'right:0' : `left:${m.left}%;transform:translateX(-50%)`);
+        markerHtml = `<div class="relative h-[36px]">
+          <div class="absolute top-0 whitespace-nowrap text-[13px] font-bold text-white" style="${pos}">${m.label}</div>
+          <svg aria-hidden="true" width="16" height="10" viewBox="0 0 16 10" style="position:absolute;left:${m.left}%;top:22px;transform:translateX(-8px)"><path d="M2 2 L8 8 L14 2" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>`;
+      }
+      const bar = `<div class="relative h-[14px] rounded-[7px] overflow-hidden bg-[#2c2c2e]">${model.segments.map(seg => `<div class="absolute top-0 h-full" style="left:${seg.left}%;width:${seg.width}%;background:${seg.color}"></div>`).join('')}</div>`;
+      const axis = `<div class="relative h-5 mt-1.5 text-[13px] text-[#a9aebf]"><span class="absolute left-0">08:00</span><span class="absolute" style="left:33.3%;transform:translateX(-50%)">12:00</span><span class="absolute" style="left:66.7%;transform:translateX(-50%)">16:00</span><span class="absolute right-0">20:00</span></div>`;
+      const legend = model.segments.map(seg => {
+        const here = !!tag && tag.tone === seg.key;
+        return `<div class="flex items-center gap-2.5 text-sm"><span class="w-2.5 h-2.5 rounded-[3px] shrink-0" style="background:${seg.color}"></span><span class="flex-1 ${here ? 'font-bold text-white' : 'text-[#d3d6e2]'}">${seg.name}</span><span class="${here ? 'font-bold text-white' : 'text-[#a9aebf]'}">${seg.text}</span></div>`;
+      }).join('');
+      const breaks = model.breaks ? `<div class="flex items-center gap-2.5 text-sm"><span class="w-2.5 h-2.5 rounded-[3px] shrink-0 bg-[#2c2c2e] border border-[#48484a]"></span><span class="flex-1 text-[#d3d6e2]">쉬는 시간</span><span class="text-[#a9aebf]">${model.breaks}</span></div>` : '';
+      const note = model.note ? `<div class="text-[13px] leading-relaxed text-[#a9aebf]">${model.note}</div>` : '';
+      const stateColor = tag && !model.outside ? MARKET_COLORS[tag.tone] : '#a9aebf';
+      document.getElementById('marketHoursBody').innerHTML = `<div>${markerHtml}${bar}${axis}</div>
+        ${model.stateLine ? `<div class="text-sm font-bold" style="color:${stateColor}">${model.stateLine}</div>` : ''}
+        <div class="flex flex-col gap-2.5">${legend}${breaks}${note}</div>`;
+      document.getElementById('marketHoursAsOf').textContent = marketAsOfText();
+    }
+
+    // Tab 이 팝업 밖으로 나가지 않게 팝업 안의 버튼들을 돈다
+    function trapMarketFocus(e) {
+      const modal = document.getElementById('marketHoursModal');
+      if (!modal || modal.classList.contains('hidden')) return;
+      const items = [...modal.querySelectorAll('button')].filter(b => !b.disabled && b.offsetParent !== null);
+      e.preventDefault();
+      if (items.length === 0) return;
+      const i = items.indexOf(document.activeElement);
+      const next = e.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : (i === items.length - 1 ? 0 : i + 1);
+      items[next].focus();
     }
 
     async function tradeConfirm() {
