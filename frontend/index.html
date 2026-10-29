@@ -582,7 +582,7 @@
           <div class="flex items-center gap-1 mt-0.5">
             <span id="buyStockMarket" class="text-[13px] px-1.5 py-0.5 rounded bg-[#1c1c1e] text-[#a9aebf]">KOSPI</span>
             <span id="buyKindTag"></span>
-            <span id="buyFractionalTag" class="text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold">소수점 가능</span>
+            <span id="buyFractionalTag" class="text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap">소수점 가능</span>
           </div>
         </div>
         <div class="text-right shrink-0">
@@ -1575,15 +1575,13 @@
       document.getElementById('buyStockMarket').textContent = stockItem.market || 'KOSPI';
       document.getElementById('buyStockPrice').textContent = stockItem.current_price.toLocaleString() + '원';
 
-      // 소수점 가능 여부 뱃지
+      // 소수점이 되는 종목에만 칩(PC 헤더와 같은 규칙). 안 되는 종목은 칩 없이 아래 매수 패널의 안내 문장으로 알린다
+      // (예전에 안 되는 종목에 붙이던 긴 주황 칩은 좁은 폭에서 두 줄로 접혀 이름 칸을 구겼다)
       const fracTag = document.getElementById('buyFractionalTag');
-      if (isFractional) {
-        fracTag.className = 'text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold';
-        fracTag.textContent = '소수점 가능';
-      } else {
-        fracTag.className = 'text-[13px] px-1.5 py-0.5 rounded bg-[#ff9f0a]/20 text-[#ff9f0a] font-semibold';
-        fracTag.textContent = '1주 단위 일반종목';
-      }
+      fracTag.className = isFractional
+        ? 'text-[13px] px-1.5 py-0.5 rounded bg-[#30d158]/20 text-[#30d158] font-semibold whitespace-nowrap'
+        : 'hidden';
+      fracTag.textContent = '소수점 가능';
 
       const changeEl = document.getElementById('buyStockChange');
       const isGain = stockItem.change_rate >= 0;

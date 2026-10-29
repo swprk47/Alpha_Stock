@@ -207,3 +207,27 @@ def test_opening_the_sheet_starts_collapsed_and_still_fills_the_reasons():
 
 def test_old_spinner_hiding_rule_for_the_removed_input_is_gone():
     assert "#buyQtyInput" not in _html()
+
+
+# ── 소수점 칩: 소수점이 되는 종목에만(PC 헤더와 같은 규칙) ──
+
+
+def test_fractional_chip_is_shown_only_for_fractional_stocks_and_never_wraps():
+    # 좁은 폭에서 주황 "1주 단위 일반종목" 칩이 두 줄로 접혀 이름 칸을 구겼다. 안 되는 종목은 칩 없이
+    # 아래 매수 패널의 안내 문장("소수점 거래가 안 되는 종목이라 1주 단위로만 살 수 있어요.")으로 알린다
+    body = _func("openCustomBuyModal")
+    assert "1주 단위 일반종목" not in body and "bg-[#ff9f0a]/20" not in body
+    tag = body[body.index("buyFractionalTag"):body.index("const changeEl")]
+    assert re.search(r"isFractional\s*\?\s*'[^']*whitespace-nowrap[^']*'\s*:\s*'hidden'", tag)
+    assert "bg-[#30d158]/20" in tag
+
+
+def test_fractional_chip_slot_still_exists_with_the_green_default():
+    m = _sheet_markup()
+    slot = m[m.index('id="buyFractionalTag"'):]
+    slot = slot[:slot.index("</span>")]
+    assert "소수점 가능" in slot and "bg-[#30d158]/20" in slot and "whitespace-nowrap" in slot
+
+
+def test_the_not_fractional_explanation_stays_in_the_buy_panel():
+    assert "소수점 거래가 안 되는 종목이라 1주 단위로만 살 수 있어요." in _html()
