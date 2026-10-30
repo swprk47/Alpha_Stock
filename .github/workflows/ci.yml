@@ -54,6 +54,8 @@ jobs:
           HTTPS_PROXY: http://127.0.0.1:9
           NO_PROXY: localhost,127.0.0.1
         run: |
+          # 기본 셸은 pipefail 이 꺼져 있어, 이게 없으면 tee 때문에 pytest 의 실패가 단계 성공으로 보인다
+          set -o pipefail
           python -m pytest -q -rs -p no:cacheprovider | tee pytest.log
           if grep -Eq '[0-9]+ skipped|^SKIPPED' pytest.log; then
             echo "::error::건너뛴 테스트가 있습니다(node 설치나 환경을 확인하세요)"
