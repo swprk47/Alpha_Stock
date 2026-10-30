@@ -75,3 +75,56 @@ def test_non_bool_is_422(client, value):
 
 def test_requires_login_401(client):
     assert client.post("/api/settings", json={"allow_closed_trading": False}).status_code == 401
+
+
+# ── 읽기 전용·저장값 검증(리뷰에서 미룬 항목) ──
+
+
+def _set_stored(client, settings):
+    data = _store().load(_uid())
+    data["settings"] = settings
+    _store().save(_uid(), data)
+
+
+def test_reading_settings_does_not_create_a_user_file(client):
+    import server
+    mgr = server.portfolio_mgr
+    assert mgr.get_settings("dev:never-seen") == {"allow_closed_trading": True}
+    assert mgr.store.load("dev:never-seen") is None  # 읽기만 했으니 파일이 생기지 않는다
+
+
+def test_me_for_a_session_whose_user_file_is_gone_does_not_recreate_it(client):
+    import os
+    login(client)
+    os.remove(_store()._path(_uid()))
+    r = client.get("/api/me")
+    assert r.status_code == 200 and r.json()["settings"] == {"allow_closed_trading": True}
+    assert _store().load(_uid()) is None
+
+
+@pytest.mark.parametrize("bad", ["false", "true", 0, 1, None, [], {}, "no"])
+def test_stored_non_bool_value_falls_back_to_the_default(client, bad):
+    login(client)
+    _set_stored(client, {"allow_closed_trading": bad})
+    assert client.get("/api/me").json()["settings"] == {"allow_closed_trading": True}
+
+
+@pytest.mark.parametrize("settings", ["x", 5, None, ["a"]])
+def test_stored_settings_that_is_not_an_object_falls_back_to_the_default(client, settings):
+    login(client)
+    _set_stored(client, settings)
+    assert client.get("/api/me").json()["settings"] == {"allow_closed_trading": True}
+
+
+def test_stored_boolean_is_kept_and_unknown_keys_are_not_exposed(client):
+    login(client)
+    _set_stored(client, {"allow_closed_trading": False, "weird": 1})
+    assert client.get("/api/me").json()["settings"] == {"allow_closed_trading": False}
+
+
+def test_a_string_in_the_file_does_not_block_orders(client):
+    # 손으로 고친 "false"(문자열)는 차단으로 읽히지 않는다: 허용(기본)이므로 정규장이 아니어도 주문이 된다
+    login(client)
+    _set_stored(client, {"allow_closed_trading": "false"})
+    client.quotes["005930"]["market_state"] = {"state": "closed", "nxt_listed": True}
+    assert client.post("/api/buy", json={"code": "005930", "quantity": 1}).status_code == 200

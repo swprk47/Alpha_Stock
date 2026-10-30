@@ -43,6 +43,12 @@ def _check_price(price: int) -> int:
     return price
 
 
+def _clean_settings(saved) -> dict:
+    """저장된 settings 에서 알려진 키만, 기본값과 같은 타입(불리언)일 때만 쓴다. 손으로 고친 파일의 "false"(문자열) 같은 값은 기본값으로 읽는다."""
+    saved = saved if isinstance(saved, dict) else {}
+    return {key: (saved[key] if isinstance(saved.get(key), type(default)) else default) for key, default in DEFAULT_SETTINGS.items()}
+
+
 class MultiUserPortfolioManager:
     def __init__(self, initial_balance: int = config.DEFAULT_INITIAL_BALANCE, store: UserStore | None = None):
         self.initial_balance = initial_balance
@@ -79,11 +85,10 @@ class MultiUserPortfolioManager:
             return data
 
     def get_settings(self, user_id: str) -> dict:
-        """저장된 설정 위에 기본값을 깔아 항상 모든 키를 가진 dict 를 돌려준다."""
+        """저장된 설정을 알려진 키만, 올바른 타입일 때만 읽고 나머지는 기본값으로 채운다. 읽기 전용: 사용자 파일이 없어도 만들지 않는다."""
         with self.store.locked(user_id):
-            data = self._load_or_new(user_id)
-        saved = data.get("settings")
-        return {**DEFAULT_SETTINGS, **(saved if isinstance(saved, dict) else {})}
+            data = self.store.load(user_id)
+        return _clean_settings(data.get("settings") if isinstance(data, dict) else None)
 
     def set_setting(self, user_id: str, key: str, value) -> dict:
         """설정 하나를 저장하고 전체 설정을 돌려준다. 알 수 없는 키는 거부한다. reset() 은 설정을 건드리지 않는다."""
@@ -94,7 +99,7 @@ class MultiUserPortfolioManager:
             saved = data.get("settings") if isinstance(data.get("settings"), dict) else {}
             data["settings"] = {**saved, key: value}
             self.store.save(user_id, data)
-            return {**DEFAULT_SETTINGS, **data["settings"]}
+            return _clean_settings(data["settings"])
 
     def set_user_budget(self, user_id: str, new_budget: int):
         """시드 예산 변경 (PR-B에서 입출금 원장으로 대체 예정)."""
