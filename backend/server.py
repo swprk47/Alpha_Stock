@@ -19,6 +19,7 @@ from market_data import (
     UNKNOWN_MARKET_STATE
 )
 from strategy import get_recommendations
+from overview import get_overview
 from symbol_index import MAX_QUERY_LEN, symbol_index
 from recommendation_cache import CACHE_TOP_N, RecommendationCache, recs_for_budget
 from portfolio import MultiUserPortfolioManager, OrderError
@@ -83,6 +84,14 @@ def stock_detail_api(code: str, budget: int = Query(100000, ge=config.MIN_BUDGET
     if not detail:
         raise HTTPException(status_code=404, detail="종목 정보를 찾을 수 없습니다.")
     return {"success": True, "stock": detail}
+
+@app.get("/api/stock/{code}/overview")
+def stock_overview_api(code: str, user: dict = Depends(get_current_user)):
+    """종목 개요 탭: 소개·기본 정보·ETF 보유 자산·비중·뉴스(네이버 증권 값을 정제해 그대로). 카드마다 ok/empty/error.
+    네이버 호출이 늘어나는 경로라 로그인한 사용자에게만 연다."""
+    if not re.fullmatch(CODE_PATTERN, code):
+        raise HTTPException(status_code=400, detail="종목코드는 영문 대문자·숫자 6자리입니다.")
+    return get_overview(code)
 
 @app.get("/api/recommendations")
 def get_recs(request: Request, refresh: bool = False,

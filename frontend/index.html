@@ -614,6 +614,11 @@
         </div>
       </div>
 
+      <!-- [시세·매수 | 개요] 탭: 종목 이름·가격 머리는 탭과 상관없이 위에 계속 보인다 -->
+      <div id="buyTabs"></div>
+
+      <!-- 시세·매수 본문(차트·AI 진단·매수 패널). 개요 탭에서는 감춘다 -->
+      <div id="buyTradeBody" class="flex flex-col gap-2.5">
       <!-- 미니 꺾은선 차트 -->
       <div id="buyModalChartWrap" class="w-full h-[112px] rounded-xl border border-white/10 bg-black/35 p-1.5 relative touch-none select-none">
         <canvas id="buyModalChart" class="w-full h-full block"></canvas>
@@ -632,6 +637,10 @@
 
       <!-- 금액/수량 입력·총 결제·매수 버튼: PC 인라인 매수 패널(ibBoxHtml)과 같은 코드 -->
       <div id="buySheetPanel" class="rounded-2xl border border-white/10 bg-black/25 p-3"></div>
+      </div>
+
+      <!-- 개요 본문(네이버 증권 값을 그대로). 시세·매수 탭에서는 감춘다 -->
+      <div id="buyOverviewBody" class="flex flex-col gap-2.5 hidden"></div>
     </div>
   </div>
 
@@ -1516,6 +1525,347 @@
     }
     // </tag-logic>
 
+    // <overview-logic>
+    // 종목 개요 탭의 순수 로직(DOM 없음, tests/test_frontend_overview_logic.py 가 node 로 검사).
+    // 서버(backend/overview.py)가 정제한 평문을 이스케이프해서 HTML 로 만든다. 우리가 문장·숫자를 만들지 않는다:
+    // 네이버가 준 값만 보이고, 값이 없으면 안내 문구를 보인다. 모든 글자는 13px 이상, 누르는 곳은 44px 이상이다
+    const OVERVIEW_TTL_MS = 300000;                       // 같은 종목의 개요는 5분 안에는 다시 받지 않는다
+    const OV_COLORS = ['#0a84ff', '#ffb340', '#30d158', '#64d2ff', '#ff7aa2']; // 업종·국가·자산 막대(항목마다 다른 색, 범례 점과 같은 색)
+    const OV_ABOUT_CLAMP_CHARS = 200;                     // ETF 설명이 이보다 길면 4줄로 접는다
+    const OV_CARD = 'rounded-2xl border border-white/10 bg-black/35 p-3.5 flex flex-col gap-2.5 min-w-0';
+    const OV_RETRY_BTN = '<button type="button" onclick="retryOverview()" class="self-start min-h-[44px] px-4 rounded-xl bg-[#2c2c2e] border border-white/15 text-sm font-bold text-white tap-press">다시 시도</button>';
+    const OV_FAILED_MSG = '종목 정보를 불러오지 못했어요.';
+    const OV_ERROR_MSG = {
+      about: '소개를 불러오지 못했어요.', facts: '기본 정보를 불러오지 못했어요.', holdings: '보유 자산 정보를 불러오지 못했어요.',
+      weights: '비중 정보를 불러오지 못했어요.', news: '뉴스를 불러오지 못했어요.'
+    };
+
+    function ovEsc(text) {
+      if (typeof text !== 'string') return '';
+      return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // 개요를 (다시) 받아야 하는가: 없으면 받고, 실패한 카드가 있을 때 다시 시도(force)하면 받고, 5분이 지났으면 받는다
+    function ovShouldFetch(entry, now, force) {
+      if (!entry) return true;
+      if (force && entry.hasError) return true;
+      return now - entry.fetchedAt >= OVERVIEW_TTL_MS;
+    }
+
+    function ovNextTab(current, requested) {
+      return requested === 'overview' ? 'overview' : 'trade';
+    }
+
+    // PC 패널이 보여 주는 종목이 바뀌면 시세·매수 탭으로 돌아간다. 같은 종목을 다시 그릴 때(60초 자동 갱신)는 선택한 탭을 그대로 둔다
+    function ovPaneReset(prevCode, code, tab) {
+      return code && code === prevCode ? tab : 'trade';
+    }
+
+    // 탭 키보드: 선택 안 된 탭은 tabindex=-1 이라 방향키로 옮긴다(←/→는 둘 사이를 오가고 Home/End 는 처음/끝)
+    function ovTabFromKey(current, key) {
+      if (key === 'ArrowRight' || key === 'ArrowLeft') return current === 'trade' ? 'overview' : 'trade';
+      if (key === 'Home') return 'trade';
+      if (key === 'End') return 'overview';
+      return null;
+    }
+
+    // 개요가 보이는 동안 5분이 지난 값을 조용히 다시 받는다(시총 등이 "현재 시세 기준"이라 오래된 값으로 남지 않게).
+    // 방금 실패했거나 이미 받는 중이면 되풀이하지 않는다. 처음 받는 것은 탭을 열 때 한다
+    function ovAutoRefreshNeeded(entry, failed, inflight, now) {
+      return !!entry && !failed && !inflight && ovShouldFetch(entry, now, false);
+    }
+
+    function ovAllFailed(data) {
+      if (!data) return true;
+      return ['about', 'facts', 'holdings', 'weights', 'news'].every(k => data[k] && data[k].status === 'error');
+    }
+
+    function ovBarWidth(weight) {
+      return typeof weight === 'number' && isFinite(weight) ? Math.min(100, Math.max(0, weight)) : 0;
+    }
+
+    function ovWeightText(weight) {
+      return typeof weight === 'number' && isFinite(weight) ? weight.toFixed(2) + '%' : '';
+    }
+
+    // 탭: 장 시간 안내 팝업의 탭과 같은 모양(어두운 바탕, 선택하면 밝은 바탕에 어두운 글자, 높이 40px)
+    function ovTabsHtml(active) {
+      const tabs = [['trade', '시세·매수'], ['overview', '개요']];
+      const buttons = tabs.map(([key, name]) => {
+        const on = key === active;
+        return `<button type="button" role="tab" aria-selected="${on}" tabindex="${on ? 0 : -1}" onclick="selectOverviewTab('${key}')" class="min-h-[40px] rounded-[9px] text-sm tap-press ${on ? 'bg-[#f5f5f7] text-[#0b0d12] font-bold' : 'text-[#a9aebf] font-semibold'}">${name}</button>`;
+      }).join('');
+      return `<div role="tablist" aria-label="종목 보기" onkeydown="ovTabKey(event)" class="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[#1c1c1e]">${buttons}</div>`;
+    }
+
+    function ovCardHtml(title, note, inner) {
+      const head = title
+        ? `<div class="flex flex-wrap items-baseline justify-between gap-x-2 text-[13px] font-bold text-[#a9aebf]"><span>${ovEsc(title)}</span>${note ? `<span class="font-medium text-[#8e8e93]">${ovEsc(note)}</span>` : ''}</div>`
+        : '';
+      return `<div class="${OV_CARD}">${head}${inner}</div>`;
+    }
+
+    function ovHintHtml(text) {
+      return `<p class="text-sm leading-relaxed text-[#a9aebf]">${ovEsc(text)}</p>`;
+    }
+
+    // 실패한 카드: 그 카드에만 안내와 다시 시도 버튼
+    function ovErrorCardHtml(title, key) {
+      return ovCardHtml(title, '', `<p class="text-sm leading-relaxed text-[#a9aebf]"><span class="font-semibold text-[#ffb340]">${ovEsc(OV_ERROR_MSG[key])}</span> 다른 칸은 그대로 보여요.</p>${OV_RETRY_BTN}`);
+    }
+
+    // ETF 설명이 200자를 넘고 접혀 있으면 4줄까지만 보이고 "더보기"로 펼친다(글자는 원문 그대로, 줄 수만 제한). 주식 소개는 접지 않는다
+    function ovAboutHtml(card, expanded) {
+      if (!card) return '';
+      const title = card.title || '종목 정보';
+      if (card.status === 'error') return ovErrorCardHtml(title, 'about');
+      if (card.status !== 'ok') {
+        const msg = card.title === '회사 소개' ? '이 종목은 네이버 증권에 회사 소개가 없어요. 우선주, 신규 상장, 스팩 종목에서 그럴 수 있어요.'
+          : (card.title === '이 ETF는' ? '이 ETF의 설명이 없어요.' : '이 종목의 개요 정보는 아직 제공하지 않아요. 시세·매수 탭은 그대로 쓸 수 있어요.');
+        return ovCardHtml(title, '', ovHintHtml(msg));
+      }
+      const paragraphs = Array.isArray(card.paragraphs) ? card.paragraphs : [];
+      const isEtf = card.title === '이 ETF는';
+      const long = isEtf && paragraphs.join('').length > OV_ABOUT_CLAMP_CHARS;
+      const clamp = long && !expanded;
+      const body = `<div class="flex flex-col gap-1"${clamp ? ' style="display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden"' : ''}>${paragraphs.map(p => `<p class="text-[15px] leading-[1.7] text-white whitespace-pre-line">${ovEsc(p)}</p>`).join('')}</div>`;
+      const more = long ? `<button type="button" onclick="toggleOverviewAbout()" aria-expanded="${!!expanded}" class="self-start min-h-[44px] text-sm font-bold text-[#0a84ff] tap-press">${expanded ? '접기' : '더보기'}</button>` : '';
+      return ovCardHtml(title, '네이버 증권 제공', body + more);
+    }
+
+    function ovFactsHtml(card) {
+      if (!card || card.status === 'empty') return '';
+      if (card.status === 'error') return ovErrorCardHtml('기본 정보', 'facts');
+      const items = Array.isArray(card.items) ? card.items : [];
+      const cells = items.map(i => `<div class="rounded-xl border border-white/10 bg-[#141416] px-3 py-2 min-w-0"><div class="text-[13px] text-[#a9aebf]">${ovEsc(i.label)}</div><div class="text-[15px] font-bold text-white break-words">${ovEsc(i.value)}</div>${i.note ? `<div class="text-[13px] text-[#8e8e93]">${ovEsc(i.note)}</div>` : ''}</div>`).join('');
+      const note = items.some(i => i.note) ? '값마다 기준이 달라요' : '';
+      return ovCardHtml('기본 정보', note, `<div class="grid grid-cols-2 gap-2">${cells}</div>`);
+    }
+
+    function ovHoldingsHtml(card, kind) {
+      if (!card) return '';
+      if (card.status === 'error') return ovErrorCardHtml('보유 자산 상위 10', 'holdings');
+      if (card.status !== 'ok') {
+        // 보유 자산은 ETF 만의 카드다. 주식·ETN·종류 불명에는 카드 자체를 두지 않는다
+        return kind === 'etf' ? ovCardHtml('보유 자산 상위 10', '', ovHintHtml('이 ETF는 보유 자산 정보를 제공하지 않아요.')) : '';
+      }
+      const items = Array.isArray(card.items) ? card.items : [];
+      const hasWeight = i => typeof i.weight === 'number' && isFinite(i.weight);
+      const rows = items.map((i, idx) => {
+        const no = `<span class="text-[13px] text-[#8e8e93] text-center">${idx + 1}</span>`;
+        if (hasWeight(i)) {
+          return `<div class="grid grid-cols-[22px_minmax(0,1fr)_64px] gap-2 items-center text-sm">${no}<div class="min-w-0 flex flex-col gap-1"><span class="truncate">${ovEsc(i.name)}</span><div class="h-1.5 rounded-full bg-[#2c2c2e] overflow-hidden"><div class="h-full rounded-full" style="width:${ovBarWidth(i.weight)}%;background:${OV_COLORS[0]}"></div></div></div><span class="text-right font-semibold tabular-nums">${ovWeightText(i.weight)}</span></div>`;
+        }
+        return `<div class="grid grid-cols-[22px_minmax(0,1fr)_auto] gap-2 items-center text-sm">${no}<span class="truncate">${ovEsc(i.name)}</span><span class="text-[13px] text-[#8e8e93] tabular-nums">${ovEsc(i.count)}</span></div>`;
+      }).join('');
+      const notice = items.length && !items.some(hasWeight) ? ovHintHtml('이 ETF는 비중을 제공하지 않아서 이름과 보유 수량만 보여요.') : '';
+      return ovCardHtml('보유 자산 상위 10', '네이버 제공 · 상위 10개만 보여요', notice + rows);
+    }
+
+    // 업종·국가·자산 비중 카드(서버가 순서와 표시 여부를 정해 보낸다). 합계는 네이버가 준 값만 보이고 우리가 더하지 않는다
+    function ovWeightsHtml(card) {
+      if (!card || card.status === 'empty') return '';
+      if (card.status === 'error') return ovErrorCardHtml('비중', 'weights');
+      const cards = Array.isArray(card.cards) ? card.cards : [];
+      return cards.map(c => {
+        const items = Array.isArray(c.items) ? c.items : [];
+        // 쌓은 막대는 비중이 합쳐 100%를 넘지 않을 때만 그린다(선물형 ETF 처럼 100%를 넘으면 조각이 비례해 줄어 네이버 값과 달라 보인다)
+        const fits = items.reduce((sum, x) => sum + (typeof x.weight === 'number' && isFinite(x.weight) ? x.weight : 0), 0) <= 100.01;
+        const seg = fits ? items.map((x, i) => `<div class="h-full shrink-0" style="width:${ovBarWidth(x.weight)}%;background:${OV_COLORS[i % OV_COLORS.length]}"></div>`).join('') : '';
+        const legend = items.map((x, i) => `<span class="flex items-center gap-1.5 min-w-0"><i class="w-2 h-2 rounded-sm shrink-0" style="background:${OV_COLORS[i % OV_COLORS.length]}"></i><span class="truncate">${ovEsc(x.label)}</span><em class="not-italic ml-auto text-white tabular-nums">${ovWeightText(x.weight)}</em></span>`).join('');
+        const note = `상위 ${items.length}개 · ${typeof c.total === 'number' && isFinite(c.total) ? '네이버 합계 ' + ovWeightText(c.total) : '네이버 제공'}`;
+        return ovCardHtml(c.title, note, `${fits ? `<div class="flex h-2.5 rounded-full overflow-hidden gap-0.5 bg-[#2c2c2e]">${seg}</div>` : ''}<div class="grid grid-cols-2 gap-x-3.5 gap-y-1.5 text-[13px] text-[#a9aebf]">${legend}</div>`);
+      }).join('');
+    }
+
+    function ovNewsHtml(card) {
+      if (!card) return '';
+      if (card.status === 'error') return ovErrorCardHtml('최근 뉴스', 'news');
+      if (card.status !== 'ok') return ovCardHtml('최근 뉴스', '네이버 뉴스', ovHintHtml('표시할 뉴스가 없어요.'));
+      const items = Array.isArray(card.items) ? card.items : [];
+      const links = items.map(n => {
+        const more = typeof n.more === 'number' && n.more > 0 ? `외 ${Math.floor(n.more)}건` : '';
+        const meta = [n.office, n.time, more].filter(Boolean).map(ovEsc).join(' · ');
+        return `<a href="${ovEsc(n.url)}" target="_blank" rel="noopener noreferrer" class="flex flex-col gap-0.5 py-2.5 min-h-[44px] border-t border-white/10 first:border-t-0 first:pt-0 text-white no-underline"><span class="text-sm leading-snug">${ovEsc(n.title)}</span><span class="text-[13px] text-[#8e8e93]">${meta} ↗</span></a>`;
+      }).join('');
+      const disc = '<p class="text-[13px] leading-relaxed text-[#8e8e93]">네이버가 주는 헤드라인을 그대로 보여요. 종목과 크게 관련 없는 기사가 섞일 수 있어요.</p>';
+      return ovCardHtml('최근 뉴스', '네이버 뉴스', `<div class="flex flex-col">${links}</div>${disc}`);
+    }
+
+    // 푸터: 출처와 가져온 시각(서버가 이번 응답에 쓴 값 중 가장 오래된 것의 시각), 투자 권유가 아니라는 안내
+    function ovFooterHtml(data, kind, now) {
+      // 오늘 받은 값이 아니면 날짜를 같이 적는다(어제 15:00 을 1시간 전으로 읽지 않게)
+      const parts = /^(\d{4})-(\d{2})-(\d{2})\s(\d{2}:\d{2})/.exec((data && data.fetched_at) || '');
+      const today = now instanceof Date ? now : new Date();
+      const sameDay = !!parts && Number(parts[1]) === today.getFullYear() && Number(parts[2]) === today.getMonth() + 1 && Number(parts[3]) === today.getDate();
+      const m = parts ? [null, sameDay ? parts[4] : `${parts[2]}.${parts[3]} ${parts[4]}`] : null;
+      const url = data && typeof data.source_url === 'string' && data.source_url.indexOf('https://m.stock.naver.com/') === 0 ? data.source_url : '';
+      const source = url ? `<a href="${ovEsc(url)}" target="_blank" rel="noopener noreferrer" class="underline">네이버 증권 ↗</a>` : '네이버 증권';
+      const lines = [`<span>출처: ${source}${m ? ` · ${m[1]}에 가져왔어요` : ''}</span>`];
+      if (kind === 'etf') lines.push('<span>구성 비중의 기준일은 제공되지 않아요.</span>');
+      lines.push('<span>정보 제공용이며 투자 권유가 아니에요.</span>');
+      return `<div class="flex flex-col gap-0.5 text-[13px] text-[#8e8e93]">${lines.join('')}</div>`;
+    }
+
+    function ovSkeletonHtml() {
+      const bar = w => `<div class="sk h-4 ${w}"></div>`;
+      return `<div aria-busy="true" class="flex flex-col gap-3">${[bar('w-11/12') + bar('w-full') + bar('w-9/12'), bar('w-full') + bar('w-10/12'), bar('w-11/12') + bar('w-8/12')].map(inner => `<div class="${OV_CARD}">${inner}</div>`).join('')}</div>`;
+    }
+
+    // 개요 본문 전체. view: {status: 'loading'|'ready'|'failed', data}. opts: {aboutOpen, layout: 'one-col'|'two-col'}
+    function ovBodyHtml(view, kind, opts) {
+      if (!view || view.status === 'loading') return ovSkeletonHtml();
+      if (view.status === 'failed' || ovAllFailed(view.data)) {
+        return `<div class="flex flex-col gap-3">${ovCardHtml('', '', `${ovHintHtml(OV_FAILED_MSG + ' 네이버 증권에 연결되지 않았어요. 잠시 뒤에 다시 시도해 주세요. 시세·매수 탭은 그대로 쓸 수 있어요.')}${OV_RETRY_BTN}`)}</div>`;
+      }
+      const d = view.data;
+      const two = !!opts && opts.layout === 'two-col';
+      const about = ovAboutHtml(d.about, !!(opts && opts.aboutOpen));
+      const facts = ovFactsHtml(d.facts);
+      const holdings = ovHoldingsHtml(d.holdings, kind);
+      const weights = ovWeightsHtml(d.weights);
+      const news = ovNewsHtml(d.news);
+      const footer = ovFooterHtml(d, kind);
+      if (!two) return `<div class="flex flex-col gap-3">${about}${facts}${holdings}${weights}${news}${footer}</div>`;
+      return `<div class="grid grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-4 items-start"><div class="flex flex-col gap-3 min-w-0">${about}${facts}${weights}</div><div class="flex flex-col gap-3 min-w-0">${holdings}${news}${footer}</div></div>`;
+    }
+    // </overview-logic>
+
+    // ===== 종목 개요 탭 상태(DOM 밖) =====
+    // PC 상세 패널은 60초마다 통째로 다시 그려지므로 탭과 받아 둔 개요를 DOM 이 아니라 변수에 둔다
+    let overviewTab = 'trade';      // 'trade'(시세·매수) | 'overview'(개요). 종목을 새로 열면 'trade'
+    let overviewData = {};          // {[code]: {data, fetchedAt, hasError}} 받아 둔 개요(5분 동안 다시 받지 않는다)
+    let overviewFailed = {};        // {[code]: true} 네트워크 오류 등으로 전부 못 받은 종목
+    let overviewReq = 0;            // 요청 번호: 종목을 바꾸거나 시트를 닫으면 올려서 늦게 온 응답을 버린다
+    let overviewInflight = {};      // {[code]: true} 지금 받는 중인 종목(조용한 새로고침이 겹쳐 요청하지 않게)
+    let overviewAboutOpen = false;  // ETF 설명을 펼쳤는가(종목·탭이 바뀌면 접힌 상태로)
+
+    function overviewViewFor(code) {
+      const entry = overviewData[code];
+      if (entry) return { status: 'ready', data: entry.data };
+      if (overviewFailed[code]) return { status: 'failed' };
+      return { status: 'loading' };
+    }
+
+    let overviewPaneCode = '';      // PC 패널이 마지막으로 그린 종목코드(바뀌면 탭을 시세·매수로 되돌린다)
+
+    // PC 패널이 탭을 쓰는 종목(검색 종목·스윙 추천). 보유 상세·요약에는 탭이 없다
+    function overviewPaneItem() {
+      const holdings = currentPortfolio ? (currentPortfolio.holdings || []) : [];
+      const st = detailPaneState(activeTab, expandedCardIndex, expandedHoldingIndex, currentRecs, holdings, searchStock);
+      return st.mode === 'search' || st.mode === 'rec' ? st.item : null;
+    }
+
+    // 지금 화면이 보여 주는 종목코드(모바일 시트가 열려 있으면 그 종목, 아니면 PC 패널의 종목)
+    function overviewVisibleCode() {
+      const sheet = document.getElementById('buyModal');
+      if (sheet && !sheet.classList.contains('hidden') && buySheetItem) return buySheetItem.code;
+      if (isPcLayout()) {
+        const item = overviewPaneItem();
+        return item && !item.loading && item.code ? item.code : '';
+      }
+      return '';
+    }
+
+    // PC 패널: 헤더 아래 탭(너비 제한)과 개요 본문(두 열)
+    function overviewPaneTabsHtml() {
+      return `<div class="max-w-[280px]">${ovTabsHtml(overviewTab)}</div>`;
+    }
+
+    function overviewPaneBody(code) {
+      const view = overviewViewFor(code);
+      return ovBodyHtml(view, view.data ? view.data.kind : '', { aboutOpen: overviewAboutOpen, layout: 'two-col' });
+    }
+
+    // 모바일 시트: 탭, 제목·부제, 본문 전환
+    function applyBuyTab() {
+      const tabsEl = document.getElementById('buyTabs');
+      if (!tabsEl) return;
+      const overview = overviewTab === 'overview';
+      tabsEl.innerHTML = ovTabsHtml(overviewTab);
+      document.getElementById('buyTradeBody').classList.toggle('hidden', overview);
+      const body = document.getElementById('buyOverviewBody');
+      body.classList.toggle('hidden', !overview);
+      document.getElementById('buyModalTitle').textContent = overview ? '종목 정보' : '종목 매수';
+      document.getElementById('buyModalSubtitle').textContent = overview ? '이 종목이 어떤 종목인지 살펴봐요' : '시드머니 맞춤 매수 시뮬레이션';
+      const item = buySheetItem;
+      if (overview && item) {
+        const view = overviewViewFor(item.code);
+        body.innerHTML = ovBodyHtml(view, view.data ? view.data.kind : '', { aboutOpen: overviewAboutOpen, layout: 'one-col' });
+      } else if (!overview && item && item.chart_data && item.chart_data.prices && item.chart_data.prices.length > 0) {
+        setTimeout(() => drawInteractiveChart('buyModalChart', item.chart_data.prices, item.chart_data.dates, item.change_rate >= 0), 80); // 감춰져 있던 캔버스를 다시 그린다
+      }
+    }
+
+    // 모바일 시트와 PC 패널을 지금 상태에 맞게 다시 그린다
+    function refreshOverviewViews() {
+      applyBuyTab();
+      if (isPcLayout()) renderDetailPane();
+    }
+
+    function selectOverviewTab(tab) {
+      const next = ovNextTab(overviewTab, tab);
+      if (next === overviewTab) return;
+      overviewTab = next;
+      overviewAboutOpen = false;
+      const code = overviewVisibleCode();
+      const tabHadFocus = !!(document.activeElement && document.activeElement.closest && document.activeElement.closest('[role="tablist"][aria-label="종목 보기"]'));
+      if (overviewTab === 'overview' && code) loadOverview(code);
+      refreshOverviewViews();
+      if (tabHadFocus) { // 탭을 다시 그리면 포커스가 사라지므로 선택된 탭으로 돌려준다
+        const selected = document.querySelector('[role="tablist"][aria-label="종목 보기"] [aria-selected="true"]');
+        if (selected) selected.focus();
+      }
+      const dialog = document.querySelector('#buyModal [role="dialog"]');
+      if (dialog) dialog.scrollTop = 0; // 시트는 스크롤되므로 탭을 바꾸면 맨 위에서 시작한다
+      const pane = document.getElementById('detailPane');
+      if (pane) pane.scrollTop = 0;     // PC 패널도 마찬가지
+    }
+
+    function ovTabKey(e) {
+      const next = ovTabFromKey(overviewTab, e.key);
+      if (!next) return;
+      e.preventDefault();
+      selectOverviewTab(next);
+    }
+
+    function toggleOverviewAbout() {
+      overviewAboutOpen = !overviewAboutOpen;
+      refreshOverviewViews();
+    }
+
+    function retryOverview() {
+      const code = overviewVisibleCode();
+      if (code) loadOverview(code, true);
+    }
+
+    // 개요를 받는다. 처음 열 때만(5분 안에는 다시 받지 않음), 실패한 카드가 있을 때 다시 시도하면 다시 받는다.
+    // 종목을 바꾸거나 시트를 닫으면 요청 번호가 올라가 늦게 온 응답은 버려진다
+    async function loadOverview(code, force = false) {
+      if (!ovShouldFetch(overviewData[code], Date.now(), force)) return;
+      const req = ++overviewReq;
+      delete overviewFailed[code];
+      overviewInflight[code] = true;
+      try {
+        const data = await api(`/api/stock/${code}/overview`);
+        if (req !== overviewReq) return;
+        if (!data || data.success !== true) throw new Error('unexpected overview response');
+        const hasError = ['about', 'facts', 'holdings', 'weights', 'news'].some(k => data[k] && data[k].status === 'error');
+        overviewData[code] = { data: data, fetchedAt: Date.now(), hasError: hasError };
+      } catch (err) {
+        if (req !== overviewReq) return;
+        if (err && err.status === 401) {
+          // 로그인 창은 api() 가 이미 띄웠다. 개요 탭에 멈춰 있지 않게 시세·매수 탭으로 되돌린다(실패 문구를 남기지 않는다)
+          overviewTab = 'trade';
+        } else {
+          overviewFailed[code] = true;
+        }
+      } finally {
+        delete overviewInflight[code];
+      }
+      refreshOverviewViews();
+    }
+
     // <stale-logic>
     // 시세 조회에 실패한 보유 종목 표시. 서버(/api/portfolio)는 시세를 못 받으면 현재가를 평균 매입가로 대신하고
     // price_stale: true 를 준다. 그 값으로 만든 평가 금액·손익이 실시간처럼 보이지 않게 한다(익절·손절 신호도 매입가 기준이라 확인할 수 없다).
@@ -1772,6 +2122,7 @@
       const active = document.activeElement;
       buySheetReturnFocus = (active && active !== document.body && active.offsetParent !== null) ? active : null;
       buySheetItem = stockItem;
+      overviewTab = 'trade'; overviewAboutOpen = false; ++overviewReq; // 열 때마다 시세·매수 탭에서 시작하고, 이전 종목의 개요 응답은 버린다
       delete ibSel[stockItem.code]; // 열 때마다 추천 수량(없으면 기본 금액)으로 다시 시작한다
       const isFractional = stockItem.is_fractional === true; // 서버 판별값만 신뢰 (없으면 정수만)
 
@@ -1819,7 +2170,10 @@
       document.getElementById('gradeChevron').classList.remove('rotate-180');
 
       document.getElementById('buySheetPanel').innerHTML = ibBoxHtml(stockItem);
+      applyBuyTab(); // 탭 막대와 제목·부제를 시세·매수 탭 상태로 맞춘다
       document.getElementById('buyModal').classList.remove('hidden');
+      const dialog = document.querySelector('#buyModal [role="dialog"]');
+      if (dialog) dialog.scrollTop = 0;
       document.getElementById('buyModalCloseBtn').focus(); // 숫자 칸이 아니라 닫기 버튼에 둔다(모바일 키보드가 저절로 뜨지 않게)
 
       if (stockItem.chart_data && stockItem.chart_data.prices && stockItem.chart_data.prices.length > 0) {
@@ -1846,6 +2200,7 @@
       if (!modal || modal.classList.contains('hidden')) return;
       modal.classList.add('hidden');
       buySheetItem = null;
+      overviewTab = 'trade'; overviewAboutOpen = false; ++overviewReq; // 닫으면 탭을 되돌리고 진행 중인 개요 응답을 버린다
       if (buySheetReturnFocus && buySheetReturnFocus.isConnected && buySheetReturnFocus.focus) buySheetReturnFocus.focus();
       buySheetReturnFocus = null;
     }
@@ -2853,12 +3208,14 @@
               <div class="text-[13px] font-semibold ${isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]'}">${changeText(item.change_rate, item.change_amount)}</div>
             </div>
           </div>
+          ${overviewPaneTabsHtml()}
+          ${overviewTab === 'overview' ? overviewPaneBody(item.code) : `
           ${pcChartPanel(`${item.current_price.toLocaleString()}원`)}
           <div class="grid grid-cols-4 gap-3">${recStatCellsHtml(s)}</div>
           <div class="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4">
             ${pcPanel(recAiHtml(item))}
             ${buy}
-          </div>
+          </div>`}
         </div>`;
     }
 
@@ -2993,6 +3350,8 @@
               ${closeBtn}
             </div>
           </div>
+          ${overviewPaneTabsHtml()}
+          ${overviewTab === 'overview' ? overviewPaneBody(stock.code) : `
           ${pcChartPanel(`${stock.current_price.toLocaleString()}원`)}
           <div class="grid grid-cols-4 gap-3">
             ${statCell(`목표 익절가 <b class="text-[#ff6a60]">+${t.targetPct}%</b>`, `${t.target.toLocaleString()}원`)}
@@ -3003,7 +3362,7 @@
           <div class="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4">
             ${pcPanel(recAiHtml(stock))}
             ${buy}
-          </div>
+          </div>`}
         </div>`;
     }
 
@@ -3021,12 +3380,19 @@
       if (!pane || !isPcLayout()) return;
       const holdings = currentPortfolio ? (currentPortfolio.holdings || []) : [];
       const st = detailPaneState(activeTab, expandedCardIndex, expandedHoldingIndex, currentRecs, holdings, searchStock);
+      // 패널이 보여 주는 종목이 바뀌면 시세·매수 탭으로 돌아간다. 같은 종목의 재그림(60초 갱신)은 선택한 탭을 유지한다
+      const paneCode = (st.mode === 'search' || st.mode === 'rec') && st.item.code ? st.item.code : '';
+      overviewTab = ovPaneReset(overviewPaneCode, paneCode, overviewTab);
+      if (overviewTab === 'trade') overviewAboutOpen = false;
+      overviewPaneCode = paneCode;
+      // 개요가 보이는 동안 5분이 지난 값은 조용히 다시 받는다(60초 자동 갱신이 이 함수를 부른다)
+      if (overviewTab === 'overview' && paneCode && ovAutoRefreshNeeded(overviewData[paneCode], !!overviewFailed[paneCode], !!overviewInflight[paneCode], Date.now())) loadOverview(paneCode);
       if (st.mode === 'search') {
         pane.innerHTML = searchDetailHtml(st.item);
-        if (!st.item.loading) drawPcChart(st.item.chart_data, st.item.change_rate >= 0);
+        if (!st.item.loading && overviewTab === 'trade') drawPcChart(st.item.chart_data, st.item.change_rate >= 0);
       } else if (st.mode === 'rec') {
         pane.innerHTML = recDetailHtml(st.item, st.idx);
-        drawPcChart(st.item.chart_data, st.item.change_rate >= 0);
+        if (overviewTab === 'trade') drawPcChart(st.item.chart_data, st.item.change_rate >= 0);
       } else if (st.mode === 'holding') {
         pane.innerHTML = holdingDetailHtml(st.item);
         drawPcChart(st.item.chart_data, st.item.pnl_pct >= 0, st.item.avg_price);

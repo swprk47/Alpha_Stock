@@ -1,0 +1,36 @@
+{
+ "stockEndType": "stock",
+ "itemCode": "005930",
+ "stockName": "삼성전자",
+ "industryCode": "278",
+ "totalInfos": [
+  {
+   "code": "marketValue",
+   "key": "시총",
+   "value": "1,289조 1,044억"
+  },
+  {
+   "code": "foreignRate",
+   "key": "외인소진율",
+   "value": "46.17%"
+  },
+  {
+   "code": "per",
+   "key": "PER",
+   "value": "9.89배",
+   "valueDesc": "2026.06."
+  },
+  {
+   "code": "pbr",
+   "key": "PBR",
+   "value": "2.56배",
+   "valueDesc": "2026.06."
+  },
+  {
+   "code": "dividendYieldRatio",
+   "key": "배당수익률",
+   "value": "0.76%",
+   "valueDesc": "2025.12."
+  }
+ ]
+}
