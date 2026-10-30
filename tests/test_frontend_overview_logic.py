@@ -308,3 +308,22 @@ def test_no_font_below_13px_or_touch_below_44px_in_section():
     assert not re.search(r"text-xs|text-\[(?:9|10|11|12)(?:\.\d+)?px\]", src)
     for m in re.finditer(r"<button[^>]*>", src):
         assert "min-h-[44px]" in m.group(0) or "min-h-[40px]" in m.group(0), m.group(0)  # 탭은 기존 탭과 같은 40px
+
+
+# ── 실화면 확인에서 나온 수정 ──
+
+
+@needs_node
+def test_stock_has_no_holdings_card_or_etf_wording(run):
+    # 주식은 보유 자산 카드가 없다(ETF 안내 문구가 주식 화면에 나오면 안 된다)
+    html = run("ovBodyHtml(V, 'stock', O)", V=ready(stock_data()), O=ONE)
+    assert "보유 자산" not in html and "이 ETF" not in html
+    # 종류를 모르는 경우(ETN 등)도 마찬가지
+    etn = stock_data(kind="etn", about={"status": "empty", "title": "", "paragraphs": []}, facts={"status": "empty", "items": []})
+    assert "보유 자산" not in run("ovBodyHtml(V, 'etn', O)", V=ready(etn), O=ONE)
+
+
+@needs_node
+def test_facts_stay_two_columns_in_the_two_column_layout(run):
+    html = run("ovBodyHtml(V, 'stock', O)", V=ready(stock_data()), O=TWO)
+    assert "grid-cols-3" not in html and "grid-cols-2" in html  # 3칸은 값이 두 줄로 접혀 읽기 어렵다

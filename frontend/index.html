@@ -1556,6 +1556,11 @@
       return requested === 'overview' ? 'overview' : 'trade';
     }
 
+    // PC 패널이 보여 주는 종목이 바뀌면 시세·매수 탭으로 돌아간다. 같은 종목을 다시 그릴 때(60초 자동 갱신)는 선택한 탭을 그대로 둔다
+    function ovPaneReset(prevCode, code, tab) {
+      return code && code === prevCode ? tab : 'trade';
+    }
+
     function ovAllFailed(data) {
       if (!data) return true;
       return ['about', 'facts', 'holdings', 'weights', 'news'].every(k => data[k] && data[k].status === 'error');
@@ -1614,19 +1619,22 @@
       return ovCardHtml(title, '네이버 증권 제공', body + more);
     }
 
-    function ovFactsHtml(card, wide) {
+    function ovFactsHtml(card) {
       if (!card || card.status === 'empty') return '';
       if (card.status === 'error') return ovErrorCardHtml('기본 정보', 'facts');
       const items = Array.isArray(card.items) ? card.items : [];
       const cells = items.map(i => `<div class="rounded-xl border border-white/10 bg-[#141416] px-3 py-2 min-w-0"><div class="text-[13px] text-[#a9aebf]">${ovEsc(i.label)}</div><div class="text-[15px] font-bold text-white break-words">${ovEsc(i.value)}</div>${i.note ? `<div class="text-[13px] text-[#8e8e93]">${ovEsc(i.note)}</div>` : ''}</div>`).join('');
       const note = items.some(i => i.note) ? '값마다 기준이 달라요' : '';
-      return ovCardHtml('기본 정보', note, `<div class="grid ${wide ? 'grid-cols-3' : 'grid-cols-2'} gap-2">${cells}</div>`);
+      return ovCardHtml('기본 정보', note, `<div class="grid grid-cols-2 gap-2">${cells}</div>`);
     }
 
-    function ovHoldingsHtml(card) {
+    function ovHoldingsHtml(card, kind) {
       if (!card) return '';
       if (card.status === 'error') return ovErrorCardHtml('보유 자산 상위 10', 'holdings');
-      if (card.status !== 'ok') return ovCardHtml('보유 자산 상위 10', '', ovHintHtml('이 ETF는 보유 자산 정보를 제공하지 않아요.'));
+      if (card.status !== 'ok') {
+        // 보유 자산은 ETF 만의 카드다. 주식·ETN·종류 불명에는 카드 자체를 두지 않는다
+        return kind === 'etf' ? ovCardHtml('보유 자산 상위 10', '', ovHintHtml('이 ETF는 보유 자산 정보를 제공하지 않아요.')) : '';
+      }
       const items = Array.isArray(card.items) ? card.items : [];
       const hasWeight = i => typeof i.weight === 'number' && isFinite(i.weight);
       const rows = items.map((i, idx) => {
@@ -1693,8 +1701,8 @@
       const d = view.data;
       const two = !!opts && opts.layout === 'two-col';
       const about = ovAboutHtml(d.about, !!(opts && opts.aboutOpen));
-      const facts = ovFactsHtml(d.facts, two);
-      const holdings = ovHoldingsHtml(d.holdings);
+      const facts = ovFactsHtml(d.facts);
+      const holdings = ovHoldingsHtml(d.holdings, kind);
       const weights = ovWeightsHtml(d.weights);
       const news = ovNewsHtml(d.news);
       const footer = ovFooterHtml(d, kind);
@@ -1718,11 +1726,34 @@
       return { status: 'loading' };
     }
 
-    // 지금 화면이 보여 주는 종목코드(모바일 시트가 열려 있으면 그 종목)
+    let overviewPaneCode = '';      // PC 패널이 마지막으로 그린 종목코드(바뀌면 탭을 시세·매수로 되돌린다)
+
+    // PC 패널이 탭을 쓰는 종목(검색 종목·스윙 추천). 보유 상세·요약에는 탭이 없다
+    function overviewPaneItem() {
+      const holdings = currentPortfolio ? (currentPortfolio.holdings || []) : [];
+      const st = detailPaneState(activeTab, expandedCardIndex, expandedHoldingIndex, currentRecs, holdings, searchStock);
+      return st.mode === 'search' || st.mode === 'rec' ? st.item : null;
+    }
+
+    // 지금 화면이 보여 주는 종목코드(모바일 시트가 열려 있으면 그 종목, 아니면 PC 패널의 종목)
     function overviewVisibleCode() {
       const sheet = document.getElementById('buyModal');
       if (sheet && !sheet.classList.contains('hidden') && buySheetItem) return buySheetItem.code;
+      if (isPcLayout()) {
+        const item = overviewPaneItem();
+        return item && !item.loading && item.code ? item.code : '';
+      }
       return '';
+    }
+
+    // PC 패널: 헤더 아래 탭(너비 제한)과 개요 본문(두 열)
+    function overviewPaneTabsHtml() {
+      return `<div class="max-w-[280px]">${ovTabsHtml(overviewTab)}</div>`;
+    }
+
+    function overviewPaneBody(code) {
+      const view = overviewViewFor(code);
+      return ovBodyHtml(view, view.data ? view.data.kind : '', { aboutOpen: overviewAboutOpen, layout: 'two-col' });
     }
 
     // 모바일 시트: 탭, 제목·부제, 본문 전환
@@ -1761,6 +1792,8 @@
       refreshOverviewViews();
       const dialog = document.querySelector('#buyModal [role="dialog"]');
       if (dialog) dialog.scrollTop = 0; // 시트는 스크롤되므로 탭을 바꾸면 맨 위에서 시작한다
+      const pane = document.getElementById('detailPane');
+      if (pane) pane.scrollTop = 0;     // PC 패널도 마찬가지
     }
 
     function toggleOverviewAbout() {
@@ -3139,12 +3172,14 @@
               <div class="text-[13px] font-semibold ${isGain ? 'text-[#ff6a60]' : 'text-[#5aa9ff]'}">${changeText(item.change_rate, item.change_amount)}</div>
             </div>
           </div>
+          ${overviewPaneTabsHtml()}
+          ${overviewTab === 'overview' ? overviewPaneBody(item.code) : `
           ${pcChartPanel(`${item.current_price.toLocaleString()}원`)}
           <div class="grid grid-cols-4 gap-3">${recStatCellsHtml(s)}</div>
           <div class="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4">
             ${pcPanel(recAiHtml(item))}
             ${buy}
-          </div>
+          </div>`}
         </div>`;
     }
 
@@ -3279,6 +3314,8 @@
               ${closeBtn}
             </div>
           </div>
+          ${overviewPaneTabsHtml()}
+          ${overviewTab === 'overview' ? overviewPaneBody(stock.code) : `
           ${pcChartPanel(`${stock.current_price.toLocaleString()}원`)}
           <div class="grid grid-cols-4 gap-3">
             ${statCell(`목표 익절가 <b class="text-[#ff6a60]">+${t.targetPct}%</b>`, `${t.target.toLocaleString()}원`)}
@@ -3289,7 +3326,7 @@
           <div class="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4">
             ${pcPanel(recAiHtml(stock))}
             ${buy}
-          </div>
+          </div>`}
         </div>`;
     }
 
@@ -3307,12 +3344,17 @@
       if (!pane || !isPcLayout()) return;
       const holdings = currentPortfolio ? (currentPortfolio.holdings || []) : [];
       const st = detailPaneState(activeTab, expandedCardIndex, expandedHoldingIndex, currentRecs, holdings, searchStock);
+      // 패널이 보여 주는 종목이 바뀌면 시세·매수 탭으로 돌아간다. 같은 종목의 재그림(60초 갱신)은 선택한 탭을 유지한다
+      const paneCode = (st.mode === 'search' || st.mode === 'rec') && st.item.code ? st.item.code : '';
+      overviewTab = ovPaneReset(overviewPaneCode, paneCode, overviewTab);
+      if (overviewTab === 'trade') overviewAboutOpen = false;
+      overviewPaneCode = paneCode;
       if (st.mode === 'search') {
         pane.innerHTML = searchDetailHtml(st.item);
-        if (!st.item.loading) drawPcChart(st.item.chart_data, st.item.change_rate >= 0);
+        if (!st.item.loading && overviewTab === 'trade') drawPcChart(st.item.chart_data, st.item.change_rate >= 0);
       } else if (st.mode === 'rec') {
         pane.innerHTML = recDetailHtml(st.item, st.idx);
-        drawPcChart(st.item.chart_data, st.item.change_rate >= 0);
+        if (overviewTab === 'trade') drawPcChart(st.item.chart_data, st.item.change_rate >= 0);
       } else if (st.mode === 'holding') {
         pane.innerHTML = holdingDetailHtml(st.item);
         drawPcChart(st.item.chart_data, st.item.pnl_pct >= 0, st.item.avg_price);
