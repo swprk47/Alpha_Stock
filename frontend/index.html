@@ -1516,6 +1516,184 @@
     }
     // </tag-logic>
 
+    // <overview-logic>
+    // 종목 개요 탭의 순수 로직(DOM 없음, tests/test_frontend_overview_logic.py 가 node 로 검사).
+    // 서버(backend/overview.py)가 정제한 평문을 이스케이프해서 HTML 로 만든다. 우리가 문장·숫자를 만들지 않는다:
+    // 네이버가 준 값만 보이고, 값이 없으면 안내 문구를 보인다. 모든 글자는 13px 이상, 누르는 곳은 44px 이상이다
+    const OVERVIEW_TTL_MS = 300000;                       // 같은 종목의 개요는 5분 안에는 다시 받지 않는다
+    const OV_COLORS = ['#0a84ff', '#ffb340', '#30d158', '#64d2ff', '#ff7aa2']; // 업종·국가·자산 막대(항목마다 다른 색, 범례 점과 같은 색)
+    const OV_ABOUT_CLAMP_CHARS = 200;                     // ETF 설명이 이보다 길면 4줄로 접는다
+    const OV_CARD = 'rounded-2xl border border-white/10 bg-black/35 p-3.5 flex flex-col gap-2.5 min-w-0';
+    const OV_RETRY_BTN = '<button type="button" onclick="retryOverview()" class="self-start min-h-[44px] px-4 rounded-xl bg-[#2c2c2e] border border-white/15 text-sm font-bold text-white tap-press">다시 시도</button>';
+    const OV_FAILED_MSG = '종목 정보를 불러오지 못했어요.';
+    const OV_ERROR_MSG = {
+      about: '소개를 불러오지 못했어요.', facts: '기본 정보를 불러오지 못했어요.', holdings: '보유 자산 정보를 불러오지 못했어요.',
+      weights: '비중 정보를 불러오지 못했어요.', news: '뉴스를 불러오지 못했어요.'
+    };
+
+    function ovEsc(text) {
+      if (typeof text !== 'string') return '';
+      return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // 개요를 (다시) 받아야 하는가: 없으면 받고, 실패한 카드가 있을 때 다시 시도(force)하면 받고, 5분이 지났으면 받는다
+    function ovShouldFetch(entry, now, force) {
+      if (!entry) return true;
+      if (force && entry.hasError) return true;
+      return now - entry.fetchedAt >= OVERVIEW_TTL_MS;
+    }
+
+    function ovNextTab(current, requested) {
+      return requested === 'overview' ? 'overview' : 'trade';
+    }
+
+    function ovAllFailed(data) {
+      if (!data) return true;
+      return ['about', 'facts', 'holdings', 'weights', 'news'].every(k => data[k] && data[k].status === 'error');
+    }
+
+    function ovBarWidth(weight) {
+      return typeof weight === 'number' && isFinite(weight) ? Math.min(100, Math.max(0, weight)) : 0;
+    }
+
+    function ovWeightText(weight) {
+      return typeof weight === 'number' && isFinite(weight) ? weight.toFixed(2) + '%' : '';
+    }
+
+    // 탭: 장 시간 안내 팝업의 탭과 같은 모양(어두운 바탕, 선택하면 밝은 바탕에 어두운 글자, 높이 40px)
+    function ovTabsHtml(active) {
+      const tabs = [['trade', '시세·매수'], ['overview', '개요']];
+      const buttons = tabs.map(([key, name]) => {
+        const on = key === active;
+        return `<button type="button" role="tab" aria-selected="${on}" tabindex="${on ? 0 : -1}" onclick="selectOverviewTab('${key}')" class="min-h-[40px] rounded-[9px] text-sm tap-press ${on ? 'bg-[#f5f5f7] text-[#0b0d12] font-bold' : 'text-[#a9aebf] font-semibold'}">${name}</button>`;
+      }).join('');
+      return `<div role="tablist" aria-label="종목 보기" class="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[#1c1c1e]">${buttons}</div>`;
+    }
+
+    function ovCardHtml(title, note, inner) {
+      const head = title
+        ? `<div class="flex flex-wrap items-baseline justify-between gap-x-2 text-[13px] font-bold text-[#a9aebf]"><span>${ovEsc(title)}</span>${note ? `<span class="font-medium text-[#8e8e93]">${ovEsc(note)}</span>` : ''}</div>`
+        : '';
+      return `<div class="${OV_CARD}">${head}${inner}</div>`;
+    }
+
+    function ovHintHtml(text) {
+      return `<p class="text-sm leading-relaxed text-[#a9aebf]">${ovEsc(text)}</p>`;
+    }
+
+    // 실패한 카드: 그 카드에만 안내와 다시 시도 버튼
+    function ovErrorCardHtml(title, key) {
+      return ovCardHtml(title, '', `<p class="text-sm leading-relaxed text-[#a9aebf]"><span class="font-semibold text-[#ffb340]">${ovEsc(OV_ERROR_MSG[key])}</span> 다른 칸은 그대로 보여요.</p>${OV_RETRY_BTN}`);
+    }
+
+    // ETF 설명이 200자를 넘고 접혀 있으면 4줄까지만 보이고 "더보기"로 펼친다(글자는 원문 그대로, 줄 수만 제한). 주식 소개는 접지 않는다
+    function ovAboutHtml(card, expanded) {
+      if (!card) return '';
+      const title = card.title || '종목 정보';
+      if (card.status === 'error') return ovErrorCardHtml(title, 'about');
+      if (card.status !== 'ok') {
+        const msg = card.title === '회사 소개' ? '이 종목은 네이버 증권에 회사 소개가 없어요. 우선주, 신규 상장, 스팩 종목에서 그럴 수 있어요.'
+          : (card.title === '이 ETF는' ? '이 ETF의 설명이 없어요.' : '이 종목의 개요 정보는 아직 제공하지 않아요. 시세·매수 탭은 그대로 쓸 수 있어요.');
+        return ovCardHtml(title, '', ovHintHtml(msg));
+      }
+      const paragraphs = Array.isArray(card.paragraphs) ? card.paragraphs : [];
+      const isEtf = card.title === '이 ETF는';
+      const long = isEtf && paragraphs.join('').length > OV_ABOUT_CLAMP_CHARS;
+      const clamp = long && !expanded;
+      const body = `<div class="flex flex-col gap-1"${clamp ? ' style="display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden"' : ''}>${paragraphs.map(p => `<p class="text-[15px] leading-[1.7] text-white whitespace-pre-line">${ovEsc(p)}</p>`).join('')}</div>`;
+      const more = long ? `<button type="button" onclick="toggleOverviewAbout()" aria-expanded="${!!expanded}" class="self-start min-h-[44px] text-sm font-bold text-[#0a84ff] tap-press">${expanded ? '접기' : '더보기'}</button>` : '';
+      return ovCardHtml(title, '네이버 증권 제공', body + more);
+    }
+
+    function ovFactsHtml(card, wide) {
+      if (!card || card.status === 'empty') return '';
+      if (card.status === 'error') return ovErrorCardHtml('기본 정보', 'facts');
+      const items = Array.isArray(card.items) ? card.items : [];
+      const cells = items.map(i => `<div class="rounded-xl border border-white/10 bg-[#141416] px-3 py-2 min-w-0"><div class="text-[13px] text-[#a9aebf]">${ovEsc(i.label)}</div><div class="text-[15px] font-bold text-white break-words">${ovEsc(i.value)}</div>${i.note ? `<div class="text-[13px] text-[#8e8e93]">${ovEsc(i.note)}</div>` : ''}</div>`).join('');
+      const note = items.some(i => i.note) ? '값마다 기준이 달라요' : '';
+      return ovCardHtml('기본 정보', note, `<div class="grid ${wide ? 'grid-cols-3' : 'grid-cols-2'} gap-2">${cells}</div>`);
+    }
+
+    function ovHoldingsHtml(card) {
+      if (!card) return '';
+      if (card.status === 'error') return ovErrorCardHtml('보유 자산 상위 10', 'holdings');
+      if (card.status !== 'ok') return ovCardHtml('보유 자산 상위 10', '', ovHintHtml('이 ETF는 보유 자산 정보를 제공하지 않아요.'));
+      const items = Array.isArray(card.items) ? card.items : [];
+      const hasWeight = i => typeof i.weight === 'number' && isFinite(i.weight);
+      const rows = items.map((i, idx) => {
+        const no = `<span class="text-[13px] text-[#8e8e93] text-center">${idx + 1}</span>`;
+        if (hasWeight(i)) {
+          return `<div class="grid grid-cols-[22px_minmax(0,1fr)_64px] gap-2 items-center text-sm">${no}<div class="min-w-0 flex flex-col gap-1"><span class="truncate">${ovEsc(i.name)}</span><div class="h-1.5 rounded-full bg-[#2c2c2e] overflow-hidden"><div class="h-full rounded-full" style="width:${ovBarWidth(i.weight)}%;background:${OV_COLORS[0]}"></div></div></div><span class="text-right font-semibold tabular-nums">${ovWeightText(i.weight)}</span></div>`;
+        }
+        return `<div class="grid grid-cols-[22px_minmax(0,1fr)_auto] gap-2 items-center text-sm">${no}<span class="truncate">${ovEsc(i.name)}</span><span class="text-[13px] text-[#8e8e93] tabular-nums">${ovEsc(i.count)}</span></div>`;
+      }).join('');
+      const notice = items.length && !items.some(hasWeight) ? ovHintHtml('이 ETF는 비중을 제공하지 않아서 이름과 보유 수량만 보여요.') : '';
+      return ovCardHtml('보유 자산 상위 10', '네이버 제공 · 상위 10개만 보여요', notice + rows);
+    }
+
+    // 업종·국가·자산 비중 카드(서버가 순서와 표시 여부를 정해 보낸다). 합계는 네이버가 준 값만 보이고 우리가 더하지 않는다
+    function ovWeightsHtml(card) {
+      if (!card || card.status === 'empty') return '';
+      if (card.status === 'error') return ovErrorCardHtml('비중', 'weights');
+      const cards = Array.isArray(card.cards) ? card.cards : [];
+      return cards.map(c => {
+        const items = Array.isArray(c.items) ? c.items : [];
+        const seg = items.map((x, i) => `<div class="h-full" style="width:${ovBarWidth(x.weight)}%;background:${OV_COLORS[i % OV_COLORS.length]}"></div>`).join('');
+        const legend = items.map((x, i) => `<span class="flex items-center gap-1.5 min-w-0"><i class="w-2 h-2 rounded-sm shrink-0" style="background:${OV_COLORS[i % OV_COLORS.length]}"></i><span class="truncate">${ovEsc(x.label)}</span><em class="not-italic ml-auto text-white tabular-nums">${ovWeightText(x.weight)}</em></span>`).join('');
+        const note = `상위 ${items.length}개 · ${typeof c.total === 'number' && isFinite(c.total) ? '네이버 합계 ' + ovWeightText(c.total) : '네이버 제공'}`;
+        return ovCardHtml(c.title, note, `<div class="flex h-2.5 rounded-full overflow-hidden gap-0.5 bg-[#2c2c2e]">${seg}</div><div class="grid grid-cols-2 gap-x-3.5 gap-y-1.5 text-[13px] text-[#a9aebf]">${legend}</div>`);
+      }).join('');
+    }
+
+    function ovNewsHtml(card) {
+      if (!card) return '';
+      if (card.status === 'error') return ovErrorCardHtml('최근 뉴스', 'news');
+      if (card.status !== 'ok') return ovCardHtml('최근 뉴스', '네이버 뉴스', ovHintHtml('표시할 뉴스가 없어요.'));
+      const items = Array.isArray(card.items) ? card.items : [];
+      const links = items.map(n => {
+        const more = typeof n.more === 'number' && n.more > 0 ? `외 ${Math.floor(n.more)}건` : '';
+        const meta = [n.office, n.time, more].filter(Boolean).map(ovEsc).join(' · ');
+        return `<a href="${ovEsc(n.url)}" target="_blank" rel="noopener noreferrer" class="flex flex-col gap-0.5 py-2.5 min-h-[44px] border-t border-white/10 first:border-t-0 first:pt-0 text-white no-underline"><span class="text-sm leading-snug">${ovEsc(n.title)}</span><span class="text-[13px] text-[#8e8e93]">${meta} ↗</span></a>`;
+      }).join('');
+      const disc = '<p class="text-[13px] leading-relaxed text-[#8e8e93]">네이버가 주는 헤드라인을 그대로 보여요. 종목과 크게 관련 없는 기사가 섞일 수 있어요.</p>';
+      return ovCardHtml('최근 뉴스', '네이버 뉴스', `<div class="flex flex-col">${links}</div>${disc}`);
+    }
+
+    // 푸터: 출처와 가져온 시각(서버가 이번 응답에 쓴 값 중 가장 오래된 것의 시각), 투자 권유가 아니라는 안내
+    function ovFooterHtml(data, kind) {
+      const m = /\s(\d{2}:\d{2})/.exec((data && data.fetched_at) || '');
+      const url = data && typeof data.source_url === 'string' && data.source_url.indexOf('https://m.stock.naver.com/') === 0 ? data.source_url : '';
+      const source = url ? `<a href="${ovEsc(url)}" target="_blank" rel="noopener noreferrer" class="underline">네이버 증권 ↗</a>` : '네이버 증권';
+      const lines = [`<span>출처: ${source}${m ? ` · ${m[1]}에 가져왔어요` : ''}</span>`];
+      if (kind === 'etf') lines.push('<span>구성 비중의 기준일은 제공되지 않아요.</span>');
+      lines.push('<span>정보 제공용이며 투자 권유가 아니에요.</span>');
+      return `<div class="flex flex-col gap-0.5 text-[13px] text-[#8e8e93]">${lines.join('')}</div>`;
+    }
+
+    function ovSkeletonHtml() {
+      const bar = w => `<div class="sk h-4 ${w}"></div>`;
+      return `<div aria-busy="true" class="flex flex-col gap-3">${[bar('w-11/12') + bar('w-full') + bar('w-9/12'), bar('w-full') + bar('w-10/12'), bar('w-11/12') + bar('w-8/12')].map(inner => `<div class="${OV_CARD}">${inner}</div>`).join('')}</div>`;
+    }
+
+    // 개요 본문 전체. view: {status: 'loading'|'ready'|'failed', data}. opts: {aboutOpen, layout: 'one-col'|'two-col'}
+    function ovBodyHtml(view, kind, opts) {
+      if (!view || view.status === 'loading') return ovSkeletonHtml();
+      if (view.status === 'failed' || ovAllFailed(view.data)) {
+        return `<div class="flex flex-col gap-3">${ovCardHtml('', '', `${ovHintHtml(OV_FAILED_MSG + ' 네이버 증권에 연결되지 않았어요. 잠시 뒤에 다시 시도해 주세요. 시세·매수 탭은 그대로 쓸 수 있어요.')}${OV_RETRY_BTN}`)}</div>`;
+      }
+      const d = view.data;
+      const two = !!opts && opts.layout === 'two-col';
+      const about = ovAboutHtml(d.about, !!(opts && opts.aboutOpen));
+      const facts = ovFactsHtml(d.facts, two);
+      const holdings = ovHoldingsHtml(d.holdings);
+      const weights = ovWeightsHtml(d.weights);
+      const news = ovNewsHtml(d.news);
+      const footer = ovFooterHtml(d, kind);
+      if (!two) return `<div class="flex flex-col gap-3">${about}${facts}${holdings}${weights}${news}${footer}</div>`;
+      return `<div class="grid grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-4 items-start"><div class="flex flex-col gap-3 min-w-0">${about}${facts}${weights}</div><div class="flex flex-col gap-3 min-w-0">${holdings}${news}${footer}</div></div>`;
+    }
+    // </overview-logic>
+
     // <stale-logic>
     // 시세 조회에 실패한 보유 종목 표시. 서버(/api/portfolio)는 시세를 못 받으면 현재가를 평균 매입가로 대신하고
     // price_stale: true 를 준다. 그 값으로 만든 평가 금액·손익이 실시간처럼 보이지 않게 한다(익절·손절 신호도 매입가 기준이라 확인할 수 없다).
