@@ -5,6 +5,7 @@ market_data.py
 """
 import re
 import requests
+from concurrent.futures import ThreadPoolExecutor
 from symbol_index import MAX_QUERY_LEN, symbol_index
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -245,6 +246,23 @@ def _autocomplete_candidates(query: str):
         return []
 
 
+def _fetch_quotes(codes):
+    """종목코드마다 실시간 시세를 **병렬로** 받아 코드 순서 그대로 돌려준다(먼저 끝난 순서가 아니다).
+    한 종목이 실패(None)하거나 예외여도 그 자리만 None 이고 나머지는 그대로다."""
+    if not codes:
+        return []
+
+    def one(code):
+        try:
+            return get_realtime_stock_info(code)
+        except Exception as e:
+            print(f"Search quote error for {code}: {e}")
+            return None
+
+    with ThreadPoolExecutor(max_workers=len(codes)) as pool:
+        return list(pool.map(one, codes))
+
+
 def search_stocks(query: str):
     """
     종목 검색. 후보는 두 곳에서 모은다.
@@ -269,9 +287,9 @@ def search_stocks(query: str):
 
     try:
         results = []
-        for code, name, market in candidates:
-            # 실시간 현재가 및 등락률 조회
-            info = get_realtime_stock_info(code)
+        # 후보마다 실시간 현재가·등락률을 받는다(병렬: 6개를 차례로 받으면 응답이 그만큼 느려진다)
+        infos = _fetch_quotes([code for code, _, _ in candidates])
+        for (code, name, market), info in zip(candidates, infos):
             current_price = info["current_price"] if info else 0
             change_rate = info["change_rate"] if info else 0.0
             change_amount = info.get("change_amount") if info else None
