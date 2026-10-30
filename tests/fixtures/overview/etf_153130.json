@@ -1,0 +1,182 @@
+{
+ "itemCode": "153130",
+ "itemName": "KODEX 단기채권",
+ "etfSummary": "1좌당 순자산가치의 변동률을 기초지수인 KRW Cash Index(총수익)의 변동률과 유사하도록 투자신탁재산을 운용하는 것을 운용목표로 합니다.  에프엔가이드가 산출하는 KRW Cash Index(총수익)는 잔존만기 1개월 이상 1년 이하의 국고채, 통화안정증권 등 30 종목으로 구성된 듀레이션 0.5년 내외로 자본손익, 경과이자 및 이자 재투자 손익을 감안한 총수익에 관한 지수입니다.  기본적으로 KRW Cash Index를 완전 복제하는 방식으로 포트폴리오를 구성할 예정입니다. 그러나, 투자신탁의 규모가 작거나 운용 효율성의 제고가 필요하다고 판단되는 등의 경우에는 표본추출기법을 활용하여 KRW Cash Index의 듀레이션과 신용등급 분포를 복제하는 현물바스켓으로 포트폴리오를 구성할 예정입니다.  종목 교체시 통안채 입찰 및 국고채 바이백(조기상환) 등을 활용하여 초과수익을 추구하며 보유채권 만기 보유를 통하여 매매 비용를 최소화하고 현물 편입비를 60%~100% 수준으로 운용할 예정입니다. 다만, 추적오차를 줄이기 위해서 채권 관련 파생상품에 투자할 수 있습니다.",
+ "etfBaseIndex": "KRW Cash Index(총수익)",
+ "issuerName": "삼성자산운용(ETF)",
+ "totalFee": 0.15,
+ "listedDate": "20120222",
+ "etfTop10MajorConstituentAssets": [
+  {
+   "seq": 1,
+   "itemCode": "",
+   "itemName": "국고01500-2612(16-8)",
+   "stockCount": "-",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 2,
+   "itemCode": "",
+   "itemName": "국고02250-2709(25-6)",
+   "stockCount": "-",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 3,
+   "itemCode": "",
+   "itemName": "국고02375-2703(22-1)",
+   "stockCount": "-",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 4,
+   "itemCode": "",
+   "itemName": "국고02625-2703(25-1)",
+   "stockCount": "-",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 5,
+   "itemCode": "",
+   "itemName": "국고03125-2709(22-8)",
+   "stockCount": "-",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 6,
+   "itemCode": "",
+   "itemName": "국고03625-2809(26-7)",
+   "stockCount": "-",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 7,
+   "itemCode": "",
+   "itemName": "국고03875-2612(23-10)",
+   "stockCount": "-",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 8,
+   "itemCode": "",
+   "itemName": "국고채03250-2706(24-4)",
+   "stockCount": "-",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 9,
+   "itemCode": "",
+   "itemName": "통안02400-2707-02",
+   "stockCount": "-",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 10,
+   "itemCode": "",
+   "itemName": "통안02540-2611-01",
+   "stockCount": "-",
+   "etfWeight": "-"
+  }
+ ],
+ "sectorPortfolioList": [
+  {
+   "detailTypeCode": "UNCLASSIFIED",
+   "weight": 99.91
+  },
+  {
+   "detailTypeCode": "UTILITIES",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "REAL_ESTATE",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "MATERIALS",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "IT",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "INDUSTRIALS",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "HEALTHCARE",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "FINANCIALS",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "ENERGY",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "CONSUMER_STAPLES",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "CONSUMER_DISCRETIONARY",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "COMMUNICATION",
+   "weight": 0.0
+  }
+ ],
+ "sectorPortfolioTotalWeight": 99.91,
+ "countryPortfolioList": [
+  {
+   "detailTypeCode": "KR",
+   "weight": 99.91
+  },
+  {
+   "detailTypeCode": "US",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "MISC",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "JP",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "HK",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "CN",
+   "weight": 0.0
+  }
+ ],
+ "countryPortfolioTotalWeight": 99.91,
+ "assetPortfolioList": [
+  {
+   "detailTypeCode": "BOND",
+   "weight": 62.65
+  },
+  {
+   "detailTypeCode": "CASH",
+   "weight": 37.26
+  },
+  {
+   "detailTypeCode": "OTHERS",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "EQUITY",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "DERIVATIVES",
+   "weight": 0.0
+  }
+ ],
+ "assetPortfolioTotalWeight": 99.91
+}

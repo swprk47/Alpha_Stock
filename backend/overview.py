@@ -10,12 +10,13 @@ import math
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Callable
 
 import requests
 
-from market_data import HEADERS
+from market_data import HEADERS, safe_security_type
 
 NAVER_BASE = "https://m.stock.naver.com"
 CALL_TIMEOUT = 4              # 네이버 한 번 호출의 제한 시간(초). 기존 시세 조회와 같다
@@ -150,3 +151,297 @@ _NEWS_URL_RE = re.compile(r"https://n\.news\.naver\.com/[A-Za-z0-9._~:/?#@!$&'()
 def safe_news_url(url: Any) -> str:
     """네이버 뉴스 주소(https://n.news.naver.com/…)만 통과시킨다. 그 밖은 ""."""
     return url if isinstance(url, str) and _NEWS_URL_RE.fullmatch(url) else ""
+
+
+# ── 카드 ──
+# 모든 build_* 는 순수 함수다(네트워크·시계 없음). 입력이 예상 모양이 아니면 예외를 올리고, get_overview 가 그 카드만 error 로 만든다.
+# 값을 추측해 채우지 않는다.
+
+ABOUT_STOCK_TITLE = "회사 소개"
+ABOUT_ETF_TITLE = "이 ETF는"
+DASH = "—"
+
+# 영어 코드의 한글 이름(우리가 옮긴 표). 표에 없는 코드는 영어 원문 그대로 보인다. MISC 등 일부 뜻은 확인하지 못한 추정이다
+SECTOR_LABELS = {
+    "IT": "IT", "INDUSTRIALS": "산업재", "FINANCIALS": "금융", "CONSUMER_DISCRETIONARY": "경기소비재",
+    "CONSUMER_STAPLES": "필수소비재", "COMMUNICATION": "커뮤니케이션", "HEALTHCARE": "헬스케어",
+    "MATERIALS": "소재", "ENERGY": "에너지", "UTILITIES": "유틸리티", "REAL_ESTATE": "부동산", "UNCLASSIFIED": "미분류",
+}
+COUNTRY_LABELS = {"KR": "한국", "US": "미국", "JP": "일본", "HK": "홍콩", "CN": "중국", "MISC": "기타"}
+ASSET_LABELS = {"EQUITY": "주식", "BOND": "채권", "CASH": "현금", "DERIVATIVES": "파생", "OTHERS": "기타"}
+
+MAX_WEIGHT_ITEMS = 5      # 비중 카드에 보이는 항목 수(네이버 응답 순서의 앞쪽)
+MAX_NEWS_ITEMS = 5        # 뉴스 클러스터 수
+
+
+def error_card(title: str = "") -> dict:
+    return {"status": "error", "title": title}
+
+
+def _empty_about(title: str = "") -> dict:
+    return {"status": "empty", "title": title, "paragraphs": []}
+
+
+def _as_list(value: Any) -> list:
+    """None 은 빈 목록, 목록이 아니면 예외(모양이 바뀐 응답을 값으로 채우지 않는다)."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise TypeError(f"expected a list, got {type(value).__name__}")
+    return value
+
+
+def build_about_stock(finance: dict) -> dict:
+    summary = finance["corporationSummary"]  # 키가 없으면 KeyError → error. 값이 null 이면 소개 없음(empty)
+    if summary is None:
+        return _empty_about(ABOUT_STOCK_TITLE)
+    if not isinstance(summary, dict):
+        raise TypeError("corporationSummary is not an object")
+    paragraphs = [clean_text(summary.get(key), 400) for key in ("comment1", "comment2", "comment3")]
+    paragraphs = [p for p in paragraphs if p]
+    if not paragraphs:
+        return _empty_about(ABOUT_STOCK_TITLE)
+    return {"status": "ok", "title": ABOUT_STOCK_TITLE, "paragraphs": paragraphs}
+
+
+def build_about_etf(etf: dict) -> dict:
+    text = clean_text(etf["etfSummary"], 3000)
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    if not paragraphs:
+        return _empty_about(ABOUT_ETF_TITLE)
+    return {"status": "ok", "title": ABOUT_ETF_TITLE, "paragraphs": paragraphs}
+
+
+def _value_or_dash(value: Any, max_len: int = 60) -> str:
+    return clean_text(value, max_len) or DASH
+
+
+def build_facts_stock(integration: dict, industry_names: "dict[str, str]") -> dict:
+    infos = {t["code"]: t for t in _as_list(integration.get("totalInfos")) if isinstance(t, dict) and "code" in t}
+
+    def row(label, code, note_of):
+        info = infos.get(code) or {}
+        desc = clean_text(info.get("valueDesc"), 20)
+        return {"label": label, "value": _value_or_dash(info.get("value")), "note": note_of(desc)}
+
+    industry_code = integration.get("industryCode")
+    industry = industry_names.get(str(industry_code)) if industry_code is not None else None
+    items = [
+        {"label": "업종", "value": industry or DASH, "note": ""},
+        row("시가총액", "marketValue", lambda d: "현재 시세 기준"),
+        row("PER", "per", lambda d: f"{d} 실적 기준" if d else ""),
+        row("PBR", "pbr", lambda d: f"{d} 실적 기준" if d else ""),
+        row("배당수익률", "dividendYieldRatio", lambda d: f"{d} 기준" if d else ""),
+        row("외인소진율", "foreignRate", lambda d: ""),
+    ]
+    return {"status": "ok", "items": items}
+
+
+def _format_listed_date(raw: Any) -> str:
+    if isinstance(raw, str) and re.fullmatch(r"\d{8}", raw):
+        return f"{raw[:4]}.{raw[4:6]}.{raw[6:]}"
+    return DASH
+
+
+def _format_fee(raw: Any) -> str:
+    number = format_weight(raw) if isinstance(raw, (int, float)) else None
+    return f"{number:g}%" if number is not None else DASH  # 반올림하지 않는다("연" 도 붙이지 않는다)
+
+
+def build_facts_etf(etf: dict) -> dict:
+    items = [
+        {"label": "기초지수", "value": _value_or_dash(etf.get("etfBaseIndex"), 80), "note": ""},
+        {"label": "운용사", "value": strip_issuer_suffix(clean_text(etf.get("issuerName"), 60)) or DASH, "note": ""},
+        {"label": "총보수", "value": _format_fee(etf.get("totalFee")), "note": ""},
+        {"label": "상장일", "value": _format_listed_date(etf.get("listedDate")), "note": ""},
+    ]
+    return {"status": "ok", "items": items}
+
+
+def build_holdings(etf: dict) -> dict:
+    entries = _as_list(etf["etfTop10MajorConstituentAssets"])
+    items = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        name = clean_text(entry.get("itemName"), 80)
+        if not name:
+            continue
+        items.append({"name": name, "count": clean_text(entry.get("stockCount"), 20), "weight": format_weight(entry.get("etfWeight"))})
+    return {"status": "ok" if items else "empty", "items": items}
+
+
+def _weight_items(entries: list, labels: "dict[str, str]") -> list:
+    items = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        code = entry.get("detailTypeCode")
+        weight = format_weight(entry.get("weight"))
+        if not isinstance(code, str) or weight is None or weight <= 0:
+            continue
+        items.append({"label": labels.get(code, clean_text(code, 40)), "weight": weight})
+    return items[:MAX_WEIGHT_ITEMS]
+
+
+def _first_code(entries: list) -> "str | None":
+    for entry in entries:
+        if isinstance(entry, dict) and isinstance(entry.get("detailTypeCode"), str):
+            return entry["detailTypeCode"]
+    return None
+
+
+def build_weights(etf: dict) -> dict:
+    sector = _as_list(etf.get("sectorPortfolioList"))
+    country = _as_list(etf.get("countryPortfolioList"))
+    asset = _as_list(etf.get("assetPortfolioList"))
+    equity = next((format_weight(e.get("weight")) for e in asset if isinstance(e, dict) and e.get("detailTypeCode") == "EQUITY"), None)
+    # 보이는 순서는 업종 → 국가 → 자산이다. 의미 없는 카드는 숨긴다(미분류 업종, 한국 하나뿐인 국가, 주식이 대부분인 자산)
+    plan = [
+        ("sector", "업종별 비중", sector, SECTOR_LABELS, "sectorPortfolioTotalWeight", _first_code(sector) not in (None, "UNCLASSIFIED")),
+        ("country", "국가별 비중", country, COUNTRY_LABELS, "countryPortfolioTotalWeight", _first_code(country) not in (None, "KR")),
+        ("asset", "자산별 비중", asset, ASSET_LABELS, "assetPortfolioTotalWeight", equity is not None and equity < 50),
+    ]
+    cards = []
+    for key, title, entries, labels, total_key, show in plan:
+        if not show:
+            continue
+        items = _weight_items(entries, labels)
+        if items:
+            cards.append({"key": key, "title": title, "total": format_weight(etf.get(total_key)), "items": items})
+    return {"status": "ok" if cards else "empty", "cards": cards}
+
+
+def build_news(news: list) -> dict:
+    items = []
+    for cluster in _as_list(news):
+        if not isinstance(cluster, dict):
+            continue
+        articles = cluster.get("items")
+        if not isinstance(articles, list) or not articles or not isinstance(articles[0], dict):
+            continue
+        article = articles[0]
+        title = clean_text(article.get("titleFull") or article.get("title"), 200)
+        url = safe_news_url(article.get("mobileNewsUrl"))
+        if not title or not url:
+            continue
+        total = cluster.get("total")
+        more = total - 1 if isinstance(total, int) and not isinstance(total, bool) and total > 1 else 0
+        items.append({"title": title, "office": clean_text(article.get("officeName"), 40),
+                      "time": format_news_time(article.get("datetime")), "url": url, "more": more})
+        if len(items) == MAX_NEWS_ITEMS:
+            break
+    return {"status": "ok" if items else "empty", "items": items}
+
+
+def build_industry_names(raw: dict) -> "dict[str, str]":
+    """업종 번호 → 이름(/api/stocks/industry 의 groups)."""
+    names = {}
+    for group in _as_list(raw["groups"]):
+        if isinstance(group, dict) and "no" in group and isinstance(group.get("name"), str):
+            names[str(group["no"])] = clean_text(group["name"], 40)
+    return names
+
+
+# ── 조립 ──
+
+TTL_INTEGRATION = 60            # 화면의 60초 자동 갱신과 맞춘다(시총 등은 현재 시세 기준)
+TTL_FINANCE = 6 * 3600          # 소개 문장은 거의 안 바뀐다
+TTL_ETF = 3600                  # ETF 구성·순자산은 일 단위로 바뀐다
+TTL_NEWS = 300
+TTL_INDUSTRY = 24 * 3600        # 79개 고정 표
+SOURCE_URL = "https://m.stock.naver.com/domestic/stock/{code}/total"  # 네이버 종목 페이지(2026-10-30 주식·ETF 모두 200 확인). 빈 값이면 화면은 링크 없이 출처 글자만 보인다
+
+_default_cache = TtlCache()
+
+
+def _load(cache: TtlCache, source: str, code: str, path: str, ttl: float) -> tuple:
+    return cache.get_or_load((source, code), ttl, lambda: fetch_json(path))
+
+
+def _safe_card(code: str, source: str, builder: Callable, *args, title: str = "") -> dict:
+    try:
+        return builder(*args)
+    except Exception as e:  # 모양이 바뀐 응답은 그 카드만 error 로 두고 값을 지어내지 않는다
+        print(f"Overview parse error {code} {source}: {e}")
+        return error_card(title)
+
+
+def get_overview(code: str, cache: "TtlCache | None" = None) -> dict:
+    """종목 개요 응답. 카드마다 status(ok/empty/error)가 따로이며 한 호출이 실패해도 나머지는 그대로다."""
+    cache = cache or _default_cache
+    stamps = []  # 이번 응답에 쓴 네이버 응답을 가져온 시각들
+
+    integ = None
+    try:
+        integ, at = _load(cache, "integration", code, f"/api/stock/{code}/integration", TTL_INTEGRATION)
+        if not isinstance(integ, dict):
+            raise TypeError("integration is not an object")
+        stamps.append(at)
+    except Exception as e:
+        print(f"Overview fetch error {code} integration: {e}")
+        integ = None
+    kind = safe_security_type(integ.get("stockEndType")) if integ is not None else ""
+
+    if integ is None:
+        wanted = ["news"]
+    elif kind == "stock":
+        wanted = ["finance", "industry", "news"]
+    elif kind == "etf":
+        wanted = ["etf", "news"]
+    else:
+        wanted = ["news"]
+    specs = {
+        "finance": ("finance", code, f"/api/stock/{code}/finance/annual", TTL_FINANCE),
+        "industry": ("industry", "", "/api/stocks/industry?page=1&pageSize=100", TTL_INDUSTRY),
+        "etf": ("etf", code, f"/api/stock/{code}/etfAnalysis", TTL_ETF),
+        "news": ("news", code, f"/api/news/stock/{code}?pageSize={MAX_NEWS_ITEMS}&page=1", TTL_NEWS),
+    }
+    results = {}
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {name: pool.submit(_load, cache, *specs[name]) for name in wanted}
+        for name, future in futures.items():
+            try:
+                value, at = future.result()
+                results[name] = value
+                stamps.append(at)
+            except Exception as e:
+                print(f"Overview fetch error {code} {name}: {e}")
+
+    if integ is None:
+        about = error_card()
+        facts = holdings = weights = error_card()
+    elif kind == "stock":
+        about = (_safe_card(code, "finance", build_about_stock, results["finance"], title=ABOUT_STOCK_TITLE)
+                 if "finance" in results else error_card(ABOUT_STOCK_TITLE))
+        industry_names = {}
+        if "industry" in results:
+            try:
+                industry_names = build_industry_names(results["industry"])
+            except Exception as e:
+                print(f"Overview parse error {code} industry: {e}")
+        facts = _safe_card(code, "integration", build_facts_stock, integ, industry_names)
+        holdings = {"status": "empty", "items": []}
+        weights = {"status": "empty", "cards": []}
+    elif kind == "etf":
+        if "etf" in results:
+            etf = results["etf"]
+            about = _safe_card(code, "etf", build_about_etf, etf, title=ABOUT_ETF_TITLE)
+            facts = _safe_card(code, "etf", build_facts_etf, etf)
+            holdings = _safe_card(code, "etf", build_holdings, etf)
+            weights = _safe_card(code, "etf", build_weights, etf)
+        else:
+            about, facts, holdings, weights = error_card(ABOUT_ETF_TITLE), error_card(), error_card(), error_card()
+    else:  # ETN 이거나 종류를 알 수 없다: 소개 대신 안내 화면, 뉴스는 시도한다
+        about = _empty_about()
+        facts = {"status": "empty", "items": []}
+        holdings = {"status": "empty", "items": []}
+        weights = {"status": "empty", "cards": []}
+
+    news = _safe_card(code, "news", build_news, results["news"]) if "news" in results else error_card()
+    fetched_at = datetime.fromtimestamp(min(stamps)).strftime("%Y-%m-%d %H:%M:%S") if stamps else ""
+    return {
+        "success": True, "code": code, "kind": kind, "fetched_at": fetched_at,
+        "source_url": SOURCE_URL.format(code=code) if SOURCE_URL else "",
+        "about": about, "facts": facts, "holdings": holdings, "weights": weights, "news": news,
+    }

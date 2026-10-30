@@ -1,0 +1,182 @@
+{
+ "itemCode": "069500",
+ "itemName": "KODEX 200",
+ "etfSummary": "1좌당 순자산가치의 변동률을 기초지수인 KOSPI200의 변동률과 유사하도록 투자신탁재산을 운용하는 것을 목표로 합니다.한국거래소가 산출하는 KOSPI200 지수는 한국을 대표하는 200개 종목의 시가총액을 지수화한 것입니다. 200개 종목은 시장 대표성, 유동성, 업종 대표성을 고려하여 선정하는데, 전체 종목을 9개업 군으로 분류하여 시가총액과 거래량 비중이 높은 종목들을 우선 선정합니다.",
+ "etfBaseIndex": "코스피 200",
+ "issuerName": "삼성자산운용(ETF)",
+ "totalFee": 0.15,
+ "listedDate": "20021014",
+ "etfTop10MajorConstituentAssets": [
+  {
+   "seq": 1,
+   "itemCode": "005930",
+   "itemName": "삼성전자",
+   "stockCount": "6,969",
+   "etfWeight": "34.19%"
+  },
+  {
+   "seq": 2,
+   "itemCode": "000660",
+   "itemName": "SK하이닉스",
+   "stockCount": "849",
+   "etfWeight": "27.40%"
+  },
+  {
+   "seq": 3,
+   "itemCode": "402340",
+   "itemName": "SK스퀘어",
+   "stockCount": "137",
+   "etfWeight": "2.76%"
+  },
+  {
+   "seq": 4,
+   "itemCode": "009150",
+   "itemName": "삼성전기",
+   "stockCount": "83",
+   "etfWeight": "2.27%"
+  },
+  {
+   "seq": 5,
+   "itemCode": "105560",
+   "itemName": "KB금융",
+   "stockCount": "455",
+   "etfWeight": "1.51%"
+  },
+  {
+   "seq": 6,
+   "itemCode": "005380",
+   "itemName": "현대차",
+   "stockCount": "203",
+   "etfWeight": "1.26%"
+  },
+  {
+   "seq": 7,
+   "itemCode": "055550",
+   "itemName": "신한지주",
+   "stockCount": "609",
+   "etfWeight": "1.14%"
+  },
+  {
+   "seq": 8,
+   "itemCode": "006400",
+   "itemName": "삼성SDI",
+   "stockCount": "91",
+   "etfWeight": "1.04%"
+  },
+  {
+   "seq": 9,
+   "itemCode": "028260",
+   "itemName": "삼성물산",
+   "stockCount": "144",
+   "etfWeight": "0.99%"
+  },
+  {
+   "seq": 10,
+   "itemCode": "068270",
+   "itemName": "셀트리온",
+   "stockCount": "235",
+   "etfWeight": "0.94%"
+  }
+ ],
+ "sectorPortfolioList": [
+  {
+   "detailTypeCode": "IT",
+   "weight": 66.12
+  },
+  {
+   "detailTypeCode": "INDUSTRIALS",
+   "weight": 12.54
+  },
+  {
+   "detailTypeCode": "FINANCIALS",
+   "weight": 7.73
+  },
+  {
+   "detailTypeCode": "CONSUMER_DISCRETIONARY",
+   "weight": 4.19
+  },
+  {
+   "detailTypeCode": "COMMUNICATION",
+   "weight": 2.3
+  },
+  {
+   "detailTypeCode": "HEALTHCARE",
+   "weight": 1.82
+  },
+  {
+   "detailTypeCode": "MATERIALS",
+   "weight": 1.8
+  },
+  {
+   "detailTypeCode": "CONSUMER_STAPLES",
+   "weight": 1.55
+  },
+  {
+   "detailTypeCode": "ENERGY",
+   "weight": 0.66
+  },
+  {
+   "detailTypeCode": "UTILITIES",
+   "weight": 0.32
+  },
+  {
+   "detailTypeCode": "UNCLASSIFIED",
+   "weight": 0.02
+  },
+  {
+   "detailTypeCode": "REAL_ESTATE",
+   "weight": 0.0
+  }
+ ],
+ "sectorPortfolioTotalWeight": 99.05,
+ "countryPortfolioList": [
+  {
+   "detailTypeCode": "KR",
+   "weight": 99.05
+  },
+  {
+   "detailTypeCode": "US",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "MISC",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "JP",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "HK",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "CN",
+   "weight": 0.0
+  }
+ ],
+ "countryPortfolioTotalWeight": 99.05,
+ "assetPortfolioList": [
+  {
+   "detailTypeCode": "EQUITY",
+   "weight": 99.12
+  },
+  {
+   "detailTypeCode": "OTHERS",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "DERIVATIVES",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "BOND",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "CASH",
+   "weight": -0.07
+  }
+ ],
+ "assetPortfolioTotalWeight": 99.19
+}

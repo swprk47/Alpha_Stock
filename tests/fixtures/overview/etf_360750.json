@@ -1,0 +1,182 @@
+{
+ "itemCode": "360750",
+ "itemName": "TIGER 미국S&P500",
+ "etfSummary": "이 ETF는 미국 주식을 주된 투자대상자산으로 하며, “S&P500 지수”를 기초지수로 하여 1좌당 순자산가치의 변동률을 기초지수의 변동률과 유사하도록 투자신탁재산을 운용함을 목적으로 합니다.<br><br>“S&P500 지수”는 S&P Dow Jones Indices에서 발표하는 지수로서, 미국에 상장된 종목 중 시가 총액 상위 500 종목을 편입시키는 미국 대형주 시장대표 지수입니다.",
+ "etfBaseIndex": "S&P 500",
+ "issuerName": "미래에셋자산운용",
+ "totalFee": 0.0068,
+ "listedDate": "20200807",
+ "etfTop10MajorConstituentAssets": [
+  {
+   "seq": 1,
+   "itemCode": "",
+   "itemName": "NVIDIA CORP",
+   "stockCount": "348",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 2,
+   "itemCode": "",
+   "itemName": "APPLE INC",
+   "stockCount": "210",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 3,
+   "itemCode": "",
+   "itemName": "AMAZON.COM INC",
+   "stockCount": "141",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 4,
+   "itemCode": "",
+   "itemName": "MICROSOFT CORP",
+   "stockCount": "107",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 5,
+   "itemCode": "",
+   "itemName": "AT&T INC",
+   "stockCount": "99",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 6,
+   "itemCode": "",
+   "itemName": "BANK OF AMERICA CORP",
+   "stockCount": "94",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 7,
+   "itemCode": "",
+   "itemName": "ALPHABET INC-CL A",
+   "stockCount": "84",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 8,
+   "itemCode": "",
+   "itemName": "PFIZER INC",
+   "stockCount": "82",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 9,
+   "itemCode": "",
+   "itemName": "INTEL CORP",
+   "stockCount": "71",
+   "etfWeight": "-"
+  },
+  {
+   "seq": 10,
+   "itemCode": "",
+   "itemName": "BROADCOM INC",
+   "stockCount": "68",
+   "etfWeight": "-"
+  }
+ ],
+ "sectorPortfolioList": [
+  {
+   "detailTypeCode": "IT",
+   "weight": 38.32
+  },
+  {
+   "detailTypeCode": "FINANCIALS",
+   "weight": 11.43
+  },
+  {
+   "detailTypeCode": "HEALTHCARE",
+   "weight": 9.42
+  },
+  {
+   "detailTypeCode": "CONSUMER_DISCRETIONARY",
+   "weight": 8.72
+  },
+  {
+   "detailTypeCode": "COMMUNICATION",
+   "weight": 8.7
+  },
+  {
+   "detailTypeCode": "INDUSTRIALS",
+   "weight": 7.51
+  },
+  {
+   "detailTypeCode": "CONSUMER_STAPLES",
+   "weight": 4.51
+  },
+  {
+   "detailTypeCode": "ENERGY",
+   "weight": 3.61
+  },
+  {
+   "detailTypeCode": "UTILITIES",
+   "weight": 1.85
+  },
+  {
+   "detailTypeCode": "MATERIALS",
+   "weight": 1.59
+  },
+  {
+   "detailTypeCode": "REAL_ESTATE",
+   "weight": 1.55
+  },
+  {
+   "detailTypeCode": "UNCLASSIFIED",
+   "weight": 0.21
+  }
+ ],
+ "sectorPortfolioTotalWeight": 97.42,
+ "countryPortfolioList": [
+  {
+   "detailTypeCode": "US",
+   "weight": 94.73
+  },
+  {
+   "detailTypeCode": "MISC",
+   "weight": 2.67
+  },
+  {
+   "detailTypeCode": "KR",
+   "weight": 0.02
+  },
+  {
+   "detailTypeCode": "JP",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "HK",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "CN",
+   "weight": 0.0
+  }
+ ],
+ "countryPortfolioTotalWeight": 97.42,
+ "assetPortfolioList": [
+  {
+   "detailTypeCode": "EQUITY",
+   "weight": 97.33
+  },
+  {
+   "detailTypeCode": "OTHERS",
+   "weight": 0.07
+  },
+  {
+   "detailTypeCode": "CASH",
+   "weight": 0.02
+  },
+  {
+   "detailTypeCode": "DERIVATIVES",
+   "weight": 0.0
+  },
+  {
+   "detailTypeCode": "BOND",
+   "weight": 0.0
+  }
+ ],
+ "assetPortfolioTotalWeight": 97.42
+}
