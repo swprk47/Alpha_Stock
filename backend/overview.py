@@ -222,7 +222,8 @@ def build_facts_stock(integration: dict, industry_names: "dict[str, str]") -> di
     def row(label, code, note_of):
         info = infos.get(code) or {}
         desc = clean_text(info.get("valueDesc"), 20)
-        return {"label": label, "value": _value_or_dash(info.get("value")), "note": note_of(desc)}
+        value = _value_or_dash(info.get("value"))
+        return {"label": label, "value": value, "note": note_of(desc) if value != DASH else ""}  # 값이 없으면 기준도 적지 않는다
 
     industry_code = integration.get("industryCode")
     industry = industry_names.get(str(industry_code)) if industry_code is not None else None
@@ -404,7 +405,8 @@ def get_overview(code: str, cache: "TtlCache | None" = None) -> dict:
             try:
                 value, at = future.result()
                 results[name] = value
-                stamps.append(at)
+                if name != "industry":  # 업종 이름 표는 값이 아니라 이름 번역이라 신선도 시각에 넣지 않는다
+                    stamps.append(at)
             except Exception as e:
                 print(f"Overview fetch error {code} {name}: {e}")
 

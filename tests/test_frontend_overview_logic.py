@@ -327,3 +327,46 @@ def test_stock_has_no_holdings_card_or_etf_wording(run):
 def test_facts_stay_two_columns_in_the_two_column_layout(run):
     html = run("ovBodyHtml(V, 'stock', O)", V=ready(stock_data()), O=TWO)
     assert "grid-cols-3" not in html and "grid-cols-2" in html  # 3칸은 값이 두 줄로 접혀 읽기 어렵다
+
+
+# ── 최종 리뷰 수정 ──
+
+
+@needs_node
+def test_footer_shows_the_date_when_the_data_is_not_from_today(run):
+    # "15:00에 가져왔어요"가 어제 15:00 인데 1시간 전으로 읽히면 안 된다
+    data = etf_data(fetched_at="2026-10-30 15:00:12")
+    other_day = run("ovFooterHtml(D, 'etf', new Date(2026, 9, 31, 16, 0))", D=data)
+    assert "10.30 15:00에 가져왔어요" in other_day
+    same_day = run("ovFooterHtml(D, 'etf', new Date(2026, 9, 30, 16, 0))", D=data)
+    assert "15:00에 가져왔어요" in same_day and "10.30 15:00" not in same_day
+
+
+@needs_node
+def test_stacked_bar_is_drawn_only_when_weights_fit_in_100(run):
+    # 비중이 합쳐 100%를 넘는 선물형 ETF(자산 CASH 94.98 / DERIVATIVES 81.77)에서 막대가 비례해 줄어 네이버 값과 달라 보이면 안 된다
+    over = etf_data(weights={"status": "ok", "cards": [
+        {"key": "asset", "title": "자산별 비중", "total": None, "items": [{"label": "현금", "weight": 94.98}, {"label": "파생", "weight": 81.77}]}]})
+    html = run("ovBodyHtml(V, 'etf', O)", V=ready(over), O=ONE)
+    assert "94.98%" in html and "81.77%" in html  # 범례의 숫자는 그대로
+    assert "h-2.5" not in html  # 쌓은 막대는 그리지 않는다
+    fits = run("ovBodyHtml(V, 'etf', O)", V=ready(etf_data()), O=ONE)
+    assert "h-2.5" in fits and "shrink-0" in fits.split("h-2.5")[1].split("</div>")[0]  # 조각은 줄어들지 않는다
+
+
+@needs_node
+def test_tab_keys_move_between_the_two_tabs(run):
+    assert run("[ovTabFromKey('trade', 'ArrowRight'), ovTabFromKey('overview', 'ArrowLeft'), ovTabFromKey('trade', 'ArrowLeft'), ovTabFromKey('overview', 'ArrowRight'), ovTabFromKey('overview', 'Home'), ovTabFromKey('trade', 'End'), ovTabFromKey('trade', 'a'), ovTabFromKey('trade', undefined)]") == \
+        ["overview", "trade", "overview", "trade", "trade", "overview", None, None]
+    html = run("ovTabsHtml('trade')")
+    assert 'onkeydown="ovTabKey(event)"' in html  # 선택 안 된 탭은 tabindex=-1 이므로 방향키로 옮긴다
+
+
+@needs_node
+def test_auto_refresh_only_when_stale_and_not_failed_or_in_flight(run):
+    entry = {"data": {}, "fetchedAt": 1000, "hasError": False}
+    assert run("ovAutoRefreshNeeded(E, false, false, 1000 + 300000)", E=entry) is True
+    assert run("ovAutoRefreshNeeded(E, false, false, 1000 + 1000)", E=entry) is False  # 5분 안
+    assert run("ovAutoRefreshNeeded(E, true, false, 1000 + 300000)", E=entry) is False  # 방금 실패했으면 되풀이하지 않는다
+    assert run("ovAutoRefreshNeeded(E, false, true, 1000 + 300000)", E=entry) is False  # 이미 받는 중
+    assert run("ovAutoRefreshNeeded(undefined, false, false, 0)") is False  # 처음 받는 것은 탭을 열 때 한다

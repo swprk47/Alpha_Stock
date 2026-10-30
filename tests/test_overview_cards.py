@@ -389,3 +389,26 @@ def test_source_url_points_to_the_naver_stock_page(net):
     assert run("005930", net)["source_url"] == "https://m.stock.naver.com/domestic/stock/005930/total"
     etf_routes(net, "0183J0", "etf_069500.json")
     assert run("0183J0", net)["source_url"] == "https://m.stock.naver.com/domestic/stock/0183J0/total"
+
+
+# ── 최종 리뷰 수정 ──
+
+
+def test_fetched_at_ignores_the_static_industry_name_table(net):
+    # 업종 이름 표(24시간 캐시)는 값이 아니라 이름 번역이라, 그 시각이 오래됐다고 데이터가 오래된 것처럼 보이면 안 된다
+    clock = FakeClock(1000.0)
+    cache = overview.TtlCache(clock=clock)
+    stock_routes(net)
+    overview.get_overview("005930", cache=cache)  # t=1000: 모두 새로 받는다
+    clock.now = 1000.0 + 7 * 3600  # integration·소개·뉴스는 다시 받고 업종 표(24시간)는 1000 의 것
+    out = overview.get_overview("005930", cache=cache)
+    assert out["fetched_at"] == datetime.fromtimestamp(1000.0 + 7 * 3600).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def test_market_cap_note_is_dropped_when_the_value_is_missing(net):
+    stock_routes(net)
+    integ = fx("integration_005930.json")
+    integ["totalInfos"] = [t for t in integ["totalInfos"] if t["code"] != "marketValue"]
+    net.routes[p_int("005930")] = integ
+    rows = {i["label"]: i for i in run("005930", net)["facts"]["items"]}
+    assert rows["시가총액"]["value"] == "—" and rows["시가총액"]["note"] == ""

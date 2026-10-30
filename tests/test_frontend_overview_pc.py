@@ -98,3 +98,19 @@ def test_visible_code_reads_the_pc_pane_too():
 
 def test_select_tab_scrolls_the_pc_pane_to_top():
     assert "detailPane" in _func("selectOverviewTab") and "scrollTop = 0" in _func("selectOverviewTab")
+
+
+# ── 최종 리뷰 수정 ──
+
+
+def test_render_detail_pane_refreshes_a_stale_overview_while_it_is_shown():
+    body = _func("renderDetailPane")
+    assert "ovAutoRefreshNeeded(" in body and "loadOverview(" in body
+    assert body.index("ovAutoRefreshNeeded(") < body.index("searchDetailHtml(")
+
+
+def test_tab_key_handler_and_focus_keep_working_after_redraw():
+    key = _func("ovTabKey")
+    assert "ovTabFromKey(" in key and "preventDefault()" in key and "selectOverviewTab(" in key
+    select = _func("selectOverviewTab")
+    assert "activeElement" in select and "aria-selected" in select and "focus()" in select  # 다시 그린 뒤에도 키보드 위치를 잃지 않는다

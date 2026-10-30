@@ -103,6 +103,7 @@ let overviewTab = 'overview';
 let overviewData = {{}};
 let overviewFailed = {{}};
 let overviewReq = 0;
+let overviewInflight = {{}};
 let refreshes = 0;
 function refreshOverviewViews() {{ refreshes++; }}
 const calls = [];
