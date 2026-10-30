@@ -186,7 +186,7 @@ def test_menu_row_follows_the_notification_row():
 def test_toggle_posts_the_opposite_value_and_trusts_the_server_answer():
     body = _func("toggleClosedTrading")
     assert "api('/api/settings'" in body and "method: 'POST'" in body and "allow_closed_trading: next" in body
-    assert "data.settings" in body and "updateClosedTradingMenu()" in body
+    assert "acceptSettings(data)" in body and "updateClosedTradingMenu()" in body  # 서버 응답(검사를 통과한 것)으로 화면을 바꾼다
     assert "optimistic" not in body.lower()
     state = _func("updateClosedTradingMenu")
     assert "허용" in state and "차단" in state
@@ -194,7 +194,7 @@ def test_toggle_posts_the_opposite_value_and_trusts_the_server_answer():
 
 def test_session_load_fills_the_settings_from_me():
     body = _func("loadSession")
-    assert "data.settings" in body and "userSettings" in body and "updateClosedTradingMenu()" in body
+    assert "acceptSettings(data)" in body and "userSettings" in body and "updateClosedTradingMenu()" in body
     assert re.search(r"let userSettings = \{\s*allow_closed_trading: true\s*\};", _html())  # 기본은 허용
 
 

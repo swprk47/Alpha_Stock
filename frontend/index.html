@@ -681,6 +681,7 @@
       if (currentUser === null && !document.getElementById('authModal').classList.contains('hidden')) return;
       currentUser = null;
       currentPortfolio = null;
+      resetUserSettings();
       updateUserUI();
       openAuthModal();
     }
@@ -1590,14 +1591,14 @@
     // NXT 탭은 시세 응답에 시간외 정보가 있을 때(nxt_listed === true)만
     function availableTabs(ms) { return ms && ms.nxt_listed === true ? ['nxt', 'krx'] : ['krx']; }
 
-    // 한국 시각: 기기 시간대와 상관없이 Asia/Seoul
+    // 한국 시각: 기기 시간대와 상관없이 UTC+9. 한국은 서머타임이 없어 단순 계산으로 충분하고, Intl(formatToParts·timeZone·hourCycle)에
+    // 기대지 않으므로 오래된 WebView 에서도 팝업이 열리고 13:00 을 01:00 으로 읽지 않는다
     function kstClock(date) {
-      const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', weekday: 'short', hourCycle: 'h23' }).formatToParts(date);
-      const get = type => (parts.find(p => p.type === type) || {}).value;
-      const h = parseInt(get('hour'), 10) % 24;
-      const m = parseInt(get('minute'), 10);
-      const wd = get('weekday');
-      return { min: h * 60 + m, label: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`, weekend: wd === 'Sat' || wd === 'Sun' };
+      const k = new Date(date.getTime() + 9 * 3600 * 1000);
+      const h = k.getUTCHours();
+      const m = k.getUTCMinutes();
+      const wd = k.getUTCDay(); // 0 일, 6 토
+      return { min: h * 60 + m, label: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`, weekend: wd === 0 || wd === 6 };
     }
 
     // 팝업 한 탭의 막대·범례·현재 시각. V 는 시간표 안이고 응답이 closed 가 아닐 때만(태그와 모순되지 않게)
@@ -1653,6 +1654,12 @@
       if (allowClosed !== false) return null;
       const state = ms && typeof ms === 'object' ? ms.state : null;
       return state === 'pre' || state === 'after' || state === 'closed' ? MARKET_BLOCK_MESSAGE : null;
+    }
+
+    // /api/me·/api/settings 응답의 settings 가 올바른 모양일 때만 돌려준다(allow_closed_trading 이 불리언). 아니면 null
+    function acceptSettings(data) {
+      const s = data && typeof data === 'object' ? data.settings : null;
+      return s && typeof s === 'object' && !Array.isArray(s) && typeof s.allow_closed_trading === 'boolean' ? s : null;
     }
     // </market-logic>
 
@@ -1939,7 +1946,7 @@
       try {
         const data = await api('/api/me');
         currentUser = { name: data.user.name, dev: !!data.user.dev, email: '', picture: '' };
-        userSettings = data.settings && typeof data.settings === 'object' ? data.settings : { allow_closed_trading: true };
+        userSettings = acceptSettings(data) || { allow_closed_trading: true };
         updateClosedTradingMenu();
         updateUserUI();
         return true;
@@ -1956,6 +1963,7 @@
       currentUser = null;
       currentPortfolio = null;
       currentRecs = [];
+      resetUserSettings();
       renderBottomBar();
       updateUserUI();
       openAuthModal();
@@ -3927,13 +3935,21 @@
       el.className = 'text-[13px] font-bold ' + (allow ? 'text-[#30d158]' : 'text-[#ff9f0a]');
     }
 
+    // 로그아웃·로그인 만료 때: 이전 사용자의 설정(예: 차단)이 메뉴에 남지 않게 기본값(허용)으로 되돌린다
+    function resetUserSettings() {
+      userSettings = { allow_closed_trading: true };
+      updateClosedTradingMenu();
+    }
+
     // 누르면 반대 값으로 서버에 저장하고, 화면은 서버 응답대로 바꾼다(미리 바꾸지 않는다)
     async function toggleClosedTrading() {
       if (!currentUser) { openAuthModal(); return; }
       const next = userSettings.allow_closed_trading === false; // 지금 차단이면 허용으로, 아니면 차단으로
       try {
         const data = await api('/api/settings', { method: 'POST', body: { allow_closed_trading: next } });
-        userSettings = data.settings;
+        const accepted = acceptSettings(data); // 응답이 이상하면 화면 설정을 바꾸지 않는다
+        if (!accepted) { showToast('설정이 저장됐는지 확인하지 못했어요. 다시 시도해 주세요.', 'error'); return; }
+        userSettings = accepted;
         updateClosedTradingMenu();
         showToast(next ? '장 마감 중에도 거래할 수 있어요.' : '장 마감 중에는 주문하지 않아요.', 'success');
       } catch (err) {
