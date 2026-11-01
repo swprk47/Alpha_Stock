@@ -1588,12 +1588,12 @@
       return typeof weight === 'number' && isFinite(weight) ? weight.toFixed(2) + '%' : '';
     }
 
-    // 탭: 장 시간 안내 팝업의 탭과 같은 모양(어두운 바탕, 선택하면 밝은 바탕에 어두운 글자, 높이 40px)
+    // 탭: 장 시간 안내 팝업의 탭과 같은 모양(어두운 바탕, 선택하면 밝은 바탕에 어두운 글자, 높이 44px)
     function ovTabsHtml(active) {
       const tabs = [['trade', '시세·매수'], ['overview', '개요']];
       const buttons = tabs.map(([key, name]) => {
         const on = key === active;
-        return `<button type="button" role="tab" aria-selected="${on}" tabindex="${on ? 0 : -1}" onclick="selectOverviewTab('${key}')" class="min-h-[40px] rounded-[9px] text-sm tap-press ${on ? 'bg-[#f5f5f7] text-[#0b0d12] font-bold' : 'text-[#a9aebf] font-semibold'}">${name}</button>`;
+        return `<button type="button" role="tab" aria-selected="${on}" tabindex="${on ? 0 : -1}" onclick="selectOverviewTab('${key}')" class="min-h-[44px] rounded-[9px] text-sm tap-press ${on ? 'bg-[#f5f5f7] text-[#0b0d12] font-bold' : 'text-[#a9aebf] font-semibold'}">${name}</button>`;
       }).join('');
       return `<div role="tablist" aria-label="종목 보기" onkeydown="ovTabKey(event)" class="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[#1c1c1e]">${buttons}</div>`;
     }
@@ -1700,7 +1700,7 @@
       const sameDay = !!parts && Number(parts[1]) === today.getFullYear() && Number(parts[2]) === today.getMonth() + 1 && Number(parts[3]) === today.getDate();
       const m = parts ? [null, sameDay ? parts[4] : `${parts[2]}.${parts[3]} ${parts[4]}`] : null;
       const url = data && typeof data.source_url === 'string' && data.source_url.indexOf('https://m.stock.naver.com/') === 0 ? data.source_url : '';
-      const source = url ? `<a href="${ovEsc(url)}" target="_blank" rel="noopener noreferrer" class="underline">네이버 증권 ↗</a>` : '네이버 증권';
+      const source = url ? `<a href="${ovEsc(url)}" target="_blank" rel="noopener noreferrer" class="underline relative after:content-[''] after:absolute after:-inset-y-[14px] after:-inset-x-2">네이버 증권 ↗</a>` : '네이버 증권';
       const lines = [`<span>출처: ${source}${m ? ` · ${m[1]}에 가져왔어요` : ''}</span>`];
       if (kind === 'etf') lines.push('<span>구성 비중의 기준일은 제공되지 않아요.</span>');
       lines.push('<span>정보 제공용이며 투자 권유가 아니에요.</span>');

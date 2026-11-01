@@ -262,7 +262,7 @@ def test_tabs_html_reuses_existing_tab_look(run):
     assert 'role="tablist"' in html and html.count('role="tab"') == 2
     assert "시세·매수" in html and "개요" in html
     assert re.search(r'aria-selected="true"[^>]*onclick="selectOverviewTab\(\'overview\'\)"', html) or "selectOverviewTab('overview')" in html
-    assert "bg-[#f5f5f7]" in html and "min-h-[40px]" in html and "rounded-[9px]" in html
+    assert "bg-[#f5f5f7]" in html and "min-h-[44px]" in html and "min-h-[40px]" not in html and "rounded-[9px]" in html
     trade = run("ovTabsHtml('trade')")
     assert trade.index("시세·매수") < trade.index("개요")
     assert 'aria-selected="true"' in trade.split("개요")[0] and 'aria-selected="false"' in trade.split("시세·매수")[1]
@@ -307,7 +307,7 @@ def test_no_font_below_13px_or_touch_below_44px_in_section():
     src = _section("overview-logic")
     assert not re.search(r"text-xs|text-\[(?:9|10|11|12)(?:\.\d+)?px\]", src)
     for m in re.finditer(r"<button[^>]*>", src):
-        assert "min-h-[44px]" in m.group(0) or "min-h-[40px]" in m.group(0), m.group(0)  # 탭은 기존 탭과 같은 40px
+        assert "min-h-[44px]" in m.group(0), m.group(0)
 
 
 # ── 실화면 확인에서 나온 수정 ──
@@ -340,6 +340,14 @@ def test_footer_shows_the_date_when_the_data_is_not_from_today(run):
     assert "10.30 15:00에 가져왔어요" in other_day
     same_day = run("ovFooterHtml(D, 'etf', new Date(2026, 9, 30, 16, 0))", D=data)
     assert "15:00에 가져왔어요" in same_day and "10.30 15:00" not in same_day
+
+
+@needs_node
+def test_footer_source_link_has_a_44px_touch_area_without_changing_layout(run):
+    html = run("ovFooterHtml(D, 'etf', new Date(2026, 9, 30, 16, 0))", D=etf_data(source_url="https://m.stock.naver.com/domestic/stock/069500/total"))
+    link = re.search(r"<a [^>]*>", html).group(0)
+    # 글자 줄 높이는 그대로 두고, 보이지 않는 가상 요소로 위아래 14px 씩 넓혀 44px 를 채운다
+    assert "relative" in link and "after:absolute" in link and "after:-inset-y-[14px]" in link and "after:content-['']" in link
 
 
 @needs_node
