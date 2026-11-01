@@ -187,7 +187,7 @@
   <!-- PC(lg)에서는 두 묶음을 풀어(contents) 한 줄로 늘어놓고 order 로 아바타를 맨 앞에 둔다 -->
   <header class="sticky top-0 z-30 glass-bar px-4 h-14 lg:h-16 lg:px-6 lg:gap-3 flex items-center justify-between lg:justify-start">
     <div class="flex items-center gap-2 min-w-0 lg:contents">
-      <h1 class="text-[17px] font-bold tracking-tight text-white leading-none whitespace-nowrap">Alpha Stock</h1>
+      <h1 class="text-[17px] font-bold tracking-tight text-white leading-none whitespace-nowrap"><button type="button" onclick="goHome()" aria-label="홈으로" class="min-h-[44px] inline-flex items-center tap-press">Alpha Stock</button></h1>
       <!-- 증권사 알약 (표시 전용). 색은 BROKER_THEMES 에서 적용 -->
       <div id="brokerPill" class="inline-flex items-center gap-1.5 h-6 pl-2 pr-2.5 rounded-full text-[13px] font-semibold text-[#f5f5f7] select-none whitespace-nowrap" title="연결된 증권사 (표시 전용)">
         <span id="brokerPillDot" class="w-1.5 h-1.5 rounded-full"></span>
@@ -2366,6 +2366,23 @@
       // 숨겨져 있던 탭 안의 차트는 크기 0 으로 그려지지 못했으니 보이게 된 지금 다시 그린다
       if (tab === 'holdings') drawExpandedHoldingChart();
       if (tab === 'recs') drawExpandedRecChart();
+    }
+
+    // 헤더의 앱 이름: 홈(요약 화면)으로. 열려 있던 검색 패널·매수 시트·진행 중인 검색 응답을 정리한다.
+    // PC 는 선택을 모두 풀어 오른쪽 패널이 요약이 되고(처음 상태), 모바일은 '요약' 탭으로 가서 맨 위로 올라간다
+    function goHome() {
+      ++searchReq; // 검색 응답이 늦게 도착해도 패널을 다시 열지 못하게
+      searchFromHolding = '';
+      searchStock = null;
+      clearSearch();
+      const searchWrap = document.getElementById('searchWrap');
+      if (!isPcLayout() && searchWrap && !searchWrap.classList.contains('hidden')) toggleSearch(); // 모바일에서 펼쳐 둔 검색창은 접는다
+      closeBuyModal();
+      expandedCardIndex = expandedHoldingIndex = initialSelectedIndex(window.innerWidth);
+      switchTab(isPcLayout() ? 'recs' : 'summary');
+      renderRecommendations(currentRecs);
+      if (currentPortfolio) renderHoldings(currentPortfolio);
+      window.scrollTo({ top: 0 });
     }
 
     function toggleAccordion(index) {
