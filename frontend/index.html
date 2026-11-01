@@ -230,6 +230,11 @@
       <span class="flex-1">장 마감 중 거래</span>
       <span id="closedTradingState" class="text-[13px] font-bold text-[#30d158]">허용</span>
     </button>
+    <button role="menuitem" onclick="closeMenu(); openTradeGuide()" class="w-full min-h-[44px] px-3 rounded-xl flex items-center gap-3 text-sm font-semibold text-white hover:bg-white/10 tap-press text-left">
+      <i data-icon="info" class="text-[18px]"></i>
+      <span class="flex-1">거래 안내</span>
+      <span class="text-[13px] font-normal text-[#a9aebf]">수수료·스윙 룰</span>
+    </button>
     <button role="menuitem" id="authMenuBtn" onclick="closeMenu(); currentUser ? logout() : openAuthModal()" class="w-full min-h-[44px] px-3 rounded-xl flex items-center gap-3 text-sm font-semibold text-white hover:bg-white/10 tap-press text-left">
       <i data-icon="log-out" class="text-[18px]"></i>
       <span id="authMenuLabel" class="flex-1">로그인</span>
@@ -534,6 +539,19 @@
       <div id="marketHoursTabs" role="tablist" aria-label="거래소" class="grid gap-1 p-1 rounded-xl bg-[#1c1c1e]"></div>
       <div id="marketHoursBody" role="tabpanel" class="flex flex-col gap-3.5"></div>
       <div class="text-[13px] leading-relaxed text-[#a9aebf] border-t border-white/10 pt-3">모의 주문은 정규장 종가로 체결돼요.<br>공휴일·휴장일에는 열리지 않아요.<br><span id="marketHoursAsOf"></span></div>
+    </div>
+  </div>
+
+  <!-- 거래 안내 팝업: 내 메뉴의 '거래 안내'로 연다. 수수료·세금·스윙 룰 숫자는 서버(/api/trade-rules)가 준 값만 보인다 -->
+  <div id="tradeGuideModal" onclick="if (event.target === this) closeTradeGuide()" class="dlg-backdrop fixed inset-0 z-[65] flex items-center justify-center py-4 px-8 sm:px-4 hidden">
+    <div role="dialog" aria-modal="true" aria-labelledby="tradeGuideTitle" class="dlg-panel glass-modal w-full max-w-[440px] rounded-[20px] p-5 sm:p-6 flex flex-col gap-3.5">
+      <div class="flex items-center justify-between">
+        <h3 id="tradeGuideTitle" class="text-[18px] font-bold text-white">거래 안내</h3>
+        <button id="tradeGuideCloseBtn" type="button" onclick="closeTradeGuide()" aria-label="닫기" class="text-[#a9aebf] hover:text-white text-lg w-11 h-11 -mr-2 flex items-center justify-center">
+          <i data-icon="x"></i>
+        </button>
+      </div>
+      <div id="tradeGuideBody" class="flex flex-col gap-3.5"></div>
     </div>
   </div>
 
@@ -2013,6 +2031,50 @@
     }
     // </market-logic>
 
+    // <trade-guide-logic>
+    // 거래 안내 팝업의 표시 규칙. 숫자는 서버(/api/trade-rules)가 준 값뿐이다. 받는 중·실패·모르는 상태에서는 숫자를 보이지 않는다.
+    function tgRate(n) { // 수수료·세율 퍼센트: 0.015 → '0.015', 0.2 → '0.20'
+      const s = String(Number(n.toFixed(4)));
+      const decimals = s.includes('.') ? s.split('.')[1].length : 0;
+      return decimals >= 2 ? s : Number(s).toFixed(2);
+    }
+    function tgSwing(n) { // 스윙 룰 퍼센트: 6.5 → '+6.5', -3 → '-3.0'
+      return (n > 0 ? '+' : '') + n.toFixed(1);
+    }
+    const TG_FIELDS = ['buy_fee_pct', 'sell_fee_pct', 'sell_tax_pct', 'target_pct', 'stop_pct', 'max_hold_days'];
+    function tgRulesValid(r) { // 여섯 값이 모두 유한한 숫자일 때만 보여 준다(문자열·NaN·빠진 값은 오류로 본다)
+      return !!r && typeof r === 'object' && TG_FIELDS.every(k => typeof r[k] === 'number' && Number.isFinite(r[k]));
+    }
+    function tgRow(label, value, valueClass) {
+      return `<div class="flex justify-between gap-3 text-sm"><span class="text-[#a9aebf]">${label}</span><span class="font-bold text-right ${valueClass || 'text-white'}">${value}</span></div>`;
+    }
+    function tgBodyHtml(state) {
+      if (state && state.status === 'loading') return '<div aria-busy="true" class="text-sm text-[#a9aebf]">불러오는 중이에요</div>';
+      if (!state || state.status !== 'ready' || !tgRulesValid(state.rules)) {
+        return '<div class="flex flex-col gap-3"><div class="text-sm text-[#a9aebf]">거래 안내를 불러오지 못했어요.</div><button type="button" onclick="retryTradeGuide()" class="self-start min-h-[44px] px-4 rounded-xl bg-[#2c2c2e] border border-white/15 text-sm font-bold text-white tap-press">다시 시도</button></div>';
+      }
+      const r = state.rules;
+      const note = text => `<div class="text-[13px] leading-relaxed text-[#a9aebf]" style="word-break: keep-all">${text}</div>`;
+      const taxRow = `<div class="flex justify-between gap-3 text-sm"><span class="text-[#a9aebf]">매도 세금<span class="block text-[13px]" style="word-break: keep-all">증권거래세·농어촌특별세 합계</span></span><span class="font-bold text-right text-white">${tgRate(r.sell_tax_pct)}%</span></div>`;
+      return `
+        <section class="flex flex-col gap-2.5">
+          <h4 class="text-sm font-bold text-white">수수료와 세금</h4>
+          ${tgRow('매수 수수료', tgRate(r.buy_fee_pct) + '%')}
+          ${tgRow('매도 수수료', tgRate(r.sell_fee_pct) + '%')}
+          ${taxRow}
+          ${note('금액에 비율을 곱해 원 단위로 내림해서 계산해요. 코넥스 종목은 세율이 달라 이 숫자와 다를 수 있어요.')}
+        </section>
+        <section class="flex flex-col gap-2.5 border-t border-white/10 pt-3.5">
+          <h4 class="text-sm font-bold text-white">스윙 룰</h4>
+          ${tgRow('익절 기준', tgSwing(r.target_pct) + '%', 'text-[#ff6a60]')}
+          ${tgRow('손절 기준', tgSwing(r.stop_pct) + '%', 'text-[#5aa9ff]')}
+          ${tgRow('최대 보유 기간', r.max_hold_days + '영업일')}
+          ${note('매수하면 체결가에 이 비율을 적용해 목표가와 손절가가 정해져요.')}
+        </section>
+        <div class="text-[13px] leading-relaxed text-[#a9aebf] border-t border-white/10 pt-3" style="word-break: keep-all">모의투자 계산 기준이에요. 실제 증권사의 수수료·세율과 다를 수 있어요.</div>`;
+    }
+    // </trade-guide-logic>
+
     // <holding-info-logic>
     // 보유 종목에서 종목 정보(점수·AI 진단·차트)를 여는 "종목 정보 ›" 알약. 문자열·인덱스 계산만(DOM 없음, tests/test_frontend_holding_info.py).
     // 종목코드는 schemas.CODE_PATTERN 과 같은 규칙(영숫자 대문자 6자리)만 받는다: onclick 문자열에 들어가므로 그 밖의 값은 알약을 만들지 않는다
@@ -2209,7 +2271,7 @@
     function trapBuySheetFocus(e) {
       const modal = document.getElementById('buyModal');
       if (!modal || modal.classList.contains('hidden')) return;
-      const dialogOpen = ['tradeModal', 'resetModal', 'marketHoursModal'].some(id => {
+      const dialogOpen = ['tradeModal', 'resetModal', 'marketHoursModal', 'tradeGuideModal'].some(id => {
         const el = document.getElementById(id);
         return el && !el.classList.contains('hidden');
       });
@@ -2440,11 +2502,11 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         // 맨 위에 떠 있는 것 하나만 닫는다: 확인창·초기화 창이 열려 있으면 시트는 그대로 둔다
-        const dialogOpen = ['tradeModal', 'resetModal', 'marketHoursModal'].some(id => {
+        const dialogOpen = ['tradeModal', 'resetModal', 'marketHoursModal', 'tradeGuideModal'].some(id => {
           const el = document.getElementById(id);
           return el && !el.classList.contains('hidden');
         });
-        closeMenu(); closeResetModal(); closeTradeModal(); closeMarketHours();
+        closeMenu(); closeResetModal(); closeTradeModal(); closeMarketHours(); closeTradeGuide();
         if (!dialogOpen) closeBuyModal();
       }
       // 장 시간 안내 팝업이 열려 있으면 좌우 화살표로 탭을 옮긴다
@@ -2454,7 +2516,7 @@
         e.preventDefault();
         selectMarketTab(next);
       }
-      if (e.key === 'Tab') { trapResetFocus(e); trapTradeFocus(e); trapMarketFocus(e); trapBuySheetFocus(e); }
+      if (e.key === 'Tab') { trapResetFocus(e); trapTradeFocus(e); trapMarketFocus(e); trapGuideFocus(e); trapBuySheetFocus(e); }
     });
     let recsLoaded = false;   // 추천을 한 번이라도 받았는지 (빈 목록 문구 구분용)
     let recsFailed = false;   // 마지막 추천 요청이 실패했는지 (받아 둔 목록이 없을 때 오류 화면의 기준)
@@ -4284,6 +4346,72 @@
     // Tab 이 팝업 밖으로 나가지 않게 팝업 안의 버튼들을 돈다
     function trapMarketFocus(e) {
       const modal = document.getElementById('marketHoursModal');
+      if (!modal || modal.classList.contains('hidden')) return;
+      const items = [...modal.querySelectorAll('button')].filter(b => !b.disabled && b.offsetParent !== null);
+      e.preventDefault();
+      if (items.length === 0) return;
+      const i = items.indexOf(document.activeElement);
+      const next = e.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : (i === items.length - 1 ? 0 : i + 1);
+      items[next].focus();
+    }
+
+    // ── 거래 안내 팝업 ──
+    let tradeGuideRules = null;     // 서버에서 받은 거래 기준(받아 두면 다시 받지 않는다)
+    let tradeGuideFailed = false;   // 마지막 요청이 실패했는지
+    let tradeGuideReq = 0;          // 요청 번호: 늦게 도착한 응답이 새 결과를 덮지 않게
+    let tradeGuideReturnFocus = null;
+
+    function tradeGuideIsOpen() {
+      const modal = document.getElementById('tradeGuideModal');
+      return !!modal && !modal.classList.contains('hidden');
+    }
+
+    function renderTradeGuide() {
+      const body = document.getElementById('tradeGuideBody');
+      if (!body) return;
+      body.innerHTML = tgBodyHtml(tradeGuideRules ? { status: 'ready', rules: tradeGuideRules } : { status: tradeGuideFailed ? 'failed' : 'loading' });
+    }
+
+    async function loadTradeGuide(force) {
+      if (tradeGuideRules && !force) { renderTradeGuide(); return; }
+      const req = ++tradeGuideReq;
+      tradeGuideFailed = false;
+      renderTradeGuide();
+      try {
+        const data = await api('/api/trade-rules');
+        if (req !== tradeGuideReq) return;
+        if (data && data.success === true && tgRulesValid(data.rules)) tradeGuideRules = data.rules;
+        else tradeGuideFailed = true;
+      } catch (e) {
+        if (req !== tradeGuideReq) return;
+        tradeGuideFailed = true;
+      }
+      renderTradeGuide();
+    }
+
+    function retryTradeGuide() {
+      loadTradeGuide(true);
+      document.getElementById('tradeGuideCloseBtn').focus(); // 다시 그리면 눌렀던 버튼이 사라지므로 포커스를 팝업 안에 둔다
+    }
+
+    function openTradeGuide() {
+      const active = document.activeElement;
+      tradeGuideReturnFocus = (active && active !== document.body && active.offsetParent !== null) ? active : document.getElementById('menuBtn');
+      document.getElementById('tradeGuideModal').classList.remove('hidden');
+      document.getElementById('tradeGuideCloseBtn').focus();
+      loadTradeGuide();
+    }
+
+    function closeTradeGuide() {
+      if (!tradeGuideIsOpen()) return;
+      document.getElementById('tradeGuideModal').classList.add('hidden');
+      if (tradeGuideReturnFocus && tradeGuideReturnFocus.focus) tradeGuideReturnFocus.focus();
+      tradeGuideReturnFocus = null;
+    }
+
+    // Tab 이 팝업 밖으로 나가지 않게 팝업 안의 버튼들을 돈다
+    function trapGuideFocus(e) {
+      const modal = document.getElementById('tradeGuideModal');
       if (!modal || modal.classList.contains('hidden')) return;
       const items = [...modal.querySelectorAll('button')].filter(b => !b.disabled && b.offsetParent !== null);
       e.preventDefault();
