@@ -187,7 +187,7 @@
   <!-- PC(lg)에서는 두 묶음을 풀어(contents) 한 줄로 늘어놓고 order 로 아바타를 맨 앞에 둔다 -->
   <header class="sticky top-0 z-30 glass-bar px-4 h-14 lg:h-16 lg:px-6 lg:gap-3 flex items-center justify-between lg:justify-start">
     <div class="flex items-center gap-2 min-w-0 lg:contents">
-      <h1 class="text-[17px] font-bold tracking-tight text-white leading-none whitespace-nowrap">Alpha Stock</h1>
+      <h1 class="text-[17px] font-bold tracking-tight text-white leading-none whitespace-nowrap"><button type="button" onclick="goHome()" aria-label="홈으로" class="min-h-[44px] inline-flex items-center tap-press">Alpha Stock</button></h1>
       <!-- 증권사 알약 (표시 전용). 색은 BROKER_THEMES 에서 적용 -->
       <div id="brokerPill" class="inline-flex items-center gap-1.5 h-6 pl-2 pr-2.5 rounded-full text-[13px] font-semibold text-[#f5f5f7] select-none whitespace-nowrap" title="연결된 증권사 (표시 전용)">
         <span id="brokerPillDot" class="w-1.5 h-1.5 rounded-full"></span>
@@ -1749,11 +1749,11 @@
 
     let overviewPaneCode = '';      // PC 패널이 마지막으로 그린 종목코드(바뀌면 탭을 시세·매수로 되돌린다)
 
-    // PC 패널이 탭을 쓰는 종목(검색 종목·스윙 추천). 보유 상세·요약에는 탭이 없다
+    // PC 패널이 탭을 쓰는 종목(검색 종목·스윙 추천·보유 종목). 요약 화면에는 탭이 없다
     function overviewPaneItem() {
       const holdings = currentPortfolio ? (currentPortfolio.holdings || []) : [];
       const st = detailPaneState(activeTab, expandedCardIndex, expandedHoldingIndex, currentRecs, holdings, searchStock);
-      return st.mode === 'search' || st.mode === 'rec' ? st.item : null;
+      return st.mode === 'search' || st.mode === 'rec' || st.mode === 'holding' ? st.item : null;
     }
 
     // 지금 화면이 보여 주는 종목코드(모바일 시트가 열려 있으면 그 종목, 아니면 PC 패널의 종목)
@@ -2366,6 +2366,23 @@
       // 숨겨져 있던 탭 안의 차트는 크기 0 으로 그려지지 못했으니 보이게 된 지금 다시 그린다
       if (tab === 'holdings') drawExpandedHoldingChart();
       if (tab === 'recs') drawExpandedRecChart();
+    }
+
+    // 헤더의 앱 이름: 홈(요약 화면)으로. 열려 있던 검색 패널·매수 시트·진행 중인 검색 응답을 정리한다.
+    // PC 는 선택을 모두 풀어 오른쪽 패널이 요약이 되고(처음 상태), 모바일은 '요약' 탭으로 가서 맨 위로 올라간다
+    function goHome() {
+      ++searchReq; // 검색 응답이 늦게 도착해도 패널을 다시 열지 못하게
+      searchFromHolding = '';
+      searchStock = null;
+      clearSearch();
+      const searchWrap = document.getElementById('searchWrap');
+      if (!isPcLayout() && searchWrap && !searchWrap.classList.contains('hidden')) toggleSearch(); // 모바일에서 펼쳐 둔 검색창은 접는다
+      closeBuyModal();
+      expandedCardIndex = expandedHoldingIndex = initialSelectedIndex(window.innerWidth);
+      switchTab(isPcLayout() ? 'recs' : 'summary');
+      renderRecommendations(currentRecs);
+      if (currentPortfolio) renderHoldings(currentPortfolio);
+      window.scrollTo({ top: 0 });
     }
 
     function toggleAccordion(index) {
@@ -3282,6 +3299,8 @@
               <div class="text-[13px] font-semibold ${pnlTextClass(h.pnl_pct)}">${pnlSign}${h.pnl_pct}%</div>`}
             </div>
           </div>
+          ${overviewPaneTabsHtml()}
+          ${overviewTab === 'overview' ? overviewPaneBody(h.code) : `
           <div class="grid grid-cols-4 gap-3">
             ${statCell('보유 수량', `${qty}주`)}
             ${statCell('평균 매입가', `${h.avg_price.toLocaleString()}원`)}
@@ -3302,7 +3321,7 @@
           <div class="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4">
             ${holdingTradesHtml(h)}
             ${pcPanel(sellBoxHtml(h, false), 'flex flex-col gap-3')}
-          </div>
+          </div>`}
         </div>`;
     }
 
@@ -3381,7 +3400,7 @@
       const holdings = currentPortfolio ? (currentPortfolio.holdings || []) : [];
       const st = detailPaneState(activeTab, expandedCardIndex, expandedHoldingIndex, currentRecs, holdings, searchStock);
       // 패널이 보여 주는 종목이 바뀌면 시세·매수 탭으로 돌아간다. 같은 종목의 재그림(60초 갱신)은 선택한 탭을 유지한다
-      const paneCode = (st.mode === 'search' || st.mode === 'rec') && st.item.code ? st.item.code : '';
+      const paneCode = (st.mode === 'search' || st.mode === 'rec' || st.mode === 'holding') && st.item.code ? st.item.code : '';
       overviewTab = ovPaneReset(overviewPaneCode, paneCode, overviewTab);
       if (overviewTab === 'trade') overviewAboutOpen = false;
       overviewPaneCode = paneCode;
@@ -3395,7 +3414,7 @@
         if (overviewTab === 'trade') drawPcChart(st.item.chart_data, st.item.change_rate >= 0);
       } else if (st.mode === 'holding') {
         pane.innerHTML = holdingDetailHtml(st.item);
-        drawPcChart(st.item.chart_data, st.item.pnl_pct >= 0, st.item.avg_price);
+        if (overviewTab === 'trade') drawPcChart(st.item.chart_data, st.item.pnl_pct >= 0, st.item.avg_price);
       } else {
         pane.innerHTML = summaryPaneHtml();
       }

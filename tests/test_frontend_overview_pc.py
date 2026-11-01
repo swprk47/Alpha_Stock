@@ -1,7 +1,7 @@
-"""PC 오른쪽 패널(검색 종목·스윙 추천 상세)의 [시세·매수 | 개요] 탭.
+"""PC 오른쪽 패널(검색 종목·스윙 추천·보유 종목 상세)의 [시세·매수 | 개요] 탭.
 
 - 탭은 헤더(이름·가격) 바로 아래, 차트·수치·AI 진단·매수 패널 위에 있고, 개요 탭이면 그 자리에 개요가 두 열로 놓인다.
-- PC 보유 상세(holdingDetailHtml)에는 넣지 않는다(쓰다가 필요하면 추가).
+- 보유 상세도 같다: 탭은 헤더 바로 아래, 개요 탭이면 수치 4칸·차트·기준선·거래 이력·매도 패널 자리에 개요가 놓인다.
 - 60초 자동 갱신이 패널을 다시 그려도 선택한 탭이 유지되고, 패널이 보여 주는 종목이 바뀌면 시세·매수 탭으로 돌아간다.
 """
 import json
@@ -52,9 +52,17 @@ def test_overview_replaces_body_only_when_selected(func):
         assert part in body, part
 
 
-def test_holding_detail_has_no_tabs():
+def test_holding_detail_has_tabs_after_header_and_replaces_the_whole_body():
     body = _func("holdingDetailHtml")
-    assert "overviewPaneTabsHtml" not in body and "overviewTab" not in body and "ovTabsHtml" not in body
+    header = body.index("<h2")
+    tabs = body.index("overviewPaneTabsHtml()")
+    assert header < tabs < body.index("grid-cols-4")  # 탭은 헤더 아래, 수치 4칸 위
+    assert "overviewTab === 'overview' ? overviewPaneBody(h.code) : `" in body
+    # 시세·매수 탭에는 기존 본문(수치·차트·기준선·거래 이력·매도 패널)이 그대로 남아 있다
+    for part in ("statCell('보유 수량'", "pcChartPanel(", "손절 · 익절 기준선", "holdingTradesHtml(h)", "sellBoxHtml(h, false)"):
+        assert part in body, part
+    shown = body[body.index("overviewTab === 'overview'"):]
+    assert shown.index("overviewPaneBody(h.code)") < shown.index("statCell('보유 수량'")  # 개요일 때는 본문이 통째로 빠진다
 
 
 def test_pane_helpers_use_two_columns_and_state_variables():
@@ -67,7 +75,8 @@ def test_pane_helpers_use_two_columns_and_state_variables():
 def test_render_detail_pane_draws_chart_only_on_trade_tab_and_resets_by_code():
     body = _func("renderDetailPane")
     assert "ovPaneReset(overviewPaneCode" in body and "overviewPaneCode = " in body
-    assert body.count("overviewTab === 'trade'") >= 2  # 검색·추천 모두 개요 탭에서는 없는 캔버스를 그리지 않는다
+    assert "st.mode === 'holding'" in body[:body.index("ovPaneReset(")]  # 보유 종목도 코드로 탭을 되돌린다
+    assert body.count("overviewTab === 'trade'") >= 3  # 검색·추천·보유 모두 개요 탭에서는 없는 캔버스를 그리지 않는다
     # 같은 종목을 다시 그릴 때(60초 갱신) 탭을 무조건 되돌리지 않는다
     assert "overviewTab = 'trade'" not in body
 
@@ -93,7 +102,7 @@ def test_visible_code_reads_the_pc_pane_too():
     body = _func("overviewVisibleCode")
     assert "buySheetItem" in body and "isPcLayout()" in body and "overviewPaneItem()" in body
     pane = _func("overviewPaneItem")
-    assert "detailPaneState(" in pane and "'search'" in pane and "'rec'" in pane  # 보유 상세에는 탭이 없다
+    assert "detailPaneState(" in pane and "'search'" in pane and "'rec'" in pane and "'holding'" in pane
 
 
 def test_select_tab_scrolls_the_pc_pane_to_top():
