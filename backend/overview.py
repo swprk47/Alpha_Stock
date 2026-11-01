@@ -16,6 +16,7 @@ from typing import Any, Callable
 
 import requests
 
+import clock
 from market_data import HEADERS, safe_security_type
 
 NAVER_BASE = "https://m.stock.naver.com"
@@ -441,7 +442,7 @@ def get_overview(code: str, cache: "TtlCache | None" = None) -> dict:
         weights = {"status": "empty", "cards": []}
 
     news = _safe_card(code, "news", build_news, results["news"]) if "news" in results else error_card()
-    fetched_at = datetime.fromtimestamp(min(stamps)).strftime("%Y-%m-%d %H:%M:%S") if stamps else ""
+    fetched_at = clock.fmt_kst(min(stamps)) if stamps else ""
     return {
         "success": True, "code": code, "kind": kind, "fetched_at": fetched_at,
         "source_url": SOURCE_URL.format(code=code) if SOURCE_URL else "",

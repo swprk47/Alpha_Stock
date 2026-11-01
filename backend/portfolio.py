@@ -6,8 +6,9 @@ portfolio.py
 - 수수료/세금 계산은 fees.py 순수 함수 사용
 """
 import math
-from datetime import datetime, date
+from datetime import datetime
 
+import clock
 import config
 from fees import calc_buy_cost, calc_sell_proceeds, estimate_sell_cost
 from storage import UserStore
@@ -23,7 +24,7 @@ class OrderError(Exception):
 
 
 def _now() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return clock.now_str()
 
 
 def _norm_qty(quantity: float) -> float:
@@ -124,8 +125,8 @@ class MultiUserPortfolioManager:
         total_eval = 0
         total_invested = 0
 
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        today_date = date.today()
+        today_date = clock.today_kst()
+        today_str = today_date.strftime("%Y-%m-%d")
 
         for code, item in data["holdings"].items():
             qty = round(float(item["quantity"]), 4)
@@ -219,7 +220,7 @@ class MultiUserPortfolioManager:
                 raise OrderError(
                     f"현금 잔고가 부족합니다. (필요: {cost['total']:,}원, 보유: {data['cash_balance']:,}원)")
             data["cash_balance"] -= cost["total"]
-            today = datetime.now().strftime("%Y-%m-%d")
+            today = clock.today_kst().strftime("%Y-%m-%d")
             h = data["holdings"].get(code)
             if h:
                 total_qty = round(h["quantity"] + qty, 4)

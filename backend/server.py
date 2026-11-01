@@ -6,7 +6,6 @@ import math
 import os
 import re
 import time
-from datetime import datetime
 
 from market_data import (
     get_market_candidate_stocks,
@@ -23,6 +22,7 @@ from overview import get_overview
 from symbol_index import MAX_QUERY_LEN, symbol_index
 from recommendation_cache import CACHE_TOP_N, RecommendationCache, recs_for_budget
 from portfolio import MultiUserPortfolioManager, OrderError
+import clock
 import config
 import orders
 from auth import (clear_session_cookie, create_session_token, dev_user_id,
@@ -110,7 +110,7 @@ def get_recs(request: Request, refresh: bool = False,
     result = rec_cache.get(budget, force=refresh)
     return {
         "success": True,
-        "updated_at": datetime.fromtimestamp(result.updated_at).strftime("%Y-%m-%d %H:%M:%S") if result.updated_at else "",
+        "updated_at": clock.fmt_kst(result.updated_at) if result.updated_at else "",
         "budget_bucket": result.bucket,
         "recommendations": recs_for_budget(result.recs, budget)
     }
