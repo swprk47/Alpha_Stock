@@ -19,6 +19,7 @@ from market_data import (
 )
 from strategy import get_recommendations
 from overview import get_overview
+from trade_rules import get_trade_rules
 from symbol_index import MAX_QUERY_LEN, symbol_index
 from recommendation_cache import CACHE_TOP_N, RecommendationCache, recs_for_budget
 from portfolio import MultiUserPortfolioManager, OrderError
@@ -92,6 +93,11 @@ def stock_overview_api(code: str, user: dict = Depends(get_current_user)):
     if not re.fullmatch(CODE_PATTERN, code):
         raise HTTPException(status_code=400, detail="종목코드는 영문 대문자·숫자 6자리입니다.")
     return get_overview(code)
+
+@app.get("/api/trade-rules")
+def trade_rules_api():
+    """거래 안내 팝업: 수수료·세율·스윙 룰. 앱이 실제 계산에 쓰는 값이라 로그인 없이 읽는다(개인정보 없음)."""
+    return {"success": True, "rules": get_trade_rules()}
 
 @app.get("/api/recommendations")
 def get_recs(request: Request, refresh: bool = False,
