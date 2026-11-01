@@ -4,11 +4,11 @@
 """
 import copy
 import json
-from datetime import datetime
 from pathlib import Path
 
 import pytest
 
+import clock as kst
 import overview
 
 FIX = Path(__file__).parent / "fixtures" / "overview"
@@ -331,7 +331,7 @@ def test_fetched_at_is_the_oldest_source_time(net):
     overview.get_overview("005930", cache=cache)  # 뉴스는 1030 에 받는다
     clock.now = 1070.0
     out = overview.get_overview("005930", cache=cache)  # integration 은 1070 에 다시 받지만 finance·industry 는 1000 의 것
-    assert out["fetched_at"] == datetime.fromtimestamp(1000.0).strftime("%Y-%m-%d %H:%M:%S")
+    assert out["fetched_at"] == kst.fmt_kst(1000.0)
 
 
 @pytest.mark.parametrize("path_of,code,ttl,fixtures", [
@@ -402,7 +402,7 @@ def test_fetched_at_ignores_the_static_industry_name_table(net):
     overview.get_overview("005930", cache=cache)  # t=1000: 모두 새로 받는다
     clock.now = 1000.0 + 7 * 3600  # integration·소개·뉴스는 다시 받고 업종 표(24시간)는 1000 의 것
     out = overview.get_overview("005930", cache=cache)
-    assert out["fetched_at"] == datetime.fromtimestamp(1000.0 + 7 * 3600).strftime("%Y-%m-%d %H:%M:%S")
+    assert out["fetched_at"] == kst.fmt_kst(1000.0 + 7 * 3600)
 
 
 def test_market_cap_note_is_dropped_when_the_value_is_missing(net):
