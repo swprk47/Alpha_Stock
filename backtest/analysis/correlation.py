@@ -16,17 +16,23 @@ MIN_TERCILE_DAYS = 30
 TERCILE_LABELS = ("낮음", "중간", "높음")
 
 
-def pair_corr_mean(frames: dict, codes: list, date, *, window: int = WINDOW):
-    """date 까지 최근 window 일 일간 수익률의 쌍별 상관 평균. 종목이 2개 미만이거나 공통 일수가 20 미만이면 None."""
-    if len(codes) < 2:
-        return None
-    rets = pd.concat({c: frames[c]["close"].loc[:date].tail(window + 1).pct_change() for c in codes}, axis=1, sort=True).dropna()
-    if len(rets) < MIN_COMMON_DAYS:
-        return None
-    corr = rets.corr().to_numpy()
-    values = corr[np.triu_indices(len(codes), k=1)]
+def _corr_matrix(frames: dict, codes: list, date, window: int) -> pd.DataFrame:
+    """date 까지 최근 window 일 일간 수익률의 상관행렬(쌍마다 겹치는 날이 20일 이상일 때만, 아니면 NaN)."""
+    rets = pd.concat({c: frames[c]["close"].loc[:date].tail(window + 1).pct_change() for c in codes}, axis=1, sort=True)
+    return rets.corr(min_periods=MIN_COMMON_DAYS)
+
+
+def _mean_offdiag(corr: pd.DataFrame, codes: list):
+    values = corr.loc[codes, codes].to_numpy()[np.triu_indices(len(codes), k=1)]
     values = values[np.isfinite(values)]
     return float(values.mean()) if len(values) else None
+
+
+def pair_corr_mean(frames: dict, codes: list, date, *, window: int = WINDOW):
+    """date 까지 최근 window 일 일간 수익률의 쌍별 상관 평균. 종목이 2개 미만이거나 쌍마다 겹치는 날이 20일 미만이면 None."""
+    if len(codes) < 2:
+        return None
+    return _mean_offdiag(_corr_matrix(frames, codes, date, window), codes)
 
 
 def picks_vs_random(days: list, frames: dict, *, repeats: int = 20, seed: int = DEFAULT_SEED) -> dict:
@@ -41,11 +47,14 @@ def picks_vs_random(days: list, frames: dict, *, repeats: int = 20, seed: int = 
         if len(picks) < PICKS:
             skipped += 1
             continue
-        corr = pair_corr_mean(frames, [s.code for s in picks], day.date)
-        pool = list(day.pool)
-        if corr is None or len(pool) < PICKS:
+        pick_codes, pool = [s.code for s in picks], list(day.pool)
+        if len(pool) < PICKS:
             continue
-        draws = [pair_corr_mean(frames, [pool[i] for i in rng.choice(len(pool), size=PICKS, replace=False)], day.date)
+        matrix = _corr_matrix(frames, list(dict.fromkeys(pool + pick_codes)), day.date, WINDOW)       # 날마다 한 번만 만든다
+        corr = _mean_offdiag(matrix, pick_codes)
+        if corr is None:
+            continue
+        draws = [_mean_offdiag(matrix, [pool[i] for i in rng.choice(len(pool), size=PICKS, replace=False)])
                  for _ in range(repeats)]
         draws = [v for v in draws if v is not None]
         if not draws:

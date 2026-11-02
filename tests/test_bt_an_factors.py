@@ -125,6 +125,14 @@ def test_score_factor_uses_passed_rows_only():
     assert set(signs) == set(panel["date"].dt.year) and all(v in (-1, 0, 1) for v in signs.values())
 
 
+def test_factor_functions_accept_an_empty_object_dtype_panel():
+    empty = pd.DataFrame(columns=list(PANEL_COLUMNS))             # build_panel 이 풀이 비었을 때 돌려주는 모양(열은 전부 object)
+    for column in FACTOR_COLUMNS:
+        assert rank_corr_test(empty, column, draws=50).point is None
+        assert bin_table(empty, column, train_edges(empty)[column]) == []
+        assert all(v == 0 for v in yearly_signs(empty, column).values())
+
+
 def test_bin_table_merges_small_bins_and_reports_counts():
     panel = _panel(seed=5, n_days=400, per_day=4)
     edges = train_edges(panel)

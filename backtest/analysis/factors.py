@@ -59,7 +59,7 @@ def merge_small_bins(counts: list, min_n: int = MIN_BIN) -> list:
 
 def _usable(panel: pd.DataFrame, column: str) -> pd.DataFrame:
     """점수는 앱이 60 점 미만에 None 을 돌려줘 통과 종목에서만 알 수 있으므로 통과 행만 쓴다."""
-    frame = panel[panel["passed"]] if column == SCORE else panel
+    frame = panel[panel["passed"].astype(bool)] if column == SCORE else panel      # 빈 패널의 object 열은 불리언 마스크로 쓰면 열 선택으로 해석된다
     return frame[["date", column, "net_return_pct"]].dropna()
 
 
