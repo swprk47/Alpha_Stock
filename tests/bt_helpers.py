@@ -50,3 +50,28 @@ def make_trade(net, reason="target", signal_date="2026-01-05", score=65, code="X
     d = pd.Timestamp(signal_date)
     return Trade(code, bucket, entry_mode, d, d, d + pd.Timedelta(days=held_days), 10_000, 10_000,
                  reason, float(net), held_days, score)
+
+
+def sample_results():
+    """보고서 테스트용: 거래 5건 시나리오 하나, 빈 시나리오 하나, 받기 실패 종목 BAD1."""
+    from backtest.metrics import CheckItem, ControlSummary, SensRow, by_score_band, by_year, summarize
+    from backtest.report import DataQuality, RunResults, ScenarioResult
+
+    trades = [make_trade(n, r, d, score=sc) for n, r, d, sc in [
+        (6.0, "target", "2025-01-06", 65), (-3.2, "stop", "2025-02-03", 60), (6.0, "target", "2026-01-05", 70),
+        (-3.2, "stop", "2026-01-12", 62), (0.5, "expire", "2026-01-19", 66)]]
+    full = summarize(trades)
+    filled = ScenarioResult(
+        bucket=100_000, entry_mode="close", summary=full, all_passes_summary=full, yearly=by_year(trades),
+        bands=by_score_band(trades), states={"up": full, "down": summarize([])}, excess_pct=1.5,
+        control=ControlSummary(4.0, 0.3, 0.5), sensitivity=[SensRow(6.5, 3.0, 5, 0.0, 5, 1.22)],
+        checklist=[CheckItem("거래 100건 이상", False, "5건")], trades=trades)
+    empty = summarize([])
+    blank = ScenarioResult(
+        bucket=100_000, entry_mode="next_open", summary=empty, all_passes_summary=empty, yearly={},
+        bands=by_score_band([]), states={"up": empty, "down": empty}, excess_pct=None,
+        control=ControlSummary(0.0, None, None), sensitivity=[SensRow(6.5, 3.0, 5, 0.0, 0, None)],
+        checklist=[CheckItem("거래 100건 이상", False, "0건")], trades=[])
+    quality = DataQuality(n_listed=300, n_with_data=298, failed=["BAD1"], skipped_short=["S1"],
+                          excluded_days={"A": 12}, first_date="2014-08-07", last_date="2026-11-02")
+    return RunResults("2026-11-02 14:00", [filled, blank], quality)
