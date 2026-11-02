@@ -30,3 +30,14 @@ def listing(codes):
 
 
 DATE = one(10_000, 1).index[-1]
+
+
+def trending_rows(n):
+    """완만한 상승과 눌림이 반복되는 일봉 n개. 앱의 analyze_stock_for_swing 점수가 80(RSI 약 58)이 되도록 맞춘 값."""
+    rows, close = [], 10_000
+    pattern = [60, -40, 50, -45, 55, -35]
+    for i in range(n):
+        new = close + pattern[i % len(pattern)]
+        rows.append((close, max(close, new) + 20, min(close, new) - 20, new, 100_000))
+        close = new
+    return rows
