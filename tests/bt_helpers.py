@@ -2,6 +2,7 @@
 import pandas as pd
 
 from backtest.data import Listing, prepare_frame
+from backtest.simulate import Trade
 
 
 def make_raw(rows, start="2026-01-05"):
@@ -41,3 +42,11 @@ def trending_rows(n):
         rows.append((close, max(close, new) + 20, min(close, new) - 20, new, 100_000))
         close = new
     return rows
+
+
+def make_trade(net, reason="target", signal_date="2026-01-05", score=65, code="X", entry_mode="close",
+               bucket=100_000, held_days=3):
+    """지표 테스트용 Trade. 진입일 = 신호일, 청산일 = 신호일 + held_days 일."""
+    d = pd.Timestamp(signal_date)
+    return Trade(code, bucket, entry_mode, d, d, d + pd.Timedelta(days=held_days), 10_000, 10_000,
+                 reason, float(net), held_days, score)
