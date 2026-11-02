@@ -32,8 +32,16 @@ def _boot(b, nd=3, scale=1.0, unit="") -> str:
             f"(일수 {b['n_days']}, p={b['p']:.3f})")
 
 
+MODE_ROLE = {"next_open": "(본 결과)", "close": "(확인용: 신호가 난 종가에 체결된다고 가정)"}
+
+
 def _title(s) -> str:
-    return f"예산 {s['bucket']:,}원 · {MODE_LABEL.get(s['entry_mode'], s['entry_mode'])}"
+    return f"예산 {s['bucket']:,}원 · {MODE_LABEL.get(s['entry_mode'], s['entry_mode'])}{MODE_ROLE.get(s['entry_mode'], '')}"
+
+
+def _ordered(scenarios: list) -> list:
+    """같은 예산 구간 안에서 본 결과(다음날 시가 진입)가 먼저, 확인용(종가 진입)이 뒤에 오게 정렬한다."""
+    return sorted(scenarios, key=lambda s: (s["bucket"], 0 if s["entry_mode"] == "next_open" else 1))
 
 
 def _factor_lines(s) -> list:
@@ -41,11 +49,12 @@ def _factor_lines(s) -> list:
     if s["panel_rows"]["main"] == 0:
         return out + [NO_SAMPLE, ""]
     out += [f"후보-날짜 {s['panel_rows']['main']:,}건(본 분석: 후보 풀 앞 30개)", "",
-            "| 요소 | 판정 | 학습 순위상관 [95%] | 검증 순위상관 [95%] | 학습 n | 검증 n | Holm p | 연도 방향(+/-) |", "|---|---|---|---|---|---|---|---|"]
+            "| 요소 | 판정 | 학습 순위상관 [95%] | 검증 순위상관 [95%] | 검증 평균 연동 [95%] | 학습 n | 검증 n | Holm p | 연도 방향(+/-) |",
+            "|---|---|---|---|---|---|---|---|---|"]
     for name, f in s["factors"]["main"].items():
         signs = list(f["yearly_signs"].values())
-        out.append(f"| {name} | **{f['verdict']}** | {_boot(f['train'])} | {_boot(f['test'])} | {f['n_train']:,} | {f['n_test']:,} | "
-                   f"{_num(f['holm_p'], 3)} | {signs.count(1)}/{signs.count(-1)} |")
+        out.append(f"| {name} | **{f['verdict']}** | {_boot(f['train'])} | {_boot(f['test'])} | {_boot(f.get('mean_test'))} | "
+                   f"{f['n_train']:,} | {f['n_test']:,} | {_num(f['holm_p'], 3)} | {signs.count(1)}/{signs.count(-1)} |")
     full = s["factors"]["full"]
     if full:
         out += ["", f"확인용(필터 통과 전체 풀, {s['panel_rows']['full']:,}건) 판정: "
@@ -93,7 +102,8 @@ def _correlation_lines(s) -> list:
     out.append(f"- 추천 3종목 평균 상관 {_num(p['picks_mean'], 3)} vs 후보 풀 무작위 3종목 {_num(p['random_mean'], 3)} "
                f"({p['n_days']:,}일, 추천 1~2개라 제외 {p['n_skipped']:,}일)")
     out.append(f"- 3종목이 모두 손절된 날: 관측 {_pct(a['observed'], 2)} vs 독립 가정 {_pct(a['expected'], 2)} "
-               f"(차이 {_boot(a['diff'], 4)}, {a['n_days']:,}일)")
+               f"(차이 {_boot(a['diff'], 4)}). 추천이 3개인 날 {p['n_days']:,}일 중 {a['n_days']:,}일 사용 "
+               f"(보유 중 종목도 제외하지 않고 추천 3개를 모두 시뮬레이션하며, 진입 불가·보유 기간 미완결 거래가 있는 날만 빠진다)")
     if c["terciles"]:
         out += ["", "| 상관 3분위 | 일수 | 3종목 평균 손익 | 표준편차 | 하위 5% 평균 |", "|---|---|---|---|---|"]
         out += [f"| {t['label']} | {t['n_days']:,} | {_num(t['mean_ret'])}% | {_num(t['std_ret'])} | {_num(t['lowest5_mean'])}% |" for t in c["terciles"]]
@@ -136,7 +146,7 @@ def _delay_lines(scenarios) -> list:
 
 
 def build_markdown(results: dict) -> str:
-    d, scenarios = results["data"], results["scenarios"]
+    d, scenarios = results["data"], _ordered(results["scenarios"])
     lines = ["# 스윙 추천 규칙 검증 분석 보고서", "",
              f"작성 {d['generated_at']} · 시드 {d['seed']} · 부트스트랩 {d['draws']:,}회(날짜 {d['block']}일 블록) · 슬리피지 {d['slippage_pct']}% · 위험 분포 경로 {d['paths']:,}개", "",
              "> 이 보고서는 미래를 맞히는 것이 아니라 과거 분포가 이어진다고 가정한 범위를 보여준다. 시장이 바뀌면 틀릴 수 있다.", "",
@@ -144,13 +154,19 @@ def build_markdown(results: dict) -> str:
     lines += ["", "## 데이터", "",
               f"- 상장 목록 {d['n_listed']}종목 중 일봉이 있는 종목 {d['n_frames']}개(벤치마크 포함), 거래일 {d['n_dates']:,}일 ({d['first_date']} ~ {d['last_date']})",
               f"- 일봉이 없어 뺀 종목: {', '.join(d['skipped']) if d['skipped'] else '없음'}",
-              "- 판정: 학습(2014-08~2021-12) Holm 보정 후 유의 + 검증(2022-01~) 같은 방향·95% 구간이 0 제외 + 연도 3분의 2 이상 같은 방향일 때만 '유의'",
+              "- 읽는 순서: 다음날 시가 진입이 **본 결과**이고 종가 진입은 확인용이다(종가 진입은 신호가 난 바로 그 종가에 체결된다고 가정한다).",
+              "- 판정 라벨: **유의** = 학습(2014-08~2021-12)에서 Holm 보정 후 유의하고, 검증(2022-01~)에서 같은 방향·95% 구간이 0 제외이며, "
+              "평균 손익과의 연동도 같은 방향으로 검증 구간이 0 제외이고, 연도 3분의 2 이상에서 같은 방향. "
+              "**순서만 유의** = 결과의 순서(손절·익절·만료)로는 유의하지만 평균 손익으로는 뒷받침되지 않음. "
+              "**불안정** = 위 조건을 넘었으나 연도별 방향이 자주 뒤집힘. **근거 부족** = 조건을 넘지 못함(효과가 작다는 뜻일 수도, 표본이 모자라서 못 본 것일 수도 있다). "
+              "**판정 불가** = 값이 상수이거나 표본이 없어 계산할 수 없음.",
               "", "## 요소별 예측력", "",
               "순위상관은 손절·익절·만료 결과의 **순서를 보는** 값이라 평균 손익의 방향과 다를 수 있다(손절이 잦아도 익절 폭이 크면 평균은 비슷하다). "
               "아래 구간별 평균 순손익을 함께 읽는다. 손절 -3%·익절 +6.5%가 고정이라 변동성(atr_pct)처럼 규칙 자체가 만드는 기계적 효과도 섞일 수 있다.", ""]
     for s in scenarios:
         lines += _factor_lines(s)
-    lines += ["## 추천 선택 효과", "", "추천 상위 3 평균 순손익 - 그날 후보 풀 평균 순손익(%p):", ""]
+    lines += ["## 추천 선택 효과", "", "추천 상위 3 평균 순손익 - 그날 후보 풀 평균 순손익(%p). 여섯 시나리오의 p값은 서로 보정하지 않았다. "
+              "본 결과(다음날 시가 진입)를 기준으로 읽고 종가 진입은 확인용으로만 본다.", ""]
     lines += [f"- {_title(s)}: {NO_SAMPLE}" if s["selection"]["point"] is None else f"- {_title(s)}: {_boot(s['selection'], 3, 1.0, '%p')}" for s in scenarios]
     lines += ["", "## 계좌 곡선과 단순 보유 비교", "",
               "연수익은 보유 중인 포지션에 **전액을 매일 재투자**한다고 가정한 값이라 '거래당 손익 x 연 회전 횟수'에 가깝고, 회전이 잦을수록 크게 증폭된다. "

@@ -23,10 +23,10 @@ from backtest.signals import trading_dates
 from backtest.simulate import ENTRY_MODES, simulate_picks
 
 from .bootstrap import BLOCK, DEFAULT_SEED, DRAWS
-from .correlation import all_stop_vs_independent, picks_vs_random, terciles_by_corr
+from .correlation import all_stop_vs_independent, picks_vs_random, terciles_by_corr, unfiltered_pick_trades
 from .equity import (TRADING_DAYS, benchmark_returns, cost_drag, excess_ci, information_ratio, matched_benchmark, perf,
                      portfolio_daily)
-from .factors import FACTOR_COLUMNS, bin_table, holm, judge, rank_corr_test, train_edges, yearly_signs
+from .factors import FACTOR_COLUMNS, bin_table, holm, judge, mean_corr_test, rank_corr_test, train_edges, yearly_signs
 from .features import compute_features
 from .panel import TRAIN_END, build_panel, passes_from_days, pools_from_days
 from .risk import PATHS, by_regime, calibration, risk_by_horizon, risk_summary, simulate_paths
@@ -89,11 +89,14 @@ def _factor_section(panel: pd.DataFrame, columns, *, seed: int, draws: int) -> d
     train, test = panel[panel["period"] == "train"], panel[panel["period"] == "test"]
     res_train = {c: rank_corr_test(train, c, seed=seed, draws=draws) for c in columns}
     res_test = {c: rank_corr_test(test, c, seed=seed, draws=draws) for c in columns}
+    mean_train = {c: mean_corr_test(train, c, seed=seed, draws=draws) for c in columns}
+    mean_test = {c: mean_corr_test(test, c, seed=seed, draws=draws) for c in columns}
     adjusted = holm({c: res_train[c].p for c in columns})
     out = {}
     for c in columns:
         signs = yearly_signs(panel, c)
-        out[c] = {"verdict": judge(res_train[c], res_test[c], signs, adjusted[c]), "train": res_train[c], "test": res_test[c],
+        out[c] = {"verdict": judge(res_train[c], res_test[c], signs, adjusted[c], mean_train[c], mean_test[c]),
+                  "train": res_train[c], "test": res_test[c], "mean_train": mean_train[c], "mean_test": mean_test[c],
                   "holm_p": adjusted[c], "yearly_signs": signs, "table": bin_table(panel, c, edges[c]),
                   "n_train": int(train[c].notna().sum()), "n_test": int(test[c].notna().sum())}
     return out
@@ -153,9 +156,10 @@ def _scenario(bucket, mode, days, frames, features, bench, dates, full_pools, pi
     scenario["cost_drag"] = cost_drag(trades)
     if bench is not None:
         scenario["states"] = {state: {"n": s.n, "expectancy_pct": s.expectancy_pct} for state, s in by_market_state(trades, bench).items()}
+    pick_trades = unfiltered_pick_trades(days, frames, mode, bucket=bucket, slippage_pct=cfg.slippage_pct)   # 보유 중 제외 없이 추천 3개 모두
     scenario["correlation"] = {"picks_vs_random": picks_stats,
-                               "all_stop": all_stop_vs_independent(trades, seed=cfg.seed, draws=cfg.draws),
-                               "terciles": terciles_by_corr(frames, trades)}
+                               "all_stop": all_stop_vs_independent(pick_trades, seed=cfg.seed, draws=cfg.draws),
+                               "terciles": terciles_by_corr(frames, pick_trades)}
     scenario["risk"] = _risk_section(daily, bench, cfg)
     return scenario
 

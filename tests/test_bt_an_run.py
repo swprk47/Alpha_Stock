@@ -63,7 +63,8 @@ def test_run_analysis_end_to_end_on_synthetic_data(tmp_path, no_network):
     for key in ("factors", "selection", "equity", "cost_drag", "correlation", "risk", "trades"):
         assert key in s
     assert set(s["factors"]["main"]) >= {"gap20", "rsi", "score"}
-    assert all(v["verdict"] in ("유의", "근거 부족", "불안정", "판정 불가") for v in s["factors"]["main"].values())
+    assert all(v["verdict"] in ("유의", "순서만 유의", "근거 부족", "불안정", "판정 불가") for v in s["factors"]["main"].values())
+    assert all("mean_train" in v and "mean_test" in v for v in s["factors"]["main"].values())
     assert s["trades"] > 0 and set(s["risk"]["horizons"]) == {"21", "63", "252", "756"}
     json.dumps(results)                                                  # JSON 직렬화 가능해야 한다
 
@@ -84,6 +85,9 @@ def test_report_puts_limits_before_results(tmp_path, no_network):
     assert "순서를 보는" in text                      # 순위상관은 평균 손익의 방향과 다를 수 있다는 해석 주의
     assert "전액을 매일 재투자" in text                # 연환산 수치는 회전율에 크게 좌우된다는 가정 설명
     assert "전날 종가" in text and "내내 이어진다고 가정" in text   # 시장 상태별 위험 분포의 분류 기준과 극단 시나리오 설명
+    assert "순서만 유의" in text and "판정 불가" in text            # 판정 라벨 설명
+    assert "보정하지 않았다" in text                                # 시나리오 간 다중비교를 보정하지 않았다는 문구
+    assert "일 중" in text and "사용" in text                       # 3종목 분석에 쓴 날과 전체 추천일 수
     assert json.loads((tmp_path / "out" / "analysis.json").read_text(encoding="utf-8"))["scenarios"]
 
 
@@ -108,3 +112,13 @@ def test_cli_writes_report_files(tmp_path, no_network):
                  "--no-full-pool", "--draws", "40", "--paths", "40"], fetch_listing=lambda: listing(CODES))
     assert code == 0
     assert (tmp_path / "out" / "analysis_report.md").exists() and (tmp_path / "out" / "analysis.json").exists()
+
+
+def test_report_marks_next_open_as_main_and_lists_it_first(tmp_path, no_network):
+    _seed_cache(tmp_path / "cache")
+    results = run_analysis(_cfg(tmp_path), fetch_listing=lambda: listing(CODES))
+    write_analysis_report(tmp_path / "out", results)
+    text = (tmp_path / "out" / "analysis_report.md").read_text(encoding="utf-8")
+    main_at, confirm_at = text.index("다음날 시가 진입(본 결과)"), text.index("종가 진입(확인용")
+    assert main_at < confirm_at                                         # 같은 예산 구간에서 본 결과가 먼저 나온다
+    assert text.count("다음날 시가 진입(본 결과)") == text.count("종가 진입(확인용")

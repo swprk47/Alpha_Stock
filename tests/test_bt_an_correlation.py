@@ -2,8 +2,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backtest.analysis.correlation import all_stop_vs_independent, pair_corr_mean, picks_vs_random, terciles_by_corr
+from backtest.analysis.correlation import (all_stop_vs_independent, pair_corr_mean, picks_vs_random, terciles_by_corr,
+                                           unfiltered_pick_trades)
 from backtest.signals import DayResult, Signal
+from backtest.simulate import simulate_picks
 from bt_helpers import make_frame, make_trade, trending_rows
 
 
@@ -107,3 +109,15 @@ def test_terciles_split_days_into_three_groups():
     assert sum(row["n_days"] for row in out) == 60
     assert out[0]["mean_ret"] == pytest.approx(np.mean(range(20)))      # 상관이 모두 같으면 날짜순으로 나뉜다
     assert out[0]["lowest5_mean"] == pytest.approx(0.0)
+
+
+def test_unfiltered_pick_trades_keep_every_pick_even_when_already_held():
+    base = trending_rows(100)
+    frames = {c: make_frame(_scaled(base, k)) for c, k in (("A", 1), ("B", 2), ("C", 3))}
+    dates = frames["A"].index
+    days = [DayResult(dates[60 + i], ["A", "B", "C"], [_sig(c, dates[60 + i]) for c in "ABC"]) for i in range(3)]
+    unfiltered = unfiltered_pick_trades(days, frames, "close", bucket=100_000)
+    assert len(unfiltered) == 9                                               # 매일 3개씩, 보유 중이어도 건너뛰지 않는다
+    assert len(simulate_picks(days, frames, "close", bucket=100_000)) < 9     # 계좌 시뮬레이션은 같은 종목 중복 보유를 거른다
+    assert all_stop_vs_independent(unfiltered, draws=50)["n_days"] == 3
+    assert [t.signal_date for t in unfiltered] == sorted(t.signal_date for t in unfiltered)

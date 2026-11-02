@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from backtest.signals import daily_picks
+from backtest.simulate import simulate_trade
 
 from .bootstrap import DEFAULT_SEED, DRAWS, BootResult, bootstrap_sums
 
@@ -63,6 +64,20 @@ def picks_vs_random(days: list, frames: dict, *, repeats: int = 20, seed: int = 
         random_vals.append(math.fsum(draws) / len(draws))
     mean = lambda values: math.fsum(values) / len(values) if values else None
     return {"picks_mean": mean(picks_vals), "random_mean": mean(random_vals), "n_days": len(picks_vals), "n_skipped": skipped}
+
+
+def unfiltered_pick_trades(days: list, frames: dict, entry_mode: str, *, bucket: int, slippage_pct: float = 0.1,
+                           top_n: int = PICKS) -> list:
+    """날짜순으로 그날 추천 상위 top_n 을 모두 거래로 만든다. 계좌 시뮬레이션(simulate_picks)과 달리 이미 보유 중인
+    종목도 건너뛰지 않아서, 추천이 3개인 날이 거의 그대로 남는다(진입 불가·미완결 거래만 빠진다)."""
+    trades = []
+    for day in sorted(days, key=lambda d: d.date):
+        for sig in daily_picks(day, top_n):
+            trade = simulate_trade(frames[sig.code], sig.code, sig.date, entry_mode, score=sig.score, bucket=bucket,
+                                   slippage_pct=slippage_pct)
+            if trade is not None:
+                trades.append(trade)
+    return trades
 
 
 def _three_trade_days(trades: list) -> list:

@@ -71,16 +71,25 @@ def _pearson(sums: np.ndarray) -> float:
     return (n * sxy - sx * sy) / math.sqrt(var_x * var_y)
 
 
-def rank_corr_test(panel: pd.DataFrame, column: str, *, seed: int = DEFAULT_SEED, draws: int = DRAWS) -> BootResult:
-    """요소와 순손익의 순위상관(스피어만)과 날짜 블록 부트스트랩 신뢰구간·p값. 퇴화(상수 열·상수 손익)면 점추정이 None."""
+def rank_corr_test(panel: pd.DataFrame, column: str, *, seed: int = DEFAULT_SEED, draws: int = DRAWS,
+                   raw_outcome: bool = False) -> BootResult:
+    """요소와 순손익의 순위상관(스피어만)과 날짜 블록 부트스트랩 신뢰구간·p값. 퇴화(상수 열·상수 손익)면 점추정이 None.
+    raw_outcome 이면 손익을 순위로 바꾸지 않고 그대로 쓴다(요소 순위와 평균 손익의 연동, mean_corr_test)."""
     frame = _usable(panel, column)
     if len(frame) < 3:
         return _NONE
     x = frame[column].rank(method="average").to_numpy()
-    y = frame["net_return_pct"].rank(method="average").to_numpy()
+    y = (frame["net_return_pct"].to_numpy(dtype=float) if raw_outcome
+         else frame["net_return_pct"].rank(method="average").to_numpy())
     sums = pd.DataFrame({"date": frame["date"].to_numpy(), "n": 1.0, "x": x, "y": y, "xy": x * y, "xx": x * x, "yy": y * y})
     day_stats = sums.groupby("date").sum().to_numpy()
     return bootstrap_sums(day_stats, _pearson, draws=draws, seed=seed)
+
+
+def mean_corr_test(panel: pd.DataFrame, column: str, *, seed: int = DEFAULT_SEED, draws: int = DRAWS) -> BootResult:
+    """요소 순위와 **평균 손익**(순위가 아닌 원래 손익)의 상관. 순위상관은 손절·익절·만료의 순서만 보므로, 손절과 익절이
+    함께 잦아져 순서는 달라져도 평균은 그대로인 경우(변동성 요소)를 가려내려고 같이 본다."""
+    return rank_corr_test(panel, column, seed=seed, draws=draws, raw_outcome=True)
 
 
 def holm(pvals: dict) -> dict:
@@ -114,8 +123,18 @@ def _rank_sums(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     return np.array([float(len(x)), x.sum(), y.sum(), (x * y).sum(), (x * x).sum(), (y * y).sum()])
 
 
-def judge(train: BootResult, test: BootResult, signs: dict, holm_p) -> str:
-    """"유의" 는 학습 Holm 통과 + 검증 같은 방향·95% 구간이 0 제외 + 연도 3분의 2 이상 같은 방향일 때만."""
+def _mean_agrees(direction: int, mean_train: BootResult, mean_test: BootResult) -> bool:
+    """평균 손익과의 연동도 같은 방향이고, 검증 기간 95% 구간이 0 을 포함하지 않는가."""
+    if mean_train.point is None or mean_test.point is None or mean_test.lo is None:
+        return False
+    return (_sign(mean_train.point) == direction and _sign(mean_test.point) == direction
+            and (mean_test.lo > 0 or mean_test.hi < 0))
+
+
+def judge(train: BootResult, test: BootResult, signs: dict, holm_p, mean_train: "BootResult | None" = None,
+          mean_test: "BootResult | None" = None) -> str:
+    """"유의" 는 학습 Holm 통과 + 검증 같은 방향·95% 구간이 0 제외 + (평균 연동 결과가 주어지면) 평균 손익도 같은 방향으로
+    검증 구간이 0 제외 + 연도 3분의 2 이상 같은 방향일 때만. 순서 검정만 넘고 평균이 뒷받침하지 못하면 "순서만 유의"."""
     if holm_p is None or train.point is None or test.point is None or test.lo is None:
         return "판정 불가"
     direction = _sign(train.point)
@@ -123,6 +142,8 @@ def judge(train: BootResult, test: BootResult, signs: dict, holm_p) -> str:
               and (test.lo > 0 or test.hi < 0))
     if not passed:
         return "근거 부족"
+    if mean_train is not None and mean_test is not None and not _mean_agrees(direction, mean_train, mean_test):
+        return "순서만 유의"
     considered = [s for s in signs.values() if s != 0]
     if not considered or sum(1 for s in considered if s == direction) / len(considered) < STABLE_SHARE:
         return "불안정"

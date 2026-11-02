@@ -3,8 +3,8 @@ import pandas as pd
 import pytest
 
 from backtest.analysis.bootstrap import BootResult
-from backtest.analysis.factors import (FACTOR_COLUMNS, assign_bins, bin_table, holm, judge, merge_small_bins,
-                                       rank_corr_test, train_edges, yearly_signs)
+from backtest.analysis.factors import (FACTOR_COLUMNS, assign_bins, bin_table, holm, judge, mean_corr_test,
+                                       merge_small_bins, rank_corr_test, train_edges, yearly_signs)
 from backtest.analysis.panel import PANEL_COLUMNS, TRAIN_END
 
 
@@ -140,3 +140,53 @@ def test_bin_table_merges_small_bins_and_reports_counts():
     assert sum(row["n"] for row in table) == len(panel)
     assert all(row["n"] >= 200 for row in table) or len(table) == 1
     assert bin_table(panel.iloc[0:0], "gap20", edges["gap20"]) == []
+
+
+def test_mean_corr_detects_planted_mean_shift():
+    panel = _panel(seed=2, slope_col="gap20", slope=2.0)
+    res = mean_corr_test(panel, "gap20", draws=300)
+    assert res.point > 0.3 and res.lo > 0
+
+
+def _rank_only_panel(seed=7):
+    """높은 요소값일수록 손절(-3)과 익절(+6)이 모두 잦아지지만 평균 손익은 두 구간 모두 정확히 0 인 표본(변동성 요소의 모양)."""
+    panel = _panel(seed=seed, n_days=900, per_day=6)
+    rng = np.random.default_rng(seed)
+    high = rng.random(len(panel)) < 0.5
+    panel["gap20"] = np.where(high, rng.uniform(1.0, 2.0, len(panel)), rng.uniform(0.0, 1.0, len(panel)))
+    values = np.array([-3.0, 6.0, 0.0])
+    outcome_high = rng.choice(values, len(panel), p=[0.5, 0.25, 0.25])
+    outcome_low = rng.choice(values, len(panel), p=[0.1, 0.05, 0.85])
+    panel["net_return_pct"] = np.where(high, outcome_high, outcome_low)
+    return panel
+
+
+def test_rank_signal_without_mean_signal_is_detected_by_the_two_tests_disagreeing():
+    panel = _rank_only_panel()
+    rank = rank_corr_test(panel, "gap20", draws=300)
+    mean = mean_corr_test(panel, "gap20", draws=300)
+    assert rank.point < -0.05 and rank.hi < 0            # 순서(손절이 잦음)로는 뚜렷하다
+    assert mean.lo < 0 < mean.hi                          # 평균 손익으로는 차이가 없다
+
+
+def test_mean_corr_degenerate_is_none():
+    panel = _panel(seed=3)
+    panel["gap20"] = 0.04
+    assert mean_corr_test(panel, "gap20", draws=100).point is None
+    flat = _panel(seed=3)
+    flat["net_return_pct"] = 1.0
+    assert mean_corr_test(flat, "gap20", draws=100).point is None
+
+
+def test_judge_requires_the_mean_test_to_agree_or_labels_order_only():
+    signs = {2019: 1, 2020: 1, 2021: 1, 2022: 1}
+    rank_train, rank_test = _boot(0.1, 0.05, 0.15), _boot(0.08, 0.02, 0.14)
+    agree_train, agree_test = _boot(0.05, 0.02, 0.08), _boot(0.04, 0.01, 0.07)
+    flat_test = _boot(0.004, -0.02, 0.03)
+    opposite_train = _boot(-0.05, -0.08, -0.02)
+    assert judge(rank_train, rank_test, signs, 0.01, agree_train, agree_test) == "유의"
+    assert judge(rank_train, rank_test, signs, 0.01, agree_train, flat_test) == "순서만 유의"
+    assert judge(rank_train, rank_test, signs, 0.01, opposite_train, agree_test) == "순서만 유의"
+    assert judge(rank_train, rank_test, signs, 0.01, _boot(None, None, None), _boot(None, None, None)) == "순서만 유의"
+    assert judge(rank_train, _boot(-0.08, -0.14, -0.02), signs, 0.01, agree_train, agree_test) == "근거 부족"   # 순서 검정을 못 넘으면 그대로
+    assert judge(rank_train, rank_test, signs, 0.01) == "유의"                                              # 평균 결과를 안 주면 기존 규칙
