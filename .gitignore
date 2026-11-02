@@ -25,3 +25,7 @@ graphify-out/
 # OS
 .DS_Store
 Thumbs.db
+
+# 백테스트 내려받은 시세 캐시와 실행 결과
+backtest/cache/
+backtest/results/
