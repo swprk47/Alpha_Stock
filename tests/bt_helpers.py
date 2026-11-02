@@ -1,7 +1,7 @@
 """백테스트 테스트용 도우미: 손으로 만든 일봉 프레임."""
 import pandas as pd
 
-from backtest.data import prepare_frame
+from backtest.data import Listing, prepare_frame
 
 
 def make_raw(rows, start="2026-01-05"):
@@ -18,3 +18,15 @@ def make_frame(rows, start="2026-01-05"):
 
 def flat_rows(n, price=10_000, volume=100_000):
     return [(price, price, price, price, volume)] * n
+
+
+def one(close, volume, n=3):
+    """같은 값의 일봉 n개짜리 프레임(마지막 날짜가 DATE)."""
+    return make_frame([(close, close, close, close, volume)] * n)
+
+
+def listing(codes):
+    return [Listing(c, c, "KOSPI", i) for i, c in enumerate(codes)]
+
+
+DATE = one(10_000, 1).index[-1]
