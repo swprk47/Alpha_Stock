@@ -61,21 +61,27 @@ def uniform_frame(pattern, n=30):
 def control_setup():
     frames = {c: uniform_frame(WIN if c in "ABC" else LOSE) for c in "ABCDEF"}
     dates = list(frames["A"].index)[:15]
-    days = [DayResult(d, list("ABCD") if i % 2 == 0 else list("CDEF"), []) for i, d in enumerate(dates)]
+    days = []
+    for i, d in enumerate(dates):
+        pool = list("ABCD") if i % 2 == 0 else list("CDEF")
+        signals = [] if i % 3 == 2 else [Signal(pool[0], d, 70, 2.17, 100_000), Signal(pool[1], d, 65, 2.17, 100_000)]   # 3일에 하루는 신호가 없다
+        days.append(DayResult(d, pool, signals))
     return days, frames
 
 
-def test_control_runs_are_seeded_bounded_and_from_the_pool():
+def test_control_runs_are_seeded_matched_to_signal_days_and_from_the_pool():
     days, frames = control_setup()
     pool_of = {d.date: d.pool for d in days}
+    picks_of = {d.date: len(d.signals) for d in days}                       # 그날 전략이 고른 개수
     runs = control_runs(days, frames, "close", bucket=100_000, repeats=5)
     assert len(runs) == 5 and runs == control_runs(days, frames, "close", bucket=100_000, repeats=5)
     assert all(t.code in pool_of[t.signal_date] for run in runs for t in run)
+    assert all(picks_of[t.signal_date] > 0 for run in runs for t in run)    # 신호가 없는 날에는 대조군도 사지 않는다(시장 타이밍 효과 제거)
     for run in runs:
         per_day = {}
         for t in run:
             per_day[t.signal_date] = per_day.get(t.signal_date, 0) + 1
-        assert max(per_day.values()) <= 3                                   # 하루에 k=3 개를 넘지 않는다
+        assert all(count <= picks_of[date] for date, count in per_day.items())    # 그날 전략과 같은 개수까지만
     assert runs != control_runs(days, frames, "close", bucket=100_000, repeats=5, seed=1)
 
 

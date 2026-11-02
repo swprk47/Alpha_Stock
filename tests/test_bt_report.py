@@ -9,6 +9,8 @@ def test_report_files_and_required_sections(tmp_path):
     md = (tmp_path / "report.md").read_text(encoding="utf-8")
     for text in ("생존 편향", "투자 조언이 아니며", "대조군", "점검표", "100000", "next_open", "실패 종목", "BAD1"):
         assert text in md
+    assert "계좌의 낙폭이 아닙니다" in md and "최대 연속 손실은" in md          # 스펙 §6: 신호 단위 지표 정의를 보고서에 명시
+    assert "분할 이전" in md and "신호가 난 날에만" in md                      # 분할 전 기간 제외와 대조군 정의를 밝힌다
     assert (tmp_path / "trades.csv").read_text(encoding="utf-8").splitlines()[0] == (
         "code,bucket,entry_mode,signal_date,entry_date,exit_date,entry_price,exit_price,exit_reason,net_return_pct,held_days,score")
     data = json.loads((tmp_path / "metrics.json").read_text(encoding="utf-8"))

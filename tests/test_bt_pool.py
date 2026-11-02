@@ -27,3 +27,10 @@ def test_missing_date_and_vol_break_rows():
     marked = one(10_000, 300_000)
     marked["vol_break"] = True                                               # 풀에는 남는다(신호 단계에서 거른다)
     assert select_pool(listing("SM"), {"S": short, "M": marked}, DATE, 50_000) == ["M"]
+
+
+def test_pre_split_rows_stay_out_of_the_pool():
+    pre, post = one(10_000, 300_000), one(10_000, 300_000)
+    pre["pre_split"] = True                                                  # 분할 전 기간: 실제(명목) 가격이 조정 가격보다 높았다
+    assert select_pool(listing("PQ"), {"P": pre, "Q": post}, DATE, 50_000) == ["Q"]
+

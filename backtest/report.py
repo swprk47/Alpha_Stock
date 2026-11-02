@@ -49,6 +49,7 @@ class RunResults:
 LIMITS = (
     "**생존 편향**: 후보 풀을 오늘의 시가총액 상위 목록으로 만들었습니다. 이미 상장폐지된 종목은 빠져 있고, "
     "과거 시점의 시총 순위는 구할 수 없습니다. 그래서 결과가 실제보다 좋게 나올 수 있습니다.",
+    "**분할 종목**: 가격은 액면분할이 반영돼 있지만 거래량은 아니어서, 분할이 감지된 종목은 분할 이전 기간을 후보 풀에서 뺐습니다(그 시기의 실제 가격을 알 수 없어 예산 구간 조건을 못 맞춥니다). 분할 앞뒤 6봉은 신호에서도 뺐습니다.",
     "**일봉의 한계**: 장중에 신호를 보고 그 순간 가격으로 사는 앱의 실제 사용과 장중 거래량이 덜 쌓이는 문제는 재현하지 못합니다. "
     "같은 날 익절과 손절이 모두 닿으면 손절로 계산했습니다(보수적).",
     "**표본**: 거래 수가 적은 구간이나 연도는 우연의 영향이 큽니다. 점검표의 거래 100건 기준을 함께 보세요.",
@@ -86,8 +87,9 @@ def _scenario_markdown(sc: ScenarioResult) -> str:
         out.append(_summary_row("그날의 추천 상위 3", sc.summary))
         out.append(_summary_row("점수 통과 전체", sc.all_passes_summary))
         c = sc.control
-        out.append(f"| 대조군(무작위 3, 평균) | {_num(c.mean_n, 1)} | {_num(None if c.mean_win_rate is None else c.mean_win_rate * 100, 1, '%')} "
+        out.append(f"| 대조군(신호가 난 날에만 같은 개수 무작위, 평균) | {_num(c.mean_n, 1)} | {_num(None if c.mean_win_rate is None else c.mean_win_rate * 100, 1, '%')} "
                    f"| - | - | - | {_num(c.mean_expectancy_pct, 2, '%')} | - | - | - | - |\n")
+        out.append("\n※ 최대 낙폭은 거래를 신호일 순으로 늘어놓고 거래마다 순수익률(%)을 그대로 더해 만든 누적 곡선에서 고점 대비 가장 크게 내려간 폭(%p)입니다. 겹치는 거래와 투자 금액을 반영하지 않으므로 계좌의 낙폭이 아닙니다. 최대 연속 손실은 순수익률이 0보다 작은 거래가 이어진 최대 횟수입니다.\n")
         out.append(f"\n시장 대비 초과수익(KODEX 200, 비용 미반영 벤치마크): {_num(sc.excess_pct, 2, '%p')}\n")
         out.append(_table("연도별", sc.yearly))
         out.append(_table("점수대별", sc.bands))

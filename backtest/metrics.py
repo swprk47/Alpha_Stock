@@ -114,13 +114,15 @@ class ControlSummary:
 
 def control_runs(days, frames, entry_mode, *, bucket, seed=CONTROL_SEED, repeats=CONTROL_REPEATS,
                  k=CONTROL_K, **sim_kwargs) -> list:
-    """같은 날 같은 후보 풀에서 무작위 k 개를 골라 같은 규칙으로 청산한 거래 목록을 repeats 번 만든다(시드 고정)."""
+    """전략이 신호를 낸 날에만, 그날 추천 개수(최대 k)와 같은 수를 같은 후보 풀에서 무작위로 골라 같은 규칙으로 청산한 거래 목록을
+    repeats 번 만든다(시드 고정). 신호가 없는 날에는 대조군도 사지 않아서 "시장 상황을 타는 효과"가 비교에서 빠진다."""
     runs = []
     for r in range(repeats):
         rng = random.Random(seed + r)
         fake_days = []
         for day in days:
-            picks = rng.sample(day.pool, min(k, len(day.pool)))
+            n = min(k, len(day.signals), len(day.pool))
+            picks = rng.sample(day.pool, n) if n else []
             fake_days.append(DayResult(day.date, day.pool, [Signal(c, day.date, 0, 0.0, bucket) for c in picks]))
         runs.append(simulate_picks(fake_days, frames, entry_mode, bucket=bucket, top_n=None, **sim_kwargs))
     return runs

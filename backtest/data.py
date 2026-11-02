@@ -12,7 +12,8 @@ from market_data import HEADERS
 BREAK_RATIO = 10          # 분할로 보는 거래량 수준 변화(배)
 BREAK_MAX_PRICE_MOVE = 0.35  # 종가가 이어지는 것으로 보는 최대 등락
 BREAK_PAD = 6             # 분할 위치 앞뒤로 신호에서 빼는 봉 수
-_WINDOW = 5               # 분할 판단에 쓰는 앞·뒤 봉 수
+_BEFORE_WINDOW = 20       # 분할은 영구적이라 앞 20봉과 뒤 20봉의 거래량 수준(중앙값)을 비교한다.
+_AFTER_WINDOW = 20        # 며칠 뛰었다 가라앉는 급등과 그 끝(수준이 되돌아가는 날)은 분할이 아니다
 
 
 def _median_nonzero(values) -> float:
@@ -29,23 +30,26 @@ def _is_level_shift(v: float, before: float, after: float) -> bool:
     return up or down
 
 
-def _volume_break_mask(close: np.ndarray, volume: np.ndarray) -> np.ndarray:
+def _volume_break_mask(close: np.ndarray, volume: np.ndarray):
+    """(분할 앞뒤 BREAK_PAD 봉 표시, 감지된 분할 위치 목록)."""
     n = len(volume)
     mask = np.zeros(n, dtype=bool)
+    breaks = []
     move = np.zeros(n)                                       # 일별 등락률 절댓값
     move[1:] = np.abs(close[1:] / np.where(close[:-1] > 0, close[:-1], np.nan) - 1)
     move = np.nan_to_num(move, nan=1.0)
     prev_flagged = False
-    for i in range(_WINDOW, n - _WINDOW + 1):
+    for i in range(_BEFORE_WINDOW, n - _AFTER_WINDOW + 1):
         flagged = False
-        if volume[i] > 0 and move[i - _WINDOW + 1:i + 1].max() <= BREAK_MAX_PRICE_MOVE:   # 직전 5봉 동안 가격이 이어졌다
-            before = _median_nonzero(volume[i - _WINDOW:i])
-            after = _median_nonzero(volume[i:i + _WINDOW])
+        if volume[i] > 0 and move[i - _BEFORE_WINDOW + 1:i + 1].max() <= BREAK_MAX_PRICE_MOVE:   # 비교하는 앞 구간 내내 가격이 이어졌다(큰 갭 직후의 거래량 증가는 분할이 아니다)
+            before = _median_nonzero(volume[i - _BEFORE_WINDOW:i])
+            after = _median_nonzero(volume[i:i + _AFTER_WINDOW])
             flagged = _is_level_shift(float(volume[i]), before, after)
         if flagged and not prev_flagged:                     # 연속으로 걸리면 첫 위치만 분할로 본다
             mask[max(0, i - BREAK_PAD):i + BREAK_PAD + 1] = True
+            breaks.append(i)
         prev_flagged = flagged
-    return mask
+    return mask, breaks
 
 
 def prepare_frame(raw: pd.DataFrame) -> pd.DataFrame:
@@ -54,7 +58,14 @@ def prepare_frame(raw: pd.DataFrame) -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["date"])
     df = df.drop_duplicates(subset="date", keep="last").sort_values("date").set_index("date")
     df["halt"] = df["volume"] == 0
-    df["vol_break"] = _volume_break_mask(df["close"].to_numpy(dtype=float), df["volume"].to_numpy(dtype=float))
+    mask, breaks = _volume_break_mask(df["close"].to_numpy(dtype=float), df["volume"].to_numpy(dtype=float))
+    df["vol_break"] = mask
+    # 가격은 분할이 반영돼 있지만 거래량은 아니라서, 분할 전 기간의 실제(명목) 가격은 조정 가격보다 높았다(몇 배인지는 모른다).
+    # 후보 풀의 가격 구간 조건을 믿을 수 없으므로 마지막 분할 이전 행은 풀에서 뺀다.
+    pre_split = np.zeros(len(df), dtype=bool)
+    if breaks:
+        pre_split[:breaks[-1]] = True
+    df["pre_split"] = pre_split
     return df
 
 
