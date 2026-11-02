@@ -90,3 +90,16 @@ def test_simulate_picks_skips_resignal_while_holding_and_respects_top_n():
     trades = simulate_picks(days, {"X": f, "Y": f}, "close", bucket=100_000)
     assert [(t.code, t.signal_date) for t in trades] == [("X", d[0]), ("X", d[7]), ("Y", d[7])]
     assert [t.code for t in simulate_picks(days, {"X": f, "Y": f}, "close", bucket=100_000, top_n=1)] == ["X", "X"]
+
+
+ZERO_OHL = (0, 0, 0, 10_000, 401)                                   # 거래량은 있지만 시가·고가·저가가 0인 행
+
+
+def test_zero_ohl_row_is_skipped_instead_of_booking_a_minus_100_percent_stop():
+    t = run([ZERO_OHL] + [CALM] * 4)
+    assert (t.exit_reason, t.exit_price) == ("expire", 10_100) and t.net_return_pct > -1.0
+
+
+def test_zero_ohl_entry_row_gives_no_trade_instead_of_dividing_by_zero():
+    assert run([ZERO_OHL] + [CALM] * 4, mode="next_open") is None
+

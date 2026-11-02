@@ -57,7 +57,9 @@ def prepare_frame(raw: pd.DataFrame) -> pd.DataFrame:
     df = raw[["date", "open", "high", "low", "close", "volume"]].copy()
     df["date"] = pd.to_datetime(df["date"])
     df = df.drop_duplicates(subset="date", keep="last").sort_values("date").set_index("date")
-    df["halt"] = df["volume"] == 0
+    # 거래정지(거래량 0)이거나 시가·고가·저가·종가 중 0 이하가 있으면 체결 가격을 믿을 수 없는 행이다.
+    # 실데이터에는 거래량은 있는데 시가·고가·저가만 0인 행이 있다(033790 2020-01-28, 047810 2017-10-11).
+    df["halt"] = (df["volume"] == 0) | (df[["open", "high", "low", "close"]] <= 0).any(axis=1)
     mask, breaks = _volume_break_mask(df["close"].to_numpy(dtype=float), df["volume"].to_numpy(dtype=float))
     df["vol_break"] = mask
     # 가격은 분할이 반영돼 있지만 거래량은 아니라서, 분할 전 기간의 실제(명목) 가격은 조정 가격보다 높았다(몇 배인지는 모른다).

@@ -48,3 +48,11 @@ def test_fading_volume_surge_is_not_a_split():
     f = make_frame(rows)
     assert not f["vol_break"].any() and not f["pre_split"].any()
 
+
+def test_row_with_zero_ohl_but_volume_is_not_tradable():
+    # 실데이터에 시가·고가·저가가 0이고 거래량만 있는 행이 있다(033790 2020-01-28, 047810 2017-10-11). 체결 가격을 믿을 수 없다
+    rows = flat_rows(10)
+    rows[5] = (0, 0, 0, 10_000, 400)
+    f = make_frame(rows)
+    assert [i for i, v in enumerate(f["halt"]) if v] == [5]
+
