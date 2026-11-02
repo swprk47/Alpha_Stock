@@ -92,6 +92,14 @@
 - 한계: 후보 풀이 오늘의 시총 목록이라 생존 편향(결과가 좋게 나올 수 있음), 일봉이라 장중 신호·장중 거래량 문제는 재현하지 못함, 같은 날 익절·손절이 모두 닿으면 손절로 계산, 분할은 삼성전자 한 종목에서만 직접 확인함.
 - 결과는 점검표(거래 100건 이상, 플러스 연도 과반, 대조군보다 높은 기대 손익, 슬리피지 0.3% 후에도 양수)로 증거만 정리하고 결론은 사용자가 내린다.
 
+## 0-6. 검증 분석 층 (2026-11-03, 브랜치 `feat/backtest-analysis`, PR #30 위에서 분기)
+- 목적: 기준선(0-5)에 신뢰구간과 검정을 붙인다. 예측기가 아니라 **검증기**다: 요소별 예측력(학습 2014-08~2021-12 / 검증 2022-01~), 추천 선택 효과, 일봉 기준 계좌 곡선과 단순 보유(KODEX 200) 비교, 추천 3종목 상관, 실제 거래를 5일 블록으로 다시 뽑은 위험 분포와 Kupiec 방식 보정 점검. `strategy.py`는 건드리지 않는다.
+- 문서: 설계 `docs/superpowers/specs/2026-11-03-backtest-analysis-design.md`, 계획 `docs/superpowers/plans/2026-11-03-backtest-analysis.md`.
+- 구성: `backtest/analysis/`(`bootstrap` 날짜 블록 부트스트랩, `features` 요소, `panel` 후보-날짜 패널, `factors` 순위상관·Holm·판정, `selection`, `equity`, `correlation`, `risk`, `report`, `run`). numpy·pandas만 쓴다(scipy 없음).
+- 실행: `python -m backtest.analysis.run`(옵션 `--workers`, `--buckets`, `--max-codes`, `--out`, `--cache`, `--seed`, `--refresh-listing`, `--no-full-pool`, `--draws`, `--paths`). **일봉은 `backtest/cache/`에서만 읽고 다시 받지 않는다.** 상장 목록은 캐시에 없어서 첫 실행에서 한 번 받아 `backtest/cache/listing.json`에 저장하고 재사용한다(오늘의 시총 순서라 기준선 때와 조금 다를 수 있다). 결과는 `backtest/results/<날짜>/analysis_report.md`, `analysis.json`(커밋 제외).
+- 판정 규칙: 요소가 "유의"이려면 학습 기간에서 Holm 보정 후 유의 **그리고** 검증 기간에서 같은 방향·95% 구간이 0 제외 **그리고** 연도 3분의 2 이상 같은 방향. 나머지는 "근거 부족"(효과가 없다는 뜻이 아니다).
+- 알아둘 점: 앱 점수 함수는 60점 미만에 값을 주지 않아 점수 요소는 통과 종목에서만 검정한다. 실측(20종목, 8코어 아님 워커 4): 신호 생성이 가장 느리고 후보 풀 전체 패널 시뮬레이션이 그다음이다.
+
 ## 1. 사용자 결정 (확정)
 | # | 결정 |
 |---|---|

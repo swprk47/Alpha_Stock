@@ -50,13 +50,17 @@ def risk_by_horizon(daily_ret: np.ndarray, *, horizons=HORIZONS, paths: int = PA
 
 
 def by_regime(daily: pd.DataFrame, bench: pd.DataFrame) -> dict:
-    """신호일 벤치 종가가 20일 단순이동평균 이상이면 "up", 아니면 "down"인 날의 일간 수익률(날짜순). 20봉 미만인 날은 뺀다."""
-    ma20 = bench["close"].rolling(20).mean()
+    """**전날** 벤치 종가가 20일 단순이동평균 이상이면 "up", 아니면 "down"인 날의 일간 수익률(날짜순).
+    투자할 때 알 수 있는 상태로 나눠야 하므로 그날의 움직임이 그날의 분류를 정하지 않게 하루 늦춘다.
+    전날의 20일선이 아직 없는 날은 뺀다."""
+    close = bench["close"]
+    ma20 = close.rolling(20).mean()
+    previous_up = (close >= ma20).where(ma20.notna()).shift(1)
     up, down = [], []
     for date, ret in daily["ret"].items():
-        if date not in bench.index or pd.isna(ma20.loc[date]):
+        if date not in previous_up.index or pd.isna(previous_up.loc[date]):
             continue
-        (up if bench["close"].loc[date] >= ma20.loc[date] else down).append(float(ret))
+        (up if previous_up.loc[date] else down).append(float(ret))
     return {"up": np.array(up), "down": np.array(down)}
 
 

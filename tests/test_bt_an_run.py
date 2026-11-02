@@ -81,6 +81,9 @@ def test_report_puts_limits_before_results(tmp_path, no_network):
     text = (tmp_path / "out" / "analysis_report.md").read_text(encoding="utf-8")
     assert text.index("## 한계") < text.index("## 요소별")
     assert "미래를 맞히는 것이 아니라" in text
+    assert "순서를 보는" in text                      # 순위상관은 평균 손익의 방향과 다를 수 있다는 해석 주의
+    assert "전액을 매일 재투자" in text                # 연환산 수치는 회전율에 크게 좌우된다는 가정 설명
+    assert "전날 종가" in text and "내내 이어진다고 가정" in text   # 시장 상태별 위험 분포의 분류 기준과 극단 시나리오 설명
     assert json.loads((tmp_path / "out" / "analysis.json").read_text(encoding="utf-8"))["scenarios"]
 
 

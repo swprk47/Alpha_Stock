@@ -145,12 +145,16 @@ def build_markdown(results: dict) -> str:
               f"- 상장 목록 {d['n_listed']}종목 중 일봉이 있는 종목 {d['n_frames']}개(벤치마크 포함), 거래일 {d['n_dates']:,}일 ({d['first_date']} ~ {d['last_date']})",
               f"- 일봉이 없어 뺀 종목: {', '.join(d['skipped']) if d['skipped'] else '없음'}",
               "- 판정: 학습(2014-08~2021-12) Holm 보정 후 유의 + 검증(2022-01~) 같은 방향·95% 구간이 0 제외 + 연도 3분의 2 이상 같은 방향일 때만 '유의'",
-              "", "## 요소별 예측력", ""]
+              "", "## 요소별 예측력", "",
+              "순위상관은 손절·익절·만료 결과의 **순서를 보는** 값이라 평균 손익의 방향과 다를 수 있다(손절이 잦아도 익절 폭이 크면 평균은 비슷하다). "
+              "아래 구간별 평균 순손익을 함께 읽는다. 손절 -3%·익절 +6.5%가 고정이라 변동성(atr_pct)처럼 규칙 자체가 만드는 기계적 효과도 섞일 수 있다.", ""]
     for s in scenarios:
         lines += _factor_lines(s)
     lines += ["## 추천 선택 효과", "", "추천 상위 3 평균 순손익 - 그날 후보 풀 평균 순손익(%p):", ""]
     lines += [f"- {_title(s)}: {NO_SAMPLE}" if s["selection"]["point"] is None else f"- {_title(s)}: {_boot(s['selection'], 3, 1.0, '%p')}" for s in scenarios]
-    lines += ["", "## 계좌 곡선과 단순 보유 비교", ""]
+    lines += ["", "## 계좌 곡선과 단순 보유 비교", "",
+              "연수익은 보유 중인 포지션에 **전액을 매일 재투자**한다고 가정한 값이라 '거래당 손익 x 연 회전 횟수'에 가깝고, 회전이 잦을수록 크게 증폭된다. "
+              "실제로 자금을 일부만 쓰면 이 숫자보다 작게 움직인다.", ""]
     for s in scenarios:
         lines += _equity_lines(s)
     delay = _delay_lines(scenarios)
@@ -159,7 +163,9 @@ def build_markdown(results: dict) -> str:
     lines += ["## 추천 3종목 상관", ""]
     for s in scenarios:
         lines += _correlation_lines(s)
-    lines += ["## 위험 분포", "", "실제 일별 계좌 수익률을 5일 블록으로 다시 뽑은 가상 경로의 분포다(낙폭은 깊이).", ""]
+    lines += ["## 위험 분포", "", "실제 일별 계좌 수익률을 5일 블록으로 다시 뽑은 가상 경로의 분포다(낙폭은 깊이).",
+              "시장 상태별 줄은 **전날 종가** 기준 KODEX 200과 20일선의 관계로 날을 나누고(그날의 움직임이 분류를 정하지 않게), 그 상태의 날만 252일 이어 붙인 경로다. "
+              "상태가 1년 내내 이어진다고 가정한 극단 시나리오라 실제 확률로 읽으면 안 된다.", ""]
     for s in scenarios:
         lines += _risk_lines(s)
     return "\n".join(lines) + "\n"

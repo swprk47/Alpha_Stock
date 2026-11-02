@@ -58,9 +58,18 @@ def test_by_regime_splits_by_ma20_state():
     bench = make_frame([(c, c, c, c, 1) for c in closes])
     daily = pd.DataFrame({"ret": np.arange(80, dtype=float)}, index=bench.index)
     out = by_regime(daily, bench)
-    assert len(out["up"]) + len(out["down"]) == 80 - 19                  # 20봉이 안 쌓인 앞 19일은 뺀다
+    assert len(out["up"]) + len(out["down"]) == 80 - 20                  # 전날의 20일선이 아직 없는 앞 20일은 뺀다
     assert 25.0 in out["up"] and 79.0 in out["down"]
     assert list(out["up"]) == sorted(out["up"]) and list(out["down"]) == sorted(out["down"])
+
+
+def test_by_regime_uses_previous_close_so_the_days_own_move_does_not_decide_its_group():
+    closes = [100 + i for i in range(40)] + [50] * 10               # 40번째 날 폭락: 그날 종가는 20일선 아래다
+    bench = make_frame([(c, c, c, c, 1) for c in closes])
+    daily = pd.DataFrame({"ret": np.arange(50, dtype=float)}, index=bench.index)
+    out = by_regime(daily, bench)
+    assert 40.0 in out["up"]                                          # 폭락한 날의 수익률도 전날(상승장) 기준으로 분류된다
+    assert 41.0 in out["down"] and 40.0 not in out["down"]
 
 
 def test_calibration_iid_returns_exceed_rate_near_five_percent():
