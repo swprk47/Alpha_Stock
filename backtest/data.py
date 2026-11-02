@@ -1,6 +1,13 @@
 """일봉 데이터 준비: 상장 목록, 캐시·다운로드, 프레임(거래정지·분할 표시)."""
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+import requests
+
+from market_data import HEADERS
 
 BREAK_RATIO = 10          # 분할로 보는 거래량 수준 변화(배)
 BREAK_MAX_PRICE_MOVE = 0.35  # 종가가 이어지는 것으로 보는 최대 등락
@@ -49,3 +56,104 @@ def prepare_frame(raw: pd.DataFrame) -> pd.DataFrame:
     df["halt"] = df["volume"] == 0
     df["vol_break"] = _volume_break_mask(df["close"].to_numpy(dtype=float), df["volume"].to_numpy(dtype=float))
     return df
+
+
+# ── 상장 목록 ──
+
+MARKETS = ("KOSPI", "KOSDAQ")
+LISTING_PAGES = (1, 2, 3)
+LISTING_PAGE_SIZE = 50
+
+
+@dataclass(frozen=True)
+class Listing:
+    code: str
+    name: str
+    market: str
+    rank: int          # 앱의 후보 순서(코스피 먼저, 시가총액 순)에서의 위치
+
+
+def fetch_listing(get=requests.get) -> list:
+    """앱의 후보 선정과 같은 목록: 코스피 → 코스닥, 시총 순 3쪽 x 50개. 중복 코드는 한 번만, 실패한 쪽은 건너뛴다."""
+    listings, seen = [], set()
+    for market in MARKETS:
+        for page in LISTING_PAGES:
+            url = f"https://m.stock.naver.com/api/stocks/marketValue/{market}?page={page}&pageSize={LISTING_PAGE_SIZE}"
+            try:
+                res = get(url, headers=HEADERS, timeout=5)
+                if res.status_code != 200:
+                    continue
+                stocks = res.json().get("stocks", [])
+            except Exception as e:
+                print(f"listing {market} page {page} failed: {e}")
+                continue
+            for item in stocks:
+                code = item.get("itemCode")
+                if not code or code in seen:
+                    continue
+                seen.add(code)
+                listings.append(Listing(code, item.get("stockName", ""), market, len(listings)))
+    return listings
+
+
+# ── 일봉 캐시와 다운로드 ──
+
+CANDLE_COLUMNS = ["date", "open", "high", "low", "close", "volume"]
+
+
+class CandleCache:
+    def __init__(self, root):
+        self.root = Path(root)
+
+    def _path(self, code: str) -> Path:
+        return self.root / f"{code}.csv"
+
+    def load(self, code: str):
+        """저장된 일봉. 파일이 없거나 비었거나 손상됐으면 None(다시 받으면 된다)."""
+        path = self._path(code)
+        if not path.exists():
+            return None
+        try:
+            df = pd.read_csv(path, parse_dates=["date"])
+        except Exception:
+            return None
+        if df.empty or any(col not in df.columns for col in CANDLE_COLUMNS):
+            return None
+        return df[CANDLE_COLUMNS]
+
+    def save(self, code: str, df: pd.DataFrame) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+        df[CANDLE_COLUMNS].to_csv(self._path(code), index=False)
+
+
+def download_candles(codes, cache, fetch, *, count=3000, delay_s=0.2, sleep=time.sleep, refresh=False) -> list:
+    """캐시에 없는 종목만 받아 저장하고, 못 받은 종목 코드를 돌려준다(이어서 받기)."""
+    failed = []
+    for i, code in enumerate(codes, 1):
+        if not refresh and cache.load(code) is not None:
+            continue
+        try:
+            df = fetch(code, count)
+        except Exception as e:
+            print(f"download {code} failed: {e}")
+            df = None
+        if df is None or len(df) == 0:
+            failed.append(code)
+        else:
+            cache.save(code, df)
+        if i % 25 == 0:
+            print(f"downloaded {i}/{len(codes)}")
+        sleep(delay_s)
+    return failed
+
+
+def load_frames(codes, cache, *, min_rows=60):
+    """캐시된 일봉을 준비된 프레임으로 읽는다. (프레임 딕셔너리, min_rows 미만이거나 없어서 뺀 코드 목록)."""
+    frames, skipped = {}, []
+    for code in codes:
+        raw = cache.load(code)
+        if raw is None or len(raw) < min_rows:
+            skipped.append(code)
+        else:
+            frames[code] = prepare_frame(raw)
+    return frames, skipped
