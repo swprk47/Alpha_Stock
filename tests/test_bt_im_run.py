@@ -10,8 +10,8 @@ from backtest.data import CandleCache, prepare_frame
 from backtest.improve import lock
 from backtest.improve.lock import StageError
 from backtest.improve.report import write_improve_report
-from backtest.improve.run import (ImproveConfig, load_frames_cut, main, run_test, run_train, training_window,
-                                  validation_window)
+from backtest.improve.run import (ImproveConfig, _config_dict, load_frames_cut, main, run_test, run_train,
+                                  training_window, validation_window)
 from bt_helpers import listing, make_frame, make_raw, trending_rows
 
 BENCH = "069500"
@@ -199,3 +199,64 @@ def test_cli_requires_stage_and_passes_options(monkeypatch, tmp_path):
     assert seen["train"].stage == "train" and seen["train"].workers == 3 and seen["train"].draws == 50 and seen["train"].out_dir == tmp_path
     assert main(["--stage", "test", "--allow-rerun"]) == 0
     assert seen["test"].allow_rerun is True
+
+
+def test_config_dict_includes_the_fee_and_tax_rates(monkeypatch, tmp_path):
+    import config
+    cfg = _cfg(tmp_path, "train")
+    base = _config_dict(cfg)
+    assert base["fees"] == {"buy_fee_rate": config.BUY_FEE_RATE, "sell_fee_rate": config.SELL_FEE_RATE, "sell_tax_rate": config.SELL_TAX_RATE}
+    monkeypatch.setattr(config, "SELL_TAX_RATE", config.SELL_TAX_RATE + 0.001)       # .env 로 세율이 바뀌면 잠금이 달라져야 한다
+    assert _config_dict(cfg) != base
+
+
+def test_cli_passes_retrain(monkeypatch, tmp_path):
+    seen = {}
+    monkeypatch.setattr("backtest.improve.run.run_train", lambda cfg, **kw: seen.setdefault("train", cfg))
+    assert main(["--stage", "train", "--out", str(tmp_path), "--retrain"]) == 0
+    assert seen["train"].retrain is True
+
+
+def test_train_refuses_to_overwrite_a_selection_without_retrain(pipeline, tmp_path):
+    copy = tmp_path / "copy"
+    shutil.copytree(pipeline["root"], copy)
+    (copy / "out" / "test_result.json").unlink()
+    with pytest.raises(StageError, match="selection"):
+        run_train(_cfg(copy, "train", out_dir=copy / "out", cache_dir=copy / "cache"), fetch_listing=pipeline["fetch"])
+
+
+def _full_test_payload(label="합격", dividend_sensitive=False, pre_exposed=True, n_candidates=1):
+    perf = {"ann_return": -0.2, "max_drawdown": -0.4, "sharpe": -1.0, "exposure": 0.6, "n_days": 200}
+    verdict = {"label": label, "flags": {"alpha_adj": 0.05, "p_trade_mean": 0.001, "p_vs_kodex": 0.001, "p_vs_baseline": 0.001,
+                                         "near_threshold": {"trade_mean": False, "vs_kodex": False, "vs_baseline": False},
+                                         "pre_exposed": pre_exposed, "dividend_sensitive": dividend_sensitive}}
+    summary = {"n_trades": 150, "trade_mean": _stat(0.4), "vs_kodex": _stat(0.1), "vs_cash": _stat(0.1), "vs_kodex_matched": _stat(0.05),
+               "kodex_excess": 0.3, "avg_hold_days": 7.5, "exposure": 0.6, "avg_slots": 0.4, "perf": perf,
+               "kodex_perf": dict(perf, ann_return=0.1, max_drawdown=-0.3)}
+    candidates = [{"name": f"C{i}", "kind": "candidate", "pre_exposed": pre_exposed, "summary": summary, "vs_baseline": _stat(0.2),
+                   "verdict": verdict, "yearly": {}, "confirm": {}} for i in range(n_candidates)]
+    return {"baseline": summary, "candidates": candidates, "n": n_candidates, "alpha_adj": 0.05 / n_candidates, "no_candidates": False,
+            "test_end": "2026-10-05"}
+
+
+def test_test_table_shows_drawdown_trade_count_baseline_row_and_dividend_check(tmp_path):
+    write_improve_report(tmp_path, _train_payload(1), _full_test_payload("합격", dividend_sensitive=False))
+    text = (tmp_path / "improve_report.md").read_text(encoding="utf-8")
+    assert "최대 낙폭" in text and "거래 수" in text and "연수익" in text and "샤프" in text
+    assert "| 기준선 |" in text and "KODEX 200 계속 보유" in text
+    assert "분배금 2%p 가정 시 합격 유지: 예" in text
+    write_improve_report(tmp_path, _train_payload(1), _full_test_payload("합격", dividend_sensitive=True))
+    assert "분배금 2%p 가정 시 합격 유지: 아니오" in (tmp_path / "improve_report.md").read_text(encoding="utf-8")
+
+
+def test_report_says_when_every_finalist_is_pre_exposed(tmp_path):
+    write_improve_report(tmp_path, _train_payload(2), _full_test_payload("불합격", pre_exposed=True, n_candidates=2))
+    assert "검증 후보가 모두 사전 노출" in (tmp_path / "improve_report.md").read_text(encoding="utf-8")
+    write_improve_report(tmp_path, _train_payload(1), _full_test_payload("불합격", pre_exposed=False))
+    assert "검증 후보가 모두 사전 노출" not in (tmp_path / "improve_report.md").read_text(encoding="utf-8")
+
+
+def test_limitations_mention_the_flat_tax_rate_and_share_rounding(tmp_path):
+    write_improve_report(tmp_path, _train_payload(0), None)
+    text = (tmp_path / "improve_report.md").read_text(encoding="utf-8")
+    assert "세율" in text and "내림" in text and "8개 비교" in text

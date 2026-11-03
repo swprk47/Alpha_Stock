@@ -11,6 +11,7 @@ from pathlib import Path
 import pandas as pd
 
 import clock
+import config
 
 from backtest.analysis.features import compute_features
 from backtest.analysis.panel import TRAIN_END
@@ -49,6 +50,7 @@ class ImproveConfig:
     seed: int = SEED
     draws: int = DRAWS
     allow_rerun: bool = False
+    retrain: bool = False                 # 이미 있는 selection.json 을 덮어쓰는 것을 허용(이전 해시를 출력한다)
     confirm_buckets: tuple = DEFAULT_CONFIRM
 
 
@@ -101,8 +103,10 @@ def validation_window(all_dates: list):
 
 
 def _config_dict(cfg: ImproveConfig) -> dict:
+    # 수수료·세율은 .env 로 바뀔 수 있어 실제로 쓰이는 값을 잠금에 포함한다(train 과 test 의 비용 기준이 같아야 한다)
     return {"bucket": cfg.bucket, "slippage_pct": cfg.slippage_pct, "entry_mode": "next_open", "k": cfg.k, "block": BLOCK,
-            "draws": cfg.draws, "seed": cfg.seed}
+            "draws": cfg.draws, "seed": cfg.seed,
+            "fees": {"buy_fee_rate": config.BUY_FEE_RATE, "sell_fee_rate": config.SELL_FEE_RATE, "sell_tax_rate": config.SELL_TAX_RATE}}
 
 
 def _listing_and_codes(cfg, fetch_listing):
@@ -136,8 +140,8 @@ def _evaluate_spec(spec, base_days, frames, features, bench, window, cfg, bucket
 
 def _summary(ev) -> dict:
     return {"n_trades": ev.n_trades, "trade_mean": ev.trade_mean, "vs_kodex": ev.vs_kodex, "vs_cash": ev.vs_cash,
-            "kodex_excess": ev.trade_kodex_excess_mean, "avg_hold_days": ev.avg_hold_days, "exposure": ev.exposure,
-            "avg_slots": ev.avg_slots}
+            "vs_kodex_matched": ev.vs_kodex_matched, "kodex_excess": ev.trade_kodex_excess_mean, "avg_hold_days": ev.avg_hold_days,
+            "exposure": ev.exposure, "avg_slots": ev.avg_slots, "perf": ev.perf, "kodex_perf": ev.kodex_perf}
 
 
 def _train_row(spec, ev, *, selected: bool, fold_reason) -> dict:
@@ -149,7 +153,9 @@ def _train_row(spec, ev, *, selected: bool, fold_reason) -> dict:
 
 
 def run_train(cfg: ImproveConfig, *, fetch_listing=default_fetch_listing) -> dict:
-    lock.check_train_allowed(cfg.out_dir)
+    lock.check_train_allowed(cfg.out_dir, overwrite=cfg.retrain)
+    if cfg.retrain and (Path(cfg.out_dir) / lock.SELECTION).exists():
+        print(f"기존 selection.json 을 덮어쓴다(이전 해시 {lock.selection_hash(cfg.out_dir)})")
     listings, wanted = _listing_and_codes(cfg, fetch_listing)
     cache = CandleCache(cfg.cache_dir)
     all_dates, test_window, test_end, snapshot = _snapshot(cfg, cache, wanted)
@@ -254,10 +260,12 @@ def main(argv=None, *, fetch_listing=default_fetch_listing) -> int:
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--draws", type=int, default=DRAWS, help="부트스트랩 재추출 횟수(시험용으로만 줄인다)")
     parser.add_argument("--allow-rerun", action="store_true", help="검증 기간을 다시 쓴다(결과에 재사용으로 기록된다)")
+    parser.add_argument("--retrain", action="store_true", help="이미 있는 selection.json 을 덮어쓰며 train 을 다시 실행한다(이전 해시 출력)")
     parser.add_argument("--confirm-buckets", type=int, nargs="*", default=list(DEFAULT_CONFIRM), help="확인용 예산 구간(판정에 쓰지 않음)")
     args = parser.parse_args(argv)
     cfg = ImproveConfig(stage=args.stage, out_dir=args.out, cache_dir=args.cache, workers=args.workers, max_codes=args.max_codes,
-                        seed=args.seed, draws=args.draws, allow_rerun=args.allow_rerun, confirm_buckets=tuple(args.confirm_buckets))
+                        seed=args.seed, draws=args.draws, allow_rerun=args.allow_rerun, retrain=args.retrain,
+                        confirm_buckets=tuple(args.confirm_buckets))
     (run_train if args.stage == "train" else run_test)(cfg, fetch_listing=fetch_listing)
     print(f"report: {Path(cfg.out_dir) / 'improve_report.md'}")
     return 0

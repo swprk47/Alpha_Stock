@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from backtest.analysis.equity import benchmark_returns, perf
+from backtest.analysis.equity import benchmark_returns, matched_benchmark, perf
 
 from .slots import K, run_slots, slot_account, utilisation
 from .stats import DRAWS, SEED, Stat, log_growth_excess, ratio_stat
@@ -38,6 +38,8 @@ class Evaluation:
     avg_slots: float
     trade_kodex_excess_mean: "float | None"   # 참고: 거래당 순손익(%) - 같은 구간 KODEX 수익률(%)의 평균
     perf: dict
+    vs_kodex_matched: Stat = None        # 참고: 우리가 투자한 날만 KODEX 200을 보유한 것과 비교한 로그성장 초과(연환산)
+    kodex_perf: dict = None              # 참고: 같은 창에서 KODEX 200 계속 보유의 연수익·최대 낙폭·샤프
 
 
 def _trade_kodex_excess(trades: list, bench: pd.DataFrame):
@@ -74,7 +76,10 @@ def evaluate(days: list, frames: dict, bench: pd.DataFrame, window: Window, *, e
         vs_cash=log_growth_excess(account["ret"].to_numpy(), None, seed=seed, draws=draws),
         kodex_ret=kodex, avg_hold_days=float(np.mean([t.held_days for t in trades])) if trades else None,
         exposure=use["exposure"], avg_slots=use["avg_slots"], trade_kodex_excess_mean=_trade_kodex_excess(trades, bench),
-        perf=perf(account["ret"], account["open"] > 0))
+        perf=perf(account["ret"], account["open"] > 0),
+        vs_kodex_matched=log_growth_excess(account["ret"].to_numpy(), matched_benchmark(kodex, account["open"] > 0).to_numpy(),
+                                           seed=seed, draws=draws),
+        kodex_perf=perf(kodex))
 
 
 def vs_baseline(ret, baseline_ret, *, seed: int = SEED, draws: int = DRAWS) -> Stat:

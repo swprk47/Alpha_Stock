@@ -56,7 +56,7 @@ def test_hashes_change_with_content(tmp_path):
 def test_code_hashes_cover_the_pipeline_files():
     hashes = code_hashes(".")
     for name in ("backtest/improve/slots.py", "backtest/simulate.py", "backtest/analysis/bootstrap.py", "backend/strategy.py",
-                 "backend/fees.py", "backend/orders.py"):
+                 "backend/fees.py", "backend/orders.py", "backend/config.py"):
         assert name in hashes
 
 
@@ -78,10 +78,18 @@ def test_second_test_refused_without_allow_rerun(tmp_path):
 def test_train_refused_after_test_result_exists(tmp_path):
     current = _current(tmp_path)
     out = _write(tmp_path, current)
-    check_train_allowed(out)                                                   # 아직 test 결과가 없으면 통과
+    check_train_allowed(out, overwrite=True)                                   # 아직 test 결과가 없으면 통과
     write_test_result(out, {}, selection_hash=selection_hash(out), rerun=False, mismatches=[])
     with pytest.raises(StageError, match="train"):
-        check_train_allowed(out)
+        check_train_allowed(out, overwrite=True)
+
+
+def test_retrain_refused_when_a_selection_exists_unless_overwrite_is_requested(tmp_path):
+    out = _write(tmp_path, _current(tmp_path))
+    with pytest.raises(StageError, match="selection"):
+        check_train_allowed(out)                                               # 사전 등록한 selection.json 을 조용히 덮어쓰지 않는다
+    check_train_allowed(out, overwrite=True)
+    check_train_allowed(tmp_path / "empty")                                    # 선별 결과가 아직 없으면 그냥 통과
 
 
 def test_test_refused_when_code_hash_differs(tmp_path):

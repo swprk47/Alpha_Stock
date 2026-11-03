@@ -121,3 +121,21 @@ def test_account_window_includes_exit_costs_of_late_trades():
     assert t.exit_date > window.signal_end and t.exit_date in window.dates
     factors = trade_daily_factors(t, frames["A"]) - 1
     assert ev.ret.sum() * 2 == pytest.approx(float(factors.sum()))           # 청산일 비용까지 전부 창 안에 들어 있다
+
+
+def test_vs_kodex_matched_uses_only_invested_days():
+    frames = _frames()
+    window = _window(frames)
+    ev = _eval([_day(window.dates[20], "A")], frames, _bench(falling=True), window)
+    matched = np.where(ev.open > 0, ev.kodex_ret, 0.0)
+    expected = float(np.mean(np.log1p(ev.ret.to_numpy()) - np.log1p(matched))) * ANNUAL
+    assert ev.vs_kodex_matched.point == pytest.approx(expected)
+    assert ev.vs_kodex_matched.point != pytest.approx(ev.vs_kodex.point)       # 쉬는 날의 KODEX 움직임을 빼면 값이 달라진다
+
+
+def test_kodex_perf_describes_the_benchmark_over_the_window():
+    frames = _frames()
+    window = _window(frames)
+    ev = _eval([], frames, _bench(falling=True), window)
+    assert ev.kodex_perf["n_days"] == len(window.dates)
+    assert ev.kodex_perf["max_drawdown"] < 0 and ev.kodex_perf["ann_return"] < 0

@@ -13,7 +13,7 @@ OUT_DIR = Path("backtest/results/improve")
 SELECTION = "selection.json"
 TEST_RESULT = "test_result.json"
 CODE_GLOBS = ("backtest/improve/*.py", "backtest/*.py", "backtest/analysis/*.py")
-CODE_FILES = ("backend/strategy.py", "backend/fees.py", "backend/orders.py")
+CODE_FILES = ("backend/strategy.py", "backend/fees.py", "backend/orders.py", "backend/config.py")   # config.py 는 수수료·세율의 출처
 _DATA_KEYS = ("listing_hash", "candle_hash", "n_frames", "first_date", "last_date", "test_end")
 
 
@@ -117,10 +117,13 @@ def test_result_exists(out_dir) -> bool:
     return (Path(out_dir) / TEST_RESULT).exists()
 
 
-def check_train_allowed(out_dir) -> None:
-    """검증 결과가 이미 있으면 train 도 거부한다(검증을 본 뒤 선별을 덮어쓰는 것을 막는다)."""
+def check_train_allowed(out_dir, *, overwrite: bool = False) -> None:
+    """검증 결과가 이미 있으면 train 도 거부한다(검증을 본 뒤 선별을 덮어쓰는 것을 막는다). 사전 등록한 selection.json 이
+    이미 있으면 overwrite(--retrain)가 아닌 한 조용히 덮어쓰지 않는다."""
     if test_result_exists(out_dir):
         raise StageError("test_result.json 이 이미 있어 train 단계를 다시 실행할 수 없다(검증을 본 뒤 선별을 덮어쓰는 것을 막는다)")
+    if (Path(out_dir) / SELECTION).exists() and not overwrite:
+        raise StageError("selection.json 이 이미 있다: 사전 등록한 선별 결과를 덮어쓰려면 --retrain 으로 실행해야 한다")
 
 
 def _differences(saved: dict, current: dict) -> list:
