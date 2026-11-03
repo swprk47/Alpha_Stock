@@ -3,6 +3,7 @@ import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "backend"))
+sys.path.insert(0, ROOT)  # backtest/ 패키지(저장소 루트)를 import 하기 위해
 os.environ.setdefault("SESSION_SECRET", "test-secret-" + "x" * 40)
 os.environ.setdefault("COOKIE_SECURE", "false")
 os.environ.setdefault("ALLOW_DEV_LOGIN", "true")
