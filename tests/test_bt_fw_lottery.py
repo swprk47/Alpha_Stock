@@ -140,9 +140,10 @@ def test_select_small_universe_excludes_nobody():
 
 
 def test_select_float_floor_is_stable():
-    codes, scores = _ten()
-    _, excluded = select(scores, set(), codes, exclude_pct=0.30, reentry_pct=0.30)
-    assert len(excluded) == 3                 # 10 * 0.3 == 3.0000000000000004 가 아니라 3
-    five = {c: i for i, c in enumerate("ABCDE")}
-    _, excluded = select(five, set(), list("ABCDE"), exclude_pct=0.20, reentry_pct=0.20)
-    assert len(excluded) == 1
+    # 100 * 0.29 == 28.999999999999996 이라 그냥 floor하면 28이 된다. 9자리 반올림으로 29를 지킨다.
+    assert 100 * 0.29 < 29
+    codes = [f"S{i:03d}" for i in range(100)]
+    scores = {c: float(i) for i, c in enumerate(codes)}
+    held, excluded = select(scores, set(), codes, exclude_pct=0.29, reentry_pct=0.29)
+    assert len(excluded) == 29
+    assert len(held) == 71
