@@ -22,3 +22,14 @@ def frame_from_returns(returns, start="2020-01-01", base=10_000.0):
         price *= 1.0 + r
         closes.append(price)
     return frame_from_closes(closes, start)
+
+
+def frame_from_rows(rows, start="2020-01-01"):
+    """(시가, 종가) 또는 (시가, 종가, 거래량) 행 목록으로 만든 프레임. 고가·저가는 시가·종가의 최대·최소."""
+    dates = pd.bdate_range(start, periods=len(rows))
+    recs = []
+    for d, row in zip(dates, rows):
+        o, c = float(row[0]), float(row[1])
+        v = row[2] if len(row) > 2 else 1000
+        recs.append({"date": d, "open": o, "high": max(o, c), "low": min(o, c), "close": c, "volume": v})
+    return prepare(pd.DataFrame(recs))
