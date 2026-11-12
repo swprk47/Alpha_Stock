@@ -51,9 +51,17 @@ def _chunks(n: int, block: int, draws: int, seed: int):
         yield np.stack([block_indices(n, block, rng) for _ in range(k)])
 
 
+def _finite(values, name: str) -> np.ndarray:
+    """실수 배열로 바꾸고, NaN·무한대가 있으면 조용히 넘기지 않고 ValueError."""
+    v = np.asarray(values, dtype=float)
+    if not np.isfinite(v).all():
+        raise ValueError(f"{name}에 NaN 또는 무한대 값이 있다")
+    return v
+
+
 def mean_stat(values, *, block: int, draws: int = DRAWS, seed: int = SEED) -> Stat:
     """평균의 점추정과 블록 부트스트랩 구간·한쪽 p(평균 <= 0 비율)·표준오차."""
-    v = np.asarray(values, dtype=float)
+    v = _finite(values, "values")
     n = len(v)
     if n == 0:
         return _empty()
@@ -78,8 +86,8 @@ def max_drawdown(daily) -> float:
 
 def mdd_diff_stat(gate_daily, hold_daily, *, block: int, draws: int = DRAWS, seed: int = SEED) -> Stat:
     """점추정 max_drawdown(hold) - max_drawdown(gate). 두 계열을 같은 위치로 재추출한다(쌍 재추출)."""
-    gate = np.asarray(gate_daily, dtype=float)
-    hold = np.asarray(hold_daily, dtype=float)
+    gate = _finite(gate_daily, "gate_daily")
+    hold = _finite(hold_daily, "hold_daily")
     if len(gate) != len(hold):
         raise ValueError(f"두 계열의 길이가 같아야 한다: gate={len(gate)}, hold={len(hold)}")
     n = len(gate)

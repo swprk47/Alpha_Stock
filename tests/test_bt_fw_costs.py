@@ -15,3 +15,11 @@ def test_cost_model_rates_and_multiplier():
     assert CostModel().sell_rate(day, etf=False) == pytest.approx(0.00015 + 0.0018 + 0.001)
     assert CostModel().sell_rate(day, etf=True) == pytest.approx(0.00015 + 0.001)
     assert CostModel(2.0).sell_rate(day, etf=False) == pytest.approx(2 * (0.00015 + 0.0018 + 0.001))
+
+
+def test_cost_model_multiplier_one_and_a_half_and_two():
+    day = dt.date(2024, 6, 3)
+    assert CostModel(1.5).buy_rate() == pytest.approx(1.5 * (0.00015 + 0.001))
+    assert CostModel(1.5).sell_rate(day, etf=False) == pytest.approx(1.5 * (0.00015 + 0.0018 + 0.001))
+    assert CostModel(1.5).sell_rate(day, etf=True) == pytest.approx(1.5 * (0.00015 + 0.001))
+    assert CostModel(2.0).buy_rate() == pytest.approx(2 * (0.00015 + 0.001))

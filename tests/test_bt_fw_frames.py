@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from backtest.data import CandleCache
 from backtest.forward import registry
@@ -73,3 +74,25 @@ def test_load_all_skips_missing_and_short(tmp_path):
     assert "ret" in frames["A"].columns
     frames2, skipped2 = load_all(["B"], cache, min_rows=5)
     assert set(frames2) == {"B"} and skipped2 == []
+
+
+def test_truncate_does_not_change_earlier_rows_with_bad_row_in_prefix():
+    # 6번째 행이 +50%(bad)이고 10번째 행이 -40%(bad): 둘 다 비교하는 앞 12행 안에 있다
+    closes = [100, 101, 102, 103, 104, 156, 157, 158, 159, 95.4, 96, 97] + [100 + i for i in range(18)]
+    raw = raw_from_closes(closes)
+    full = prepare(raw)
+    head = prepare(raw.iloc[:12])
+    assert head["bad"].tolist()[5] and head["bad"].tolist()[9] and head["bad"].sum() == 2
+    pd.testing.assert_frame_equal(full.iloc[:12], head)
+
+
+@pytest.mark.parametrize("col", ["open", "high", "low", "close", "volume"])
+def test_prepare_nan_in_any_price_column_is_halt(col):
+    raw = raw_from_closes([100, 101, 102, 103, 104])
+    raw[col] = raw[col].astype(float)
+    raw.loc[2, col] = np.nan
+    f = prepare(raw)
+    assert f["halt"].tolist() == [False, False, True, False, False]
+    # 그 행과 다음 행의 수익률은 없다
+    assert f["ret"].isna().tolist() == [True, False, True, True, False]
+    assert not f["bad"].any()

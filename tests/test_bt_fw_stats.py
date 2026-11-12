@@ -128,3 +128,19 @@ def test_window_drawdown_uses_only_the_window():
     assert window_drawdown(daily, daily.index[3], daily.index[5]) == pytest.approx(0.1)
     # 구간 끝은 포함(inclusive)
     assert window_drawdown(daily, daily.index[0], daily.index[1]) == pytest.approx(0.5)
+
+
+def test_window_drawdown_counts_loss_on_start_day():
+    # 시작일 수익률도 구간에 들어간다: 가치 1.0 -> 0.8 -> 0.84, 낙폭 0.2
+    daily = pd.Series([0.10, -0.20, 0.05], index=pd.bdate_range("2024-01-01", periods=3))
+    assert window_drawdown(daily, daily.index[1], daily.index[2]) == pytest.approx(0.2)
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+def test_stats_reject_non_finite_input(bad):
+    with pytest.raises(ValueError):
+        mean_stat([0.01, bad, 0.02], block=1, draws=10, seed=1)
+    with pytest.raises(ValueError):
+        mdd_diff_stat([0.01, bad], [0.01, 0.02], block=1, draws=10, seed=1)
+    with pytest.raises(ValueError):
+        mdd_diff_stat([0.01, 0.02], [bad, 0.02], block=1, draws=10, seed=1)

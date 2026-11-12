@@ -103,3 +103,13 @@ def test_gate_missing_signal_day_raises_key_error():
     holed = bench.drop(index=all_p[11].signal_day)
     with pytest.raises(KeyError):
         gate_states(holed, all_p)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), 0.0, -5.0])
+def test_gate_rejects_missing_or_non_positive_signal_close(bad):
+    bench, _ = bench_with_month_ends([100] * 12)
+    all_p = periods(bench.index)
+    broken = bench.copy()
+    broken.loc[all_p[5].signal_day, "close"] = bad
+    with pytest.raises(ValueError):
+        gate_states(broken, all_p)

@@ -57,6 +57,8 @@ def run_portfolio(frames, calendar, targets, cost: CostModel, *, start, end,
                 c = p.at(d, "close")
                 h[0] *= c / h[1]
                 h[1] = c
+        # 일봉이 끝난(상장폐지) 종목은 마지막 종가로 판다. 그날이 교체일이면 시가 단계에서는 행이 없어
+        # 묶인 종목으로 남고(재조정 대상 아님), 여기서 판 돈은 다음 교체일까지 현금으로 남는다.
         for code in [c for c, _ in hold.items() if px[c].last_date < d]:
             cash += hold[code][0] * (1.0 - cost.sell_rate(d, etf=code in etf_codes))
             del hold[code]

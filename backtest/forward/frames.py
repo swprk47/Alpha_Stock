@@ -15,7 +15,9 @@ def prepare(raw: pd.DataFrame) -> pd.DataFrame:
     df = raw[["date"] + _COLS].copy()
     df["date"] = pd.to_datetime(df["date"])
     df = df.drop_duplicates(subset="date", keep="last").sort_values("date").set_index("date")
-    df["halt"] = (df["volume"] == 0) | (df[["open", "high", "low", "close"]] <= 0).any(axis=1)
+    # 값이 빠진(NaN) 행도 거래정지로 본다: 사고팔거나 평가하지 않고, 그 행과 다음 행의 ret 은 NaN.
+    df["halt"] = ((df["volume"] == 0) | (df[["open", "high", "low", "close"]] <= 0).any(axis=1)
+                  | df[_COLS].isna().any(axis=1))
     prev_close = df["close"].shift(1)
     prev_halt = df["halt"].shift(1, fill_value=True)       # 첫 행은 직전이 없으므로 NaN으로 만든다
     valid = ~df["halt"] & ~prev_halt.astype(bool)
