@@ -188,17 +188,119 @@ def test_evaluate_lottery_window_only_trims_returns():
     common = full.monthly_diff.index.intersection(part.monthly_diff.index)
     assert len(common) == part.n_months
     assert part.monthly_diff[common].iloc[1:].to_numpy() == pytest.approx(
-        full.monthly_diff[common].iloc[1:].to_numpy(), abs=1e-3)
+        full.monthly_diff[common].iloc[1:].to_numpy(), abs=1e-10)
+
+
+def _assert_empty(ev):
+    assert ev.n_months == 0 and len(ev.monthly_diff) == 0
+    assert ev.yearly_diff == {} and ev.turnover_tilt == 0.0 and ev.turnover_base == 0.0
+    assert ev.excluded_mean == 0.0 and ev.vs_kodex_annual == 0.0
+    assert all(s.point is None and s.n == 0 for s in ev.diff.values())
+    assert ev.first_month is None and ev.last_month is None
+    assert ev.eligible_min is None and ev.eligible_median is None and ev.eligible_max is None
+    assert ev.eligible_by_year == {}
 
 
 def test_evaluate_lottery_empty_window():
     frames, bench, cal = _rotating_universe()
     ev = evaluate_lottery(frames, bench, cal, _order(frames), start="2030-01-01", end="2030-12-31",
                           reentry_pct=0.20, draws=DRAWS)
-    assert ev.n_months == 0 and len(ev.monthly_diff) == 0
-    assert ev.yearly_diff == {} and ev.turnover_tilt == 0.0 and ev.turnover_base == 0.0
-    assert ev.excluded_mean == 0.0 and ev.vs_kodex_annual == 0.0
-    assert all(s.point is None and s.n == 0 for s in ev.diff.values())
+    _assert_empty(ev)
+
+
+def _slice(frames, bench, cal, since):
+    """모든 프레임과 달력을 since 이후로 자른다(첫 달의 행 수를 줄이는 용도)."""
+    since = pd.Timestamp(since)
+    return ({c: f.loc[f.index >= since] for c, f in frames.items()},
+            bench.loc[bench.index >= since], cal[cal >= since])
+
+
+def test_evaluate_lottery_starts_at_first_month_with_eligible_stock():
+    # 달력이 2020-01-20에 시작해 1월 유효한 날이 15일 미만 -> 첫 교체일(2월 초)은 대상 종목이 없다
+    frames, bench, cal = _slice(*_rotating_universe(), "2020-01-20")
+    ap = months.periods(cal)
+    order = _order(frames)
+    _, base, _ = lottery_targets(frames, bench, ap, order, reentry_pct=0.20)
+    assert base[ap[0].trade_day] == {} and len(base[ap[1].trade_day]) == 10
+    a = evaluate_lottery(frames, bench, cal, order, start=cal[0], end=cal[-1], reentry_pct=0.20, draws=DRAWS)
+    b = evaluate_lottery(frames, bench, cal, order, start=ap[1].trade_day, end=cal[-1],
+                         reentry_pct=0.20, draws=DRAWS)
+    pd.testing.assert_series_equal(a.monthly_diff, b.monthly_diff)
+    assert (a.turnover_tilt, a.turnover_base, a.n_months, a.excluded_mean) == (
+        b.turnover_tilt, b.turnover_base, b.n_months, b.excluded_mean)
+    assert a.diff == b.diff
+    assert a.first_month == ap[1].trade_day
+    # 초기 매수(100%)가 회전율 평균에 들어가지 않는다
+    assert a.turnover_base < 0.10
+    # 빈 첫 교체일부터 센 교체일 쌍(마지막 달은 미완성이라 빠짐)보다 하나 적다
+    window_days = [p.trade_day for p in months.in_window(ap, cal[0], cal[-1])]
+    assert a.n_months == (len(window_days) - 1) - 1
+
+
+def test_evaluate_lottery_no_eligible_month_in_window_is_empty():
+    frames, bench, cal = _slice(*_rotating_universe(), "2020-01-20")
+    ap = months.periods(cal)
+    ev = evaluate_lottery(frames, bench, cal, _order(frames), start=ap[0].trade_day, end=ap[0].trade_day,
+                          reentry_pct=0.20, draws=DRAWS)
+    _assert_empty(ev)
+
+
+def test_evaluate_lottery_includes_final_month_when_signal_day_is_end():
+    frames, bench, cal = _rotating_universe()
+    ap = months.periods(cal)
+    full = _eval_lottery(frames, bench, cal)
+    end = ap[-1].signal_day
+    ev = evaluate_lottery(frames, bench, cal, _order(frames), start=cal[0], end=end,
+                          reentry_pct=0.20, draws=DRAWS)
+    window_days = [p.trade_day for p in months.in_window(ap, cal[0], end)]
+    assert ev.n_months == len(window_days) == len(ap) - 1
+    assert ev.first_month == ap[0].trade_day and ev.last_month == ap[-2].trade_day
+    assert ev.monthly_diff.index[-1] == ap[-2].trade_day
+    # 마지막 달 값은 다음 교체일까지 잰 긴 구간의 같은 달과 같다
+    assert ev.monthly_diff.to_numpy() == pytest.approx(full.monthly_diff[ev.monthly_diff.index].to_numpy(),
+                                                       abs=1e-12)
+
+
+def test_evaluate_lottery_drops_final_month_when_end_is_mid_month():
+    frames, bench, cal = _rotating_universe()
+    ap = months.periods(cal)
+    end = ap[-2].trade_day + pd.Timedelta(days=14)
+    ev = evaluate_lottery(frames, bench, cal, _order(frames), start=cal[0], end=end,
+                          reentry_pct=0.20, draws=DRAWS)
+    window_days = [p.trade_day for p in months.in_window(ap, cal[0], end)]
+    assert window_days[-1] == ap[-2].trade_day
+    assert ev.n_months == len(window_days) - 1
+    assert ev.last_month == ap[-3].trade_day
+
+
+def test_evaluate_lottery_includes_final_month_at_calendar_month_end_cut():
+    # 학습처럼 달력을 달력상 월말(2021-06-30, 수요일)에서 자른 경우
+    frames, bench, cal = _rotating_universe()
+    full = _eval_lottery(frames, bench, cal)
+    cut = pd.Timestamp("2021-06-30")
+    tf = {c: f.loc[f.index <= cut] for c, f in frames.items()}
+    tb, tc = bench.loc[bench.index <= cut], cal[cal <= cut]
+    assert tc[-1] == cut
+    ev = evaluate_lottery(tf, tb, tc, _order(tf), start=tc[0], end=cut, reentry_pct=0.20, draws=DRAWS)
+    ap = months.periods(tc)
+    assert ev.n_months == len(ap)
+    assert ev.last_month == ap[-1].trade_day == pd.Timestamp("2021-06-01")
+    assert ev.monthly_diff.to_numpy() == pytest.approx(full.monthly_diff[ev.monthly_diff.index].to_numpy(),
+                                                       abs=1e-12)
+
+
+def test_evaluate_lottery_counts_eligible_stocks_over_time():
+    # S6·S7은 2020-07, S8·S9는 2021-01부터 일봉이 있다
+    frames, bench, cal = _fixed_universe()
+    for j, since in ((6, "2020-07-01"), (7, "2020-07-01"), (8, "2021-01-01"), (9, "2021-01-01")):
+        f = frames[_code(j)]
+        frames[_code(j)] = f.loc[f.index >= pd.Timestamp(since)]
+    ev = _eval_lottery(frames, bench, cal)
+    # 측정한 달(신호일 2020-01 ~ 2021-10): 6개가 6달, 8개가 6달, 10개가 10달
+    assert ev.n_months == 22
+    assert (ev.eligible_min, ev.eligible_median, ev.eligible_max) == (6, 8.0, 10)
+    # 교체일 연도별: 2020은 [6]*6 + [8]*5, 2021은 [8] + [10]*10
+    assert ev.eligible_by_year == {2020: 6.0, 2021: 10.0}
 
 
 # ---------------------------------------------------------------- gate
@@ -222,6 +324,19 @@ def test_gate_targets_cash_when_below_average():
     # 12개월 상승 뒤 계속 하락하면 마지막 달은 현금
     assert gate[ap[-1].trade_day] == {}
     assert {tuple(g.items()) for g in gate.values()} == {(), ((BENCHMARK, 1.0),)}
+
+
+def test_gate_targets_first_cash_month_hand_computed():
+    # 종가(시작 1) = 1.001^min(k,260) * 0.998^max(0,k-260), k = 영업일 위치.
+    # 신호일 2021-01-29(k=282): 종가 1.24089 >= 최근 10개 월말 평균 1.19541 -> 보유
+    # 신호일 2021-02-26(k=302): 종가 1.19218 <  최근 10개 월말 평균 1.20565 -> 처음으로 현금
+    bench, cal = _bench_up_then_down()
+    ap = months.periods(cal)
+    gate, _ = gate_targets(bench, ap)
+    assert ap[12].signal_day == pd.Timestamp("2021-01-29") and ap[13].signal_day == pd.Timestamp("2021-02-26")
+    assert all(gate[p.trade_day] == {BENCHMARK: 1.0} for p in ap[:13])
+    assert gate[pd.Timestamp("2021-02-01")] == {BENCHMARK: 1.0}
+    assert gate[pd.Timestamp("2021-03-01")] == {}
 
 
 def test_evaluate_gate_reduces_drawdown_in_long_decline():

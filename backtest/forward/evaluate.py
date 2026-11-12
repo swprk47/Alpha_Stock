@@ -2,7 +2,7 @@
 
 신호는 항상 자료의 첫 달부터 계산해 제외 상태를 이어 가고, 평가 구간은 수익률을 재는 거래일만 정한다.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -63,10 +63,21 @@ class LotteryEval:
     yearly_diff: dict        # 연도 -> 월 차이 합(배수 1)
     vs_kodex_annual: float
     n_months: int
+    first_month: "pd.Timestamp | None" = None   # 측정한 첫 교체일
+    last_month: "pd.Timestamp | None" = None    # 측정한 마지막 교체일
+    eligible_min: "int | None" = None           # 측정한 달의 대상 종목 수 최소·중앙값·최대
+    eligible_median: "float | None" = None
+    eligible_max: "int | None" = None
+    eligible_by_year: dict = field(default_factory=dict)  # 교체일 연도 -> 대상 종목 수 중앙값
 
 
 def _empty_stat():
     return mean_stat([], block=registry.BLOCK_MONTHS)
+
+
+def _empty_lottery():
+    return LotteryEval({m: _empty_stat() for m in registry.COST_MULTIPLIERS},
+                       pd.Series(dtype=float), 0.0, 0.0, 0.0, {}, 0.0, 0)
 
 
 def _mean_turnover(result, trade_days):
@@ -75,23 +86,48 @@ def _mean_turnover(result, trade_days):
     return float(np.mean(vals)) if vals else 0.0
 
 
+def _closing_boundary(all_periods, last_trade_day, end):
+    """마지막 교체일 t_k 의 달이 end 안에서 끝났으면 그 달을 닫는 경계, 아니면 None.
+
+    (a) t_k 다음 기간의 신호일(그달 마지막 거래일)이 end 이하면 그 기간의 교체일.
+    (b) end 가 t_k 달의 달력상 월말 이상이면 end 다음 날(학습처럼 달력을 월말에서 자른 경우).
+    """
+    nxt = next((p for p in all_periods if p.trade_day > last_trade_day), None)
+    if nxt is not None and nxt.signal_day <= end:
+        return nxt.trade_day
+    if end >= last_trade_day + pd.offsets.MonthEnd(0):
+        return end + pd.Timedelta(days=1)
+    return None
+
+
 def evaluate_lottery(frames, bench, calendar, order, *, start, end, reentry_pct,
                      draws: int = registry.DRAWS) -> LotteryEval:
+    """측정은 구간 안에서 기준(전체 보유) 대상 종목이 처음 생긴 교체일부터 시작한다.
+
+    그 전 교체일(대상 없음, 현금)은 월 차이·회전율·제외 수 어디에도 넣지 않는다.
+    마지막 교체일의 달은 end 안에서 끝났을 때만 넣는다(_closing_boundary).
+    """
     all_periods = periods(calendar)
+    end = pd.Timestamp(end)
     window = in_window(all_periods, start, end)
-    trade_days = [p.trade_day for p in window]
-    if not trade_days:
-        return LotteryEval({m: _empty_stat() for m in registry.COST_MULTIPLIERS},
-                           pd.Series(dtype=float), 0.0, 0.0, 0.0, {}, 0.0, 0)
+    if not window:
+        return _empty_lottery()
     tilt_t, base_t, log = lottery_targets(frames, bench, all_periods, order, reentry_pct=reentry_pct)
+    days = [p.trade_day for p in window]
+    k0 = next((i for i, d in enumerate(days) if base_t[d]), None)
+    if k0 is None:
+        return _empty_lottery()
+    trade_days = days[k0:]
     first = trade_days[0]
+    closing = _closing_boundary(all_periods, trade_days[-1], end)
+    bounds = trade_days + ([closing] if closing is not None else [])
 
     diff, runs = {}, {}
     for mult in registry.COST_MULTIPLIERS:
         cost = CostModel(mult)
         tilt = run_portfolio(frames, calendar, tilt_t, cost, start=first, end=end)
         base = run_portfolio(frames, calendar, base_t, cost, start=first, end=end)
-        tm, bm = monthly_returns(tilt.daily, trade_days), monthly_returns(base.daily, trade_days)
+        tm, bm = monthly_returns(tilt.daily, bounds), monthly_returns(base.daily, bounds)
         runs[mult] = (tilt, base, tm, bm)
         diff[mult] = mean_stat((tm - bm).to_numpy(), block=registry.BLOCK_MONTHS,
                                draws=draws, seed=registry.SEED)
@@ -104,14 +140,26 @@ def evaluate_lottery(frames, bench, calendar, order, *, start, end, reentry_pct,
 
     kodex = run_portfolio({BENCHMARK: bench}, calendar, {d: {BENCHMARK: 1.0} for d in trade_days},
                           CostModel(1.0), start=first, end=end, etf_codes=frozenset({BENCHMARK}))
-    km = monthly_returns(kodex.daily, trade_days)
+    km = monthly_returns(kodex.daily, bounds)
     vs_kodex = float((tm.mean() - km.mean()) * 12) if len(tm) else 0.0
     excluded_mean = float(np.mean([len(log[d]["excluded"]) for d in trade_days]))
+
+    measured = list(monthly_diff.index)
+    counts = [log[d]["eligible"] for d in measured]
+    by_year = {}
+    for d, c in zip(measured, counts):
+        by_year.setdefault(d.year, []).append(c)
     return LotteryEval(diff=diff, monthly_diff=monthly_diff,
                        turnover_tilt=_mean_turnover(tilt, trade_days),
                        turnover_base=_mean_turnover(base, trade_days),
                        excluded_mean=excluded_mean, yearly_diff=yearly,
-                       vs_kodex_annual=vs_kodex, n_months=len(monthly_diff))
+                       vs_kodex_annual=vs_kodex, n_months=len(monthly_diff),
+                       first_month=measured[0] if measured else None,
+                       last_month=measured[-1] if measured else None,
+                       eligible_min=min(counts) if counts else None,
+                       eligible_median=float(np.median(counts)) if counts else None,
+                       eligible_max=max(counts) if counts else None,
+                       eligible_by_year={y: float(np.median(v)) for y, v in by_year.items()})
 
 
 # ------------------------------------------------------------------ 후보 ②
