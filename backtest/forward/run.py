@@ -54,6 +54,11 @@ def _point(stat):
     return stat.point if stat.point is not None else -math.inf
 
 
+def _dropped(point) -> bool:
+    """예행연습 탈락: 점추정이 0보다 큰 유한한 수가 아니면(None·NaN·무한대·0 이하) 뺀다."""
+    return not (point is not None and math.isfinite(point) and point > 0)
+
+
 def _day(ts):
     return pd.Timestamp(ts).date().isoformat()
 
@@ -73,19 +78,27 @@ def _load_data(args, fetch_listing, fetch_candles):
     return listings, frames, [c for c in skipped if c != BENCHMARK]
 
 
-def _common(stage, listings, stock_frames, skipped, bench, start, end):
+# rehearsal·power 가 train.json 과 같아야 하는 값(등록표 지문·실행 설정·자료)
+_SAME_AS_TRAIN = ("registry", "draws", "max_codes", "n_listed", "data_last_date")
+
+
+def _common(stage, listings, stock_frames, skipped, bench, start, end, args, data_last_date):
+    """단계 JSON 의 공통 머리. data_last_date 는 자르기 전 전체 KODEX 200 일봉의 마지막 날."""
     return {"stage": stage, "registry": registry.fingerprint(),
             "window": {"start": _day(start), "end": _day(end)},
             "n_listed": len(listings), "n_frames": len(stock_frames), "skipped": skipped,
-            "first_date": _day(bench.index[0]), "last_date": _day(bench.index[-1])}
+            "first_date": _day(bench.index[0]), "last_date": _day(bench.index[-1]),
+            "draws": args.draws, "max_codes": args.max_codes, "refresh": bool(args.refresh),
+            "data_last_date": _day(data_last_date)}
 
 
 def _train(frames, bench, calendar, order, start, end, draws):
     evals = {pct: evaluate_lottery(frames, bench, calendar, order, start=start, end=end,
                                    reentry_pct=pct, draws=draws)
              for pct in registry.LOTTERY.reentry_choices}
-    low, high = registry.LOTTERY.reentry_choices
-    chosen = low if _point(evals[low].diff[1.0]) > _point(evals[high].diff[1.0]) else 0.30
+    # 후보값이 둘이다: 작은 값이 엄격히 나을 때만 고르고, 동점(점추정 없음끼리 포함)이면 큰 값
+    low, high = min(registry.LOTTERY.reentry_choices), max(registry.LOTTERY.reentry_choices)
+    chosen = low if _point(evals[low].diff[1.0]) > _point(evals[high].diff[1.0]) else high
     return {"chosen_reentry_pct": chosen, "lottery": evals,
             "gate": evaluate_gate(bench, calendar, start=start, end=end, draws=draws)}
 
@@ -96,7 +109,7 @@ def _rehearsal(frames, bench, calendar, order, start, end, draws, reentry):
     gate = evaluate_gate(bench, calendar, start=start, end=end, draws=draws)
     lp, gp = lot.diff[1.0].point, gate.mdd_diff.point
     return {"reentry_pct": reentry, "lottery": lot, "gate": gate,
-            "drop": {"lottery_avoid": lp is None or lp <= 0, "ma_gate": gp is None or gp <= 0}}
+            "drop": {"lottery_avoid": _dropped(lp), "ma_gate": _dropped(gp)}}
 
 
 def _power(frames, bench, calendar, order, start, end, draws, reentry):
@@ -134,11 +147,16 @@ def main(argv=None, *, fetch_listing=default_fetch_listing, fetch_candles=defaul
         print("KODEX 200(069500) 일봉이 없다", file=sys.stderr)
         return 2
     listings, frames, skipped = loaded
+    data_last_date = frames[BENCHMARK].index[-1]
     if args.stage == "train":
-        frames = truncate(frames, registry.TRAIN_END)
-        if BENCHMARK not in frames:
-            print("KODEX 200(069500) 일봉이 없다", file=sys.stderr)
+        cut = truncate(frames, registry.TRAIN_END)
+        if BENCHMARK not in cut:
+            print(f"KODEX 200({BENCHMARK})에 {registry.TRAIN_END} 이전 일봉이 없다", file=sys.stderr)
             return 2
+        # 학습 끝 이후에만 일봉이 있어 잘려 나간 종목도 뺀 종목으로 센다(목록 = 쓴 일봉 + 뺀 종목)
+        skipped = skipped + [item.code for item in listings
+                             if item.code in frames and item.code not in cut and item.code != BENCHMARK]
+        frames = cut
     bench = frames[BENCHMARK]
     calendar = bench.index
     order = [item.code for item in listings if item.code in frames and item.code != BENCHMARK]
@@ -154,12 +172,18 @@ def main(argv=None, *, fetch_listing=default_fetch_listing, fetch_candles=defaul
         start, end = pd.Timestamp(registry.REHEARSAL_START), all_periods[-1].signal_day
     else:
         start, end = all_periods[0].trade_day, all_periods[-1].signal_day
-    payload = _common(args.stage, listings, stock_frames, skipped, bench, start, end)
+    payload = _common(args.stage, listings, stock_frames, skipped, bench, start, end, args, data_last_date)
+    if args.stage != "train":
+        train = json.loads(train_path.read_text(encoding="utf-8"))
+        differ = [k for k in _SAME_AS_TRAIN if train.get(k) != payload[k]]
+        if differ:
+            print(f"train.json 과 등록표·자료·설정이 다르다: {', '.join(differ)}", file=sys.stderr)
+            return 2
     run_args = (stock_frames, bench, calendar, order, start, end, args.draws)
     if args.stage == "train":
         payload.update(_train(*run_args))
     else:
-        reentry = json.loads(train_path.read_text(encoding="utf-8"))["chosen_reentry_pct"]
+        reentry = train["chosen_reentry_pct"]
         payload.update((_rehearsal if args.stage == "rehearsal" else _power)(*run_args, reentry))
     _write_json(args.out, f"{args.stage}.json", payload)
 
