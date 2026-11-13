@@ -1,0 +1,769 @@
+{
+  "version": 1,
+  "chosen": {
+    "filter": "F1",
+    "exit": "E3",
+    "signal": "S4"
+  },
+  "folded": {},
+  "n": 3,
+  "finalists": [
+    {
+      "kind": "candidate",
+      "name": "F1"
+    },
+    {
+      "kind": "candidate",
+      "name": "E3"
+    },
+    {
+      "kind": "candidate",
+      "name": "S4"
+    }
+  ],
+  "mde": {
+    "F1": {
+      "trade_mean": 0.6177187402549039,
+      "trade_vs_baseline_needed": 0.9965937879258457,
+      "vs_kodex": 0.29104787293392603
+    },
+    "E3": {
+      "trade_mean": 1.9852538627076894,
+      "trade_vs_baseline_needed": 2.364128910378631,
+      "vs_kodex": 0.3037190085621643
+    },
+    "S4": {
+      "trade_mean": 0.314611652617381,
+      "trade_vs_baseline_needed": 0.6934867002883228,
+      "vs_kodex": 0.19756389377944444
+    }
+  },
+  "config": {
+    "bucket": 200000,
+    "slippage_pct": 0.1,
+    "entry_mode": "next_open",
+    "k": 2,
+    "block": 20,
+    "draws": 20000,
+    "seed": 20261103,
+    "fees": {
+      "buy_fee_rate": 0.00015,
+      "sell_fee_rate": 0.00015,
+      "sell_tax_rate": 0.002
+    }
+  },
+  "data": {
+    "listing_hash": "33e3725ed61419b576333a2fbfd61d9c808647b177b80f377e52efd0b7460875",
+    "candle_hash": "d8a0ab181c31e044f548f6f1daca1ffd5700250f864bba66f1e8b039f62b1a05",
+    "n_frames": 298,
+    "first_date": "2014-08-07",
+    "last_date": "2026-11-02",
+    "test_end": "2026-10-01"
+  },
+  "code": {
+    "backend/config.py": "15b2f28519f3bbf88d16b61e1d13ef536ffdfd6ec34331ef29b2f02be326c900",
+    "backend/fees.py": "e7cf9e8674351a38995338d5b527193fa100177166cde1bc44e6d50db06e7039",
+    "backend/orders.py": "29af39061dfb3e176ca5f6f1260525a4397c0888cce1449255c234fbb72145f6",
+    "backend/strategy.py": "4ac988443633c7387bf9b571bf19c13db0a0386d5332ecf55534e4bd13a6e916",
+    "backtest/__init__.py": "df0859393eed416279874cc1fbac4e1e0d096bf594b2651be387688891ee2102",
+    "backtest/analysis/__init__.py": "c184887708d3c58943eda310b40b80bcb209edc7aafb96fc7d46075b7a56bf37",
+    "backtest/analysis/bootstrap.py": "0a2b47ea1d2aa07ef4a59272d336fcb7c233578067896363a3d79d224d3547fe",
+    "backtest/analysis/correlation.py": "ba079354c8b07d13845be4877055430e2255eb3bdda0ab7781a19acf7b7c86c6",
+    "backtest/analysis/equity.py": "2b0c6bd5f1c54bb770290756421c12a736d1ea20894af7d09d3a081dbdb56939",
+    "backtest/analysis/factors.py": "55ad8c8181a9f557c754ba8da1327006d91467f1a04a8c0fa8ced32585510feb",
+    "backtest/analysis/features.py": "e4734dd5910f601cb62fe041789add0569b3de823d8dde9e08a6df3f88ce2d2a",
+    "backtest/analysis/panel.py": "de9e91b749b4307e321f0dd52c1ba86a6de11eb9d9cb06b415bc80e3d226eb30",
+    "backtest/analysis/report.py": "07c0cde88cc16c19c0b9fa42a76ad38ab86a7734d43d2d4d465d99c75700e523",
+    "backtest/analysis/risk.py": "673b50338d303c196c970dcb1dc3d3fd25871839c8d557ede9459f5497f0ec40",
+    "backtest/analysis/run.py": "bbc166e4b13b447ecf38ab9d36de67c396f8d92a34ee7ba98f03a1206274b17d",
+    "backtest/analysis/selection.py": "356f1f0a0d77c09d0cee5ca1216751920b6e5c2432585f089f55dd85b666c61b",
+    "backtest/data.py": "47957e9755f415758109b3d4333b51d0df49baf24fe87674815936a0919db2b0",
+    "backtest/improve/__init__.py": "40722fad0fb37836fad85614bdd65810eb299c6c7b765e8122d2a49945e05b6a",
+    "backtest/improve/candidates.py": "ac501990768e53a85a318975fe68939b9d25654f1c2f9137608f333058db6b17",
+    "backtest/improve/evaluate.py": "cdd04c8ffe3930a2bc23571e165d9ec7fa622cca6afd03a4c9edf60f26b2a238",
+    "backtest/improve/judge.py": "7decd274924c32f3f16abf3e2e73f0e59304e5e15460c589bd746423f80cb656",
+    "backtest/improve/lock.py": "0fce44dcef2a5dcc67a28f3d842a637ee8aad79e562abfd5c011a711507d6cba",
+    "backtest/improve/ranking.py": "e6aa226301fea99e40ca6d8acb456c601a6e34d7829e1b2b2151b1b7e99fc0ac",
+    "backtest/improve/report.py": "9351d0263d8c2010ec646ddfc2fb14f7f17aaf456cbc1f2be4cbf8a882a6790c",
+    "backtest/improve/run.py": "60f0501266ea38de412b6f3b45ed69a841a135391ed7d1289fa37b3a22b88ce8",
+    "backtest/improve/select.py": "0bf18d48278c48ac71b5fb81c5218883765147bc418c252a44d204b8c987c8e6",
+    "backtest/improve/slots.py": "9013776c811053cad501374727e2c77090eb252263ec9f84d02f0d752fe8b5d9",
+    "backtest/improve/stats.py": "022215a279021654aadf03beaac5472f8d1a22b8d4e3c763e28663230a0dc81a",
+    "backtest/metrics.py": "fcf12a7c14f9256519ac45e2f001188835701715de890725b8be2efc7dd7d569",
+    "backtest/pool.py": "6201dff0782c93978b6abc6dc6dabf97a6be73ed5afc303cb7a1b9916583be48",
+    "backtest/report.py": "82312fb3b6339fb473b5d90c67188ed2a275f9a137eca5076f5024b50ccc4bd5",
+    "backtest/run.py": "a939d2bef549390d13fee5cce22031f6a9151aaba4a9776e0ccee17e2927ccd7",
+    "backtest/signals.py": "bd7b4620a7109f36e29f11973541524cb28e09a0dff0922e8ac477e63b351a0c",
+    "backtest/simulate.py": "70f755cb531b90d8f8b242fb42dcab77100b71ff9a0b3e5303058b7022bfae41"
+  },
+  "registry": "582ab15c1c314ada9df6cc1420e33097f6c676b96ce2f94f4da34220d7edf6ab",
+  "train": [
+    {
+      "name": "BASE",
+      "direction": "baseline",
+      "pre_exposed": false,
+      "n_trades": 982,
+      "trade_mean": {
+        "point": -0.3788750476709418,
+        "lo": -0.6469437197270842,
+        "hi": -0.11956565334502527,
+        "p_one": 0.99715,
+        "se": 0.13380182004360627,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex": {
+        "point": -0.3797281103195997,
+        "lo": -0.5367034426233421,
+        "hi": -0.22641348855191631,
+        "p_one": 1.0,
+        "se": 0.07896102134659058,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_cash": {
+        "point": -0.2920570508919657,
+        "lo": -0.4846722591938742,
+        "hi": -0.10871265321525131,
+        "p_one": 0.99875,
+        "se": 0.09585575391766318,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex_matched": {
+        "point": -0.40610876720103645,
+        "lo": -0.5605893127739362,
+        "hi": -0.25380924419716,
+        "p_one": 1.0,
+        "se": 0.07784670033156765,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "kodex_excess": -0.46919275474997046,
+      "avg_hold_days": 2.5519348268839104,
+      "exposure": 0.9954545454545455,
+      "avg_slots": 0.990909090909091,
+      "perf": {
+        "ann_return": -0.2532740666224427,
+        "max_drawdown": -0.89428324527077,
+        "sharpe": -1.1562854744518756,
+        "exposure": 0.9954545454545455,
+        "n_days": 1760
+      },
+      "kodex_perf": {
+        "ann_return": 0.09162898190143887,
+        "max_drawdown": -0.38088390038582776,
+        "sharpe": 0.6101905577729173,
+        "exposure": null,
+        "n_days": 1760
+      },
+      "selected": false,
+      "fold_reason": null
+    },
+    {
+      "name": "F1",
+      "direction": "filter",
+      "pre_exposed": true,
+      "n_trades": 619,
+      "trade_mean": {
+        "point": -0.058305256576916306,
+        "lo": -0.4041529447793341,
+        "hi": 0.26404540575111674,
+        "p_one": 0.675,
+        "se": 0.17032083270410567,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex": {
+        "point": -0.13004406799706994,
+        "lo": -0.28663053931641186,
+        "hi": 0.028288634380235725,
+        "p_one": 0.94965,
+        "se": 0.08024933168517626,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_cash": {
+        "point": -0.04237300856943665,
+        "lo": -0.19069203916588137,
+        "hi": 0.10239054894211617,
+        "p_one": 0.7402,
+        "se": 0.07508966676974466,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex_matched": {
+        "point": -0.1042408911622543,
+        "lo": -0.23940039588599715,
+        "hi": 0.02533379144990148,
+        "p_one": 0.9431,
+        "se": 0.06757320389238683,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "kodex_excess": -0.15615120129331503,
+      "avg_hold_days": 2.7996768982229403,
+      "exposure": 0.6948863636363637,
+      "avg_slots": 0.6681818181818182,
+      "perf": {
+        "ann_return": -0.04148781937457369,
+        "max_drawdown": -0.45817908106904515,
+        "sharpe": -0.13915501496535518,
+        "exposure": 0.6948863636363637,
+        "n_days": 1760
+      },
+      "kodex_perf": {
+        "ann_return": 0.09162898190143887,
+        "max_drawdown": -0.38088390038582776,
+        "sharpe": 0.6101905577729173,
+        "exposure": null,
+        "n_days": 1760
+      },
+      "selected": true,
+      "fold_reason": null
+    },
+    {
+      "name": "E1",
+      "direction": "exit",
+      "pre_exposed": true,
+      "n_trades": 821,
+      "trade_mean": {
+        "point": -0.2381559039194327,
+        "lo": -0.5408946882054264,
+        "hi": 0.06950171943964155,
+        "p_one": 0.93775,
+        "se": 0.15416050341851878,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex": {
+        "point": -0.2577843801416909,
+        "lo": -0.4139712271737844,
+        "hi": -0.10281783597650992,
+        "p_one": 0.99925,
+        "se": 0.07879022387140755,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_cash": {
+        "point": -0.17011332071405752,
+        "lo": -0.34932010465602237,
+        "hi": 0.006769692589496255,
+        "p_one": 0.97055,
+        "se": 0.09072869812597628,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex_matched": {
+        "point": -0.28790381608838983,
+        "lo": -0.44385413463877876,
+        "hi": -0.13452914329878743,
+        "p_one": 0.99985,
+        "se": 0.07835054484546437,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "kodex_excess": -0.36923340995915255,
+      "avg_hold_days": 3.2496954933008526,
+      "exposure": 0.9931818181818182,
+      "avg_slots": 0.9911931818181818,
+      "perf": {
+        "ann_return": -0.15643078268626665,
+        "max_drawdown": -0.7519345531057805,
+        "sharpe": -0.5941018437310637,
+        "exposure": 0.9931818181818182,
+        "n_days": 1760
+      },
+      "kodex_perf": {
+        "ann_return": 0.09162898190143887,
+        "max_drawdown": -0.38088390038582776,
+        "sharpe": 0.6101905577729173,
+        "exposure": null,
+        "n_days": 1760
+      },
+      "selected": false,
+      "fold_reason": null
+    },
+    {
+      "name": "E2",
+      "direction": "exit",
+      "pre_exposed": true,
+      "n_trades": 467,
+      "trade_mean": {
+        "point": -0.0441022836732634,
+        "lo": -0.5229919026846134,
+        "hi": 0.5072553645469875,
+        "p_one": 0.52485,
+        "se": 0.2641154042238761,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex": {
+        "point": -0.13232156192287872,
+        "lo": -0.27332682207582637,
+        "hi": 0.024556480254377445,
+        "p_one": 0.94945,
+        "se": 0.07607098045667968,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_cash": {
+        "point": -0.044650502495245034,
+        "lo": -0.21867297504386551,
+        "hi": 0.14232564409187673,
+        "p_one": 0.67105,
+        "se": 0.09284096368036197,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex_matched": {
+        "point": -0.16275906201706566,
+        "lo": -0.30140022226758517,
+        "hi": -0.004304432675824795,
+        "p_one": 0.9781,
+        "se": 0.07560394190937952,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "kodex_excess": -0.34330106055860693,
+      "avg_hold_days": 6.471092077087794,
+      "exposure": 0.9943181818181818,
+      "avg_slots": 0.9911931818181818,
+      "perf": {
+        "ann_return": -0.04366834103881323,
+        "max_drawdown": -0.5505725089137508,
+        "sharpe": -0.07445332641859274,
+        "exposure": 0.9943181818181818,
+        "n_days": 1760
+      },
+      "kodex_perf": {
+        "ann_return": 0.09162898190143887,
+        "max_drawdown": -0.38088390038582776,
+        "sharpe": 0.6101905577729173,
+        "exposure": null,
+        "n_days": 1760
+      },
+      "selected": false,
+      "fold_reason": null
+    },
+    {
+      "name": "E3",
+      "direction": "exit",
+      "pre_exposed": true,
+      "n_trades": 241,
+      "trade_mean": {
+        "point": 0.4959589573869287,
+        "lo": -0.47039697256175417,
+        "hi": 1.6652076575047832,
+        "p_one": 0.1437,
+        "se": 0.5473851916583999,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex": {
+        "point": -0.03748753089639201,
+        "lo": -0.19557795093641037,
+        "hi": 0.13460087191429182,
+        "p_one": 0.64585,
+        "se": 0.08374308738800249,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_cash": {
+        "point": 0.050183528531241625,
+        "lo": -0.13383942525492493,
+        "hi": 0.24845037279276538,
+        "p_one": 0.28275,
+        "se": 0.09725606175452757,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex_matched": {
+        "point": -0.0630284093107806,
+        "lo": -0.21922225829087888,
+        "hi": 0.10843509562206388,
+        "p_one": 0.7547,
+        "se": 0.08336266855595184,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "kodex_excess": -0.09550239779108545,
+      "avg_hold_days": 13.473029045643154,
+      "exposure": 0.9943181818181818,
+      "avg_slots": 0.990909090909091,
+      "perf": {
+        "ann_return": 0.051464052322198084,
+        "max_drawdown": -0.4875106165296762,
+        "sharpe": 0.3263323605626401,
+        "exposure": 0.9943181818181818,
+        "n_days": 1760
+      },
+      "kodex_perf": {
+        "ann_return": 0.09162898190143887,
+        "max_drawdown": -0.38088390038582776,
+        "sharpe": 0.6101905577729173,
+        "exposure": null,
+        "n_days": 1760
+      },
+      "selected": true,
+      "fold_reason": null
+    },
+    {
+      "name": "S1",
+      "direction": "signal",
+      "pre_exposed": false,
+      "n_trades": 1368,
+      "trade_mean": {
+        "point": -0.6167870930316491,
+        "lo": -0.8425382622645597,
+        "hi": -0.41118238797767453,
+        "p_one": 1.0,
+        "se": 0.11004165946291483,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex": {
+        "point": -0.7365830045314199,
+        "lo": -0.9774354041143913,
+        "hi": -0.5136035163530718,
+        "p_one": 1.0,
+        "se": 0.11836217422745096,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_cash": {
+        "point": -0.6489119451037848,
+        "lo": -0.8749792078760044,
+        "hi": -0.4459502130085569,
+        "p_one": 1.0,
+        "se": 0.10990564759919344,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex_matched": {
+        "point": -0.7376709925696883,
+        "lo": -0.9775665896730968,
+        "hi": -0.5136673880883302,
+        "p_one": 1.0,
+        "se": 0.11836322732048786,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "kodex_excess": -0.6576170572221365,
+      "avg_hold_days": 1.5679824561403508,
+      "exposure": 0.9982954545454545,
+      "avg_slots": 0.9980113636363637,
+      "perf": {
+        "ann_return": -0.47738589964796585,
+        "max_drawdown": -0.9918375793458218,
+        "sharpe": -1.9910075726350305,
+        "exposure": 0.9982954545454545,
+        "n_days": 1760
+      },
+      "kodex_perf": {
+        "ann_return": 0.09162898190143887,
+        "max_drawdown": -0.38088390038582776,
+        "sharpe": 0.6101905577729173,
+        "exposure": null,
+        "n_days": 1760
+      },
+      "selected": false,
+      "fold_reason": null
+    },
+    {
+      "name": "S2",
+      "direction": "signal",
+      "pre_exposed": false,
+      "n_trades": 838,
+      "trade_mean": {
+        "point": -0.7476162517943785,
+        "lo": -0.9623267378671486,
+        "hi": -0.5016616721585861,
+        "p_one": 1.0,
+        "se": 0.11839762080559485,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex": {
+        "point": -0.5560757520952009,
+        "lo": -0.7269783393646939,
+        "hi": -0.3675540996567156,
+        "p_one": 1.0,
+        "se": 0.09167820924673509,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_cash": {
+        "point": -0.46840469266756785,
+        "lo": -0.595594995028431,
+        "hi": -0.32820319455809466,
+        "p_one": 1.0,
+        "se": 0.06863157519377398,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex_matched": {
+        "point": -0.5342722500534134,
+        "lo": -0.6873815194956675,
+        "hi": -0.3673664922425649,
+        "p_one": 1.0,
+        "se": 0.08182337703981206,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "kodex_excess": -0.8087867758378815,
+      "avg_hold_days": 2.204057279236277,
+      "exposure": 0.8613636363636363,
+      "avg_slots": 0.7627840909090909,
+      "perf": {
+        "ann_return": -0.3739998652757268,
+        "max_drawdown": -0.962555080116185,
+        "sharpe": -2.1941955102315767,
+        "exposure": 0.8613636363636363,
+        "n_days": 1760
+      },
+      "kodex_perf": {
+        "ann_return": 0.09162898190143887,
+        "max_drawdown": -0.38088390038582776,
+        "sharpe": 0.6101905577729173,
+        "exposure": null,
+        "n_days": 1760
+      },
+      "selected": false,
+      "fold_reason": null
+    },
+    {
+      "name": "S3",
+      "direction": "signal",
+      "pre_exposed": false,
+      "n_trades": 1086,
+      "trade_mean": {
+        "point": -0.272655085565761,
+        "lo": -0.48709356100844925,
+        "hi": -0.04547233741866589,
+        "p_one": 0.99115,
+        "se": 0.11177855381644798,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex": {
+        "point": -0.33323934099141334,
+        "lo": -0.4939519851463842,
+        "hi": -0.16512021613102584,
+        "p_one": 1.0,
+        "se": 0.0839641987445309,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_cash": {
+        "point": -0.24556828156377952,
+        "lo": -0.41945252259546867,
+        "hi": -0.06953095385676866,
+        "p_one": 0.9975,
+        "se": 0.08863386238543818,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex_matched": {
+        "point": -0.35874067187946784,
+        "lo": -0.5106268771794901,
+        "hi": -0.1992255003145316,
+        "p_one": 1.0,
+        "se": 0.07981804392033026,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "kodex_excess": -0.34466368075918546,
+      "avg_hold_days": 2.20902394106814,
+      "exposure": 0.9960227272727272,
+      "avg_slots": 0.9900568181818182,
+      "perf": {
+        "ann_return": -0.21774013195619624,
+        "max_drawdown": -0.8374757785127344,
+        "sharpe": -0.7913859731410107,
+        "exposure": 0.9960227272727272,
+        "n_days": 1760
+      },
+      "kodex_perf": {
+        "ann_return": 0.09162898190143887,
+        "max_drawdown": -0.38088390038582776,
+        "sharpe": 0.6101905577729173,
+        "exposure": null,
+        "n_days": 1760
+      },
+      "selected": false,
+      "fold_reason": null
+    },
+    {
+      "name": "S4",
+      "direction": "signal",
+      "pre_exposed": true,
+      "n_trades": 770,
+      "trade_mean": {
+        "point": -0.3116034251473049,
+        "lo": -0.47825136784081257,
+        "hi": -0.13650198083323373,
+        "p_one": 0.99985,
+        "se": 0.08674646754297133,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex": {
+        "point": -0.2692973929526804,
+        "lo": -0.36896983134332934,
+        "hi": -0.15563727397986515,
+        "p_one": 0.99995,
+        "se": 0.05447341113027423,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_cash": {
+        "point": -0.18162633352504673,
+        "lo": -0.27776321643437357,
+        "hi": -0.08379844589544795,
+        "p_one": 0.9999,
+        "se": 0.049542618742116705,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex_matched": {
+        "point": -0.26918799085007916,
+        "lo": -0.3689679863783019,
+        "hi": -0.15563727397986515,
+        "p_one": 0.99995,
+        "se": 0.05447260390363695,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "kodex_excess": -0.4418652673497531,
+      "avg_hold_days": 3.5675324675324673,
+      "exposure": 0.9994318181818181,
+      "avg_slots": 0.9991477272727273,
+      "perf": {
+        "ann_return": -0.1660871125061507,
+        "max_drawdown": -0.7649446514499154,
+        "sharpe": -1.1488537142776047,
+        "exposure": 0.9994318181818181,
+        "n_days": 1760
+      },
+      "kodex_perf": {
+        "ann_return": 0.09162898190143887,
+        "max_drawdown": -0.38088390038582776,
+        "sharpe": 0.6101905577729173,
+        "exposure": null,
+        "n_days": 1760
+      },
+      "selected": true,
+      "fold_reason": null
+    },
+    {
+      "name": "COMBO(S4+F1+E3)",
+      "direction": "combo",
+      "pre_exposed": true,
+      "n_trades": 148,
+      "trade_mean": {
+        "point": 0.2828126129178471,
+        "lo": -0.5973259314560712,
+        "hi": 1.2046438071512604,
+        "p_one": 0.2573,
+        "se": 0.46145539772716765,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex": {
+        "point": -0.06537350153620208,
+        "lo": -0.1544354384575398,
+        "hi": 0.03939230087866919,
+        "p_one": 0.89205,
+        "se": 0.04954350847698744,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_cash": {
+        "point": 0.022297557891431688,
+        "lo": -0.0636333006716581,
+        "hi": 0.11349303802603003,
+        "p_one": 0.2936,
+        "se": 0.04541874364702262,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "vs_kodex_matched": {
+        "point": -0.06531543888380323,
+        "lo": -0.13453310920079167,
+        "hi": 0.007643294915735402,
+        "p_one": 0.9603,
+        "se": 0.03638518282412139,
+        "n_days": 1760,
+        "draws": 20000
+      },
+      "kodex_excess": -0.6004443785877653,
+      "avg_hold_days": 17.89189189189189,
+      "exposure": 0.8119318181818181,
+      "avg_slots": 0.7943181818181818,
+      "perf": {
+        "ann_return": 0.022548006435052503,
+        "max_drawdown": -0.2193854002194966,
+        "sharpe": 0.2380197614970342,
+        "exposure": 0.8119318181818181,
+        "n_days": 1760
+      },
+      "kodex_perf": {
+        "ann_return": 0.09162898190143887,
+        "max_drawdown": -0.38088390038582776,
+        "sharpe": 0.6101905577729173,
+        "exposure": null,
+        "n_days": 1760
+      },
+      "selected": false,
+      "fold_reason": "combo_not_better"
+    }
+  ],
+  "test_end": "2026-10-01",
+  "git": {
+    "commit": "69d073d6e542f309e004abe3f4d3e0d758d1f4d5",
+    "dirty": true
+  },
+  "skipped": [
+    "402340",
+    "373220",
+    "488770",
+    "278470",
+    "0126Z0",
+    "064400",
+    "443060",
+    "459580",
+    "498400",
+    "062040",
+    "0167A0",
+    "458730",
+    "377300",
+    "0162Z0",
+    "0043B0",
+    "454910",
+    "423160",
+    "411060",
+    "455890",
+    "403870",
+    "440110",
+    "310210",
+    "347850",
+    "437730",
+    "0009K0",
+    "328130",
+    "420770",
+    "491000",
+    "950260",
+    "425420",
+    "445680",
+    "458870",
+    "417200",
+    "295310",
+    "388720",
+    "0158S0",
+    "476830",
+    "456160",
+    "466100",
+    "476060"
+  ]
+}
